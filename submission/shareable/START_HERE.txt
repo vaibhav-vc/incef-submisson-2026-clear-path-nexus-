@@ -1,0 +1,36 @@
+EVIDENCEGATE - INSEF 2026-27 SHAREABLE SUBMISSION BUNDLE
+
+1. EvidenceGate_INSEF_2026_27_Final_Report.pdf
+   Clear, print-ready 12-page project report.
+
+2. EvidenceGate-v6.0.0-debug.apk
+   Android debug build (Android 8+). It uses an emulator backend address and
+   placeholder Supabase values. Rebuild with real deployment configuration
+   before demonstrating login/live operations on a physical phone.
+
+3. EvidenceGate-v6.0.0-web.zip
+   Compiled web assets. Without Supabase settings, shows Configuration required.
+   Rebuild with real public Supabase settings and serve with a backend proxy.
+
+4. EvidenceGate-v6.0.0-source.zip
+   Shareable source-code archive including README and deployment instructions.
+
+5. EvidenceGate_INSEF_2026_27_Experimental_Package.zip
+   Raw CSV/JSON results, experiment scripts, report builder and report copy.
+
+6. SHA256SUMS.txt
+   Checksums for every other top-level artifact in this bundle.
+
+7. VERIFICATION_REPORT.md
+   Dated verification results and remaining deployment/submission requirements.
+
+The backend needs configured PostgreSQL/PostGIS, Redis, Supabase and signing
+keys. Verify /ready returns 200 and test authenticated workflows on the actual
+demonstration device. This ZIP is not a self-contained hosted/live service.
+
+Before an official INSEF upload, complete the student, grade, school and guide
+lines on the report cover, record and test the demonstration-video URL, and
+confirm the current regional submission requirements.
+
+EvidenceGate is a research decision-support prototype. It is not certified for
+railway control, signalling, braking, port operations or safety-critical use.
