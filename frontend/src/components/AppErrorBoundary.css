@@ -1,0 +1,8 @@
+.app-recovery { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: #071013; color: #eef3f1; }
+.app-recovery__panel { max-width: 680px; padding: clamp(24px, 5vw, 56px); border: 1px solid #5c6b67; }
+.app-recovery__eyebrow { color: #c8f34a; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.app-recovery h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.1; }
+.app-recovery p { line-height: 1.65; }
+.app-recovery button { margin: 20px 0; min-height: 48px; padding: 12px 24px; background: #c8f34a; border: 0; color: #071013; font: inherit; font-weight: 700; cursor: pointer; }
+.app-recovery button:focus-visible { outline: 3px solid #fff; outline-offset: 5px; }
+.app-recovery__note { color: #b4bdbc; font-size: 13px; }

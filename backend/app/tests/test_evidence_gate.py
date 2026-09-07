@@ -181,6 +181,42 @@ def test_complete_trustworthy_evidence_is_hot_and_ready() -> None:
     assert result.kit_status is EvidenceKitStatus.HOT
 
 
+@pytest.mark.parametrize("clearance", ["", "UNKNOWN", "HOLD", "UNAVAILABLE", "PENDING"])
+def test_clearance_must_be_explicitly_approved(clearance: str) -> None:
+    result = _sealed_assessment(_snapshot(clearance=clearance), _ready_records())
+    assert result.decision_state is DecisionState.HOLD
+    assert "CLEARANCE_NOT_APPROVED" in result.reason_codes
+
+
+@pytest.mark.parametrize("freshness", ["FREHS", "VALID", " "])
+def test_unrecognized_freshness_cannot_be_ready(freshness: str) -> None:
+    records = _ready_records()
+    records[1].freshness_state = freshness
+    result = _sealed_assessment(_snapshot(), records)
+    assert result.decision_state is DecisionState.HOLD
+    assert "EVIDENCE_FRESHNESS_UNKNOWN" in result.reason_codes
+
+
+@pytest.mark.parametrize("role", REQUIRED_DECISION_ROLES)
+def test_excluded_required_input_cannot_be_ready(role: str) -> None:
+    records = _ready_records()
+    record = next(item for item in records if item.decision_input_role == role)
+    record.used_in_decision = False
+    result = _sealed_assessment(_snapshot(), records)
+    assert result.decision_state is DecisionState.HOLD
+    assert "REQUIRED_INPUT_EXCLUDED" in result.reason_codes
+    assert result.role_status[role]["trustworthy"] is False
+
+
+@pytest.mark.parametrize("source_type", ["", "UNRECOGNIZED", "UNAVAILABLE"])
+def test_untrusted_source_category_cannot_be_ready(source_type: str) -> None:
+    records = _ready_records()
+    records[1].canonical_source_type = source_type
+    result = _sealed_assessment(_snapshot(), records)
+    assert result.decision_state is DecisionState.HOLD
+    assert result.role_status["WEATHER"]["trustworthy"] is False
+
+
 def test_live_evidence_is_reaged_at_dispatch_time() -> None:
     captured_at = datetime(2026, 8, 28, 10, tzinfo=timezone.utc)
     records = _ready_records()

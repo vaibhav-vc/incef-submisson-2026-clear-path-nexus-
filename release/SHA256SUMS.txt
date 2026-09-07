@@ -1,5 +1,5 @@
 16235d664d4ad468f3ca357b6cce87671635517ab4f86045781ba6fcac99747c  EvidenceGate-v6.0.0-debug.apk
-54f41ee62fc08617b42b07c07fb75d168c0252901ed8fe7fe183028c417de025  EvidenceGate-v6.0.0-source.zip
-b755382bc174d48dea1f99ead763133bb08ba45f5456d0c21e87d02b9f3dd7b0  EvidenceGate-v6.0.0-web.zip
+0ff458f958c4730d404b5eb96910d5af640b389932ddb679ba22d4ab6810c587  EvidenceGate-v6.0.0-source.zip
+60518789974f608172bfcca8c30a6e3700eba504c770a01fcd1203469a56d22a  EvidenceGate-v6.0.0-web.zip
 17281eafc8b7570cd1a5e22d74c098a9df1c4c494d8f6151b71dbd2a1e56b022  backend/artifacts/models/delay_predictor/1.1.0-benchmark/metadata.json
 114566c0e3be140b9d38ff9bb95d514a0a46bec92de98811271e1faa872eb0d1  backend/artifacts/models/delay_predictor/1.1.0-benchmark/model.joblib

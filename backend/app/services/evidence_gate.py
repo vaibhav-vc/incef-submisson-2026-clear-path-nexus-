@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.provenance import LineageEdge, ProvenanceRecord, RouteDecisionSnapshot
 from app.services.provenance import (
+    CanonicalSourceType,
     SOURCE_IDS,
     calculate_freshness,
     record_integrity_payload,
@@ -38,14 +39,17 @@ class EvidenceKitStatus(str, Enum):
 
 class EvidenceReasonCode(str, Enum):
     HARD_CLEARANCE_BLOCK = "HARD_CLEARANCE_BLOCK"
+    CLEARANCE_NOT_APPROVED = "CLEARANCE_NOT_APPROVED"
     NO_STORED_DECISION_EVIDENCE = "NO_STORED_DECISION_EVIDENCE"
     REQUIRED_ROLE_MISSING = "REQUIRED_ROLE_MISSING"
+    REQUIRED_INPUT_EXCLUDED = "REQUIRED_INPUT_EXCLUDED"
     EVIDENCE_AGING = "EVIDENCE_AGING"
     EVIDENCE_STALE = "EVIDENCE_STALE"
     EVIDENCE_FRESHNESS_UNKNOWN = "EVIDENCE_FRESHNESS_UNKNOWN"
     EVIDENCE_UNAVAILABLE = "EVIDENCE_UNAVAILABLE"
     EVIDENCE_DEGRADED = "EVIDENCE_DEGRADED"
     EVIDENCE_AVAILABILITY_UNKNOWN = "EVIDENCE_AVAILABILITY_UNKNOWN"
+    EVIDENCE_SOURCE_UNKNOWN = "EVIDENCE_SOURCE_UNKNOWN"
     CRITICAL_CLEARANCE_SIMULATED = "CRITICAL_CLEARANCE_SIMULATED"
     CRITICAL_CLEARANCE_SEEDED = "CRITICAL_CLEARANCE_SEEDED"
     EVIDENCE_SIMULATED = "EVIDENCE_SIMULATED"
@@ -169,7 +173,7 @@ def _record_failure_codes(
         reasons.append(EvidenceReasonCode.EVIDENCE_AGING.value)
     elif freshness == "STALE":
         reasons.append(EvidenceReasonCode.EVIDENCE_STALE.value)
-    elif freshness == "UNKNOWN":
+    elif freshness not in {"FRESH", "NOT_APPLICABLE"}:
         reasons.append(EvidenceReasonCode.EVIDENCE_FRESHNESS_UNKNOWN.value)
 
     availability = (record.availability_state or "UNKNOWN").upper()
@@ -190,6 +194,10 @@ def _record_failure_codes(
         reasons.append(EvidenceReasonCode.RECORD_ENVELOPE_INVALID.value)
 
     source_type = (record.canonical_source_type or "").upper()
+    if source_type == CanonicalSourceType.UNAVAILABLE.value:
+        reasons.append(EvidenceReasonCode.EVIDENCE_UNAVAILABLE.value)
+    elif source_type not in {item.value for item in CanonicalSourceType}:
+        reasons.append(EvidenceReasonCode.EVIDENCE_SOURCE_UNKNOWN.value)
     if source_type == "SIMULATED":
         reasons.append(EvidenceReasonCode.EVIDENCE_SIMULATED.value)
     elif source_type == "SEEDED_BASELINE":
@@ -236,10 +244,13 @@ def assess_decision_evidence(
             integrity=integrity,
         )
 
-    hard_blocked = (snapshot.clearance_state or "").upper() == DecisionState.HARD_BLOCKED.value
+    clearance_state = (snapshot.clearance_state or "").upper()
+    hard_blocked = clearance_state == DecisionState.HARD_BLOCKED.value
     available_ids = set(integrity)
     role_status: dict[str, dict[str, Any]] = {}
     all_reasons: list[str] = []
+    if clearance_state not in {"APPROVED", DecisionState.HARD_BLOCKED.value}:
+        all_reasons.append(EvidenceReasonCode.CLEARANCE_NOT_APPROVED.value)
     for role in REQUIRED_DECISION_ROLES:
         direct_ids = {record.id for record in records if record.decision_input_role == role}
         if not direct_ids:
@@ -249,6 +260,8 @@ def assess_decision_evidence(
             relevant_ids = _ancestors_for_role(direct_ids, edges, available_ids)
             reasons = []
             for record in records:
+                if record.id in direct_ids and record.used_in_decision is not True:
+                    reasons.append(EvidenceReasonCode.REQUIRED_INPUT_EXCLUDED.value)
                 if record.id in relevant_ids:
                     reasons.extend(_record_failure_codes(record, role, integrity[record.id], now))
         reasons = sorted(set(reasons))

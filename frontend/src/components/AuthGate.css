@@ -92,6 +92,7 @@
 .auth-config__requirements span { color: #9eaaaa; font-size: 13px; line-height: 1.5; }
 .auth-config__help { margin: 26px 0 0; color: #839092; font-size: 12px; line-height: 1.6; }
 .auth-config__help code { color: #d9e1df; }
+.auth-config__diagnostic { margin: 20px 0 0; padding: 12px 16px; border-left: 2px solid #ffbf45; color: #f7d695; font-size: 14px; line-height: 1.6; }
 @keyframes auth-session-check { 50%, 100% { transform: translateX(100%); } }
 
 @media (max-width: 1080px) {

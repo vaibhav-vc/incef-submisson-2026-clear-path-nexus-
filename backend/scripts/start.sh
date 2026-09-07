@@ -1,4 +1,5 @@
 #!/bin/sh
+# Keep this launcher LF-only for Linux container execution.
 set -eu
 
 alembic upgrade head

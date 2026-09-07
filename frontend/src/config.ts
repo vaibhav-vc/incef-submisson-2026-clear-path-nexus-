@@ -9,27 +9,26 @@
  * behaves exactly as before.
  */
 
-function envNumber(value: string | undefined, fallback: number): number {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : fallback
-}
+import { boundedEnvNumber as envNumber } from './lib/deploymentValues'
 
 /** Opening map view, used until a route or station set defines its own bounds. */
 export const MAP_DEFAULT_CENTER: [number, number] = [
-  envNumber(import.meta.env.VITE_MAP_CENTER_LAT, 21.1458),
-  envNumber(import.meta.env.VITE_MAP_CENTER_LON, 79.0882),
+  envNumber(import.meta.env.VITE_MAP_CENTER_LAT, 21.1458, -90, 90),
+  envNumber(import.meta.env.VITE_MAP_CENTER_LON, 79.0882, -180, 180),
 ]
-export const MAP_DEFAULT_ZOOM = envNumber(import.meta.env.VITE_MAP_DEFAULT_ZOOM, 6)
+export const MAP_DEFAULT_ZOOM = envNumber(import.meta.env.VITE_MAP_DEFAULT_ZOOM, 6, 0, 19)
 
 /** Overlay circle radii in metres. */
 export const MAP_ENVIRONMENTAL_ZONE_RADIUS_M = envNumber(
   import.meta.env.VITE_MAP_ZONE_RADIUS_M,
   12000,
+  1, 1_000_000,
 )
 export const MAP_CONDITION_RADIUS_M = envNumber(
   import.meta.env.VITE_MAP_CONDITION_RADIUS_M,
   5000,
+  1, 1_000_000,
 )
 
 /** How often the LiveOps control center re-polls the backend, in milliseconds. */
-export const LIVEOPS_REFRESH_MS = envNumber(import.meta.env.VITE_LIVEOPS_REFRESH_MS, 15_000)
+export const LIVEOPS_REFRESH_MS = envNumber(import.meta.env.VITE_LIVEOPS_REFRESH_MS, 15_000, 1_000, 3_600_000)

@@ -1,4 +1,6 @@
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
+import { validateAuthConfiguration } from '../lib/authConfiguration'
+import { withTimeout } from '../lib/sessionLifecycle'
 
 // Auth stays with Supabase, same as the Android client: we sign in here and
 // lift the access token off the session to present to the backend as a
@@ -10,27 +12,29 @@ import { createClient, type Session, type SupabaseClient } from '@supabase/supab
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 
-export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
+const configuration = validateAuthConfiguration(SUPABASE_URL, SUPABASE_ANON_KEY)
+export const authConfigurationError = configuration.error
+export const isSupabaseConfigured = !authConfigurationError
 
 if (!isSupabaseConfigured) {
   // Fail loud in dev rather than silently sending unauthenticated requests
   // that the backend will 401 on one-by-one.
   console.error(
-    '[supabaseClient] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are not set. ' +
+    '[supabaseClient] Public Supabase configuration is missing or invalid. ' +
       'The application will remain in CONFIGURATION_REQUIRED until these are supplied.',
   )
 }
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(SUPABASE_URL as string, SUPABASE_ANON_KEY as string)
+  ? createClient(configuration.url, configuration.key)
   : null
 
 export async function getAccessToken(): Promise<string | null> {
   if (!supabase) return null
-  const { data, error } = await supabase.auth.getSession()
+  const { data, error } = await withTimeout(supabase.auth.getSession())
   if (error) {
-    console.warn('[supabaseClient] failed to read session', error)
-    return null
+    // Do not send a protected request without a token when session recovery failed.
+    throw new Error('The secure session could not be read. Sign in again.', { cause: error })
   }
   return data.session?.access_token ?? null
 }

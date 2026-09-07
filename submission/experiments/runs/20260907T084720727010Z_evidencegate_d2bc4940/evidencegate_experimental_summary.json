@@ -1,0 +1,116 @@
+{
+  "experiment": "EvidenceGate fail-closed integrity validation",
+  "executed_at_utc": "2026-09-07T08:47:20.728008+00:00",
+  "experiment_seed": 20260831,
+  "software_version": "EvidenceGate 6.0.0",
+  "python_version": "3.12.14",
+  "platform": "Windows-10-10.0.19045-SP0",
+  "trials_per_scenario": 200,
+  "total_trials": 1600,
+  "total_passed": 1600,
+  "overall_pass_rate_pct": 100.0,
+  "csv_sha256": "0ddd7a4499720cd2c726897039785bf920195cec28788e0fc756dc3b9bd820ce",
+  "scenarios": [
+    {
+      "scenario": "baseline_ready",
+      "trials": 200,
+      "passed": 200,
+      "pass_rate_pct": 100.0,
+      "actual_states": {
+        "READY": 200
+      },
+      "latency_ms_mean": 2.582749,
+      "latency_ms_median": 2.0271,
+      "latency_ms_p95": 5.2224
+    },
+    {
+      "scenario": "snapshot_timestamp_tamper",
+      "trials": 200,
+      "passed": 200,
+      "pass_rate_pct": 100.0,
+      "actual_states": {
+        "HOLD": 200
+      },
+      "latency_ms_mean": 2.242771,
+      "latency_ms_median": 1.8905,
+      "latency_ms_p95": 2.7725
+    },
+    {
+      "scenario": "record_source_tamper",
+      "trials": 200,
+      "passed": 200,
+      "pass_rate_pct": 100.0,
+      "actual_states": {
+        "HOLD": 200
+      },
+      "latency_ms_mean": 1.966028,
+      "latency_ms_median": 1.8388,
+      "latency_ms_p95": 2.8544
+    },
+    {
+      "scenario": "missing_weather_role",
+      "trials": 200,
+      "passed": 200,
+      "pass_rate_pct": 100.0,
+      "actual_states": {
+        "HOLD": 200
+      },
+      "latency_ms_mean": 1.489683,
+      "latency_ms_median": 1.40925,
+      "latency_ms_p95": 2.1152
+    },
+    {
+      "scenario": "stale_weather",
+      "trials": 200,
+      "passed": 200,
+      "pass_rate_pct": 100.0,
+      "actual_states": {
+        "HOLD": 200
+      },
+      "latency_ms_mean": 1.80919,
+      "latency_ms_median": 1.74035,
+      "latency_ms_p95": 2.2934
+    },
+    {
+      "scenario": "future_weather",
+      "trials": 200,
+      "passed": 200,
+      "pass_rate_pct": 100.0,
+      "actual_states": {
+        "HOLD": 200
+      },
+      "latency_ms_mean": 1.79945,
+      "latency_ms_median": 1.71725,
+      "latency_ms_p95": 2.319
+    },
+    {
+      "scenario": "seeded_clearance",
+      "trials": 200,
+      "passed": 200,
+      "pass_rate_pct": 100.0,
+      "actual_states": {
+        "HOLD": 200
+      },
+      "latency_ms_mean": 2.005603,
+      "latency_ms_median": 1.8547,
+      "latency_ms_p95": 2.6755
+    },
+    {
+      "scenario": "hard_blocked",
+      "trials": 200,
+      "passed": 200,
+      "pass_rate_pct": 100.0,
+      "actual_states": {
+        "HARD_BLOCKED": 200
+      },
+      "latency_ms_mean": 1.828928,
+      "latency_ms_median": 1.75665,
+      "latency_ms_p95": 2.3327
+    }
+  ],
+  "limitations": [
+    "This experiment validates software decision-gate behavior, not railway physics.",
+    "No authenticated railway or maritime provider credential was available during execution.",
+    "No claim is made that seeded corridor engineering limits are certified operational data."
+  ]
+}

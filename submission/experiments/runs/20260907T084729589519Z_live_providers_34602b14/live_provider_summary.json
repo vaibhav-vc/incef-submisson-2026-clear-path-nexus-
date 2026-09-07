@@ -1,0 +1,31 @@
+{
+  "experiment": "Public live-provider observation check",
+  "executed_at_utc": "2026-09-07T08:47:30.000147+00:00",
+  "location": "Mumbai, India (19.0760, 72.8777)",
+  "total_requests": 10,
+  "csv_sha256": "a7fb6601127b26ba36a3996344e133abdda1351552639da8173cd24e0ce4d93e",
+  "providers": [
+    {
+      "provider": "Open-Meteo",
+      "requests": 5,
+      "http_200": 0,
+      "schema_valid": 0,
+      "availability_pct": 0.0,
+      "latency_ms_mean": 15012.326,
+      "latency_ms_p95": 15029.498
+    },
+    {
+      "provider": "NOAA SWPC",
+      "requests": 5,
+      "http_200": 5,
+      "schema_valid": 5,
+      "availability_pct": 100.0,
+      "latency_ms_mean": 472.529,
+      "latency_ms_p95": 504.321
+    }
+  ],
+  "limitations": [
+    "This short observation window does not estimate long-term provider uptime.",
+    "Railway and maritime enterprise feeds were not tested because credentials were unavailable."
+  ]
+}

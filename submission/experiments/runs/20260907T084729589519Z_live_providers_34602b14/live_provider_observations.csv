@@ -1,0 +1,11 @@
+repetition,provider,checked_at_utc,http_status,schema_valid,observed_at_provider,detail,error_type,latency_ms
+1,Open-Meteo,2026-09-07T08:47:30.000147+00:00,0,False,,provider request failed,ConnectTimeout,15029.498
+1,NOAA SWPC,2026-09-07T08:47:45.029507+00:00,200,True,2026-09-07T03:00:00,Kp=2.00,,486.965
+2,Open-Meteo,2026-09-07T08:47:45.516569+00:00,0,False,,provider request failed,ConnectTimeout,15006.62
+2,NOAA SWPC,2026-09-07T08:48:00.523192+00:00,200,True,2026-09-07T03:00:00,Kp=2.00,,504.321
+3,Open-Meteo,2026-09-07T08:48:01.027653+00:00,0,False,,provider request failed,ConnectTimeout,15009.825
+3,NOAA SWPC,2026-09-07T08:48:16.036902+00:00,200,True,2026-09-07T03:00:00,Kp=2.00,,451.005
+4,Open-Meteo,2026-09-07T08:48:16.488315+00:00,0,False,,provider request failed,ConnectTimeout,15010.408
+4,NOAA SWPC,2026-09-07T08:48:31.498512+00:00,200,True,2026-09-07T03:00:00,Kp=2.00,,457.17
+5,Open-Meteo,2026-09-07T08:48:31.956187+00:00,0,False,,provider request failed,ConnectTimeout,15005.281
+5,NOAA SWPC,2026-09-07T08:48:46.960642+00:00,200,True,2026-09-07T03:00:00,Kp=2.00,,463.186

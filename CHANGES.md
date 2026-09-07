@@ -1,5 +1,16 @@
 # ClearPath Nexus — change summary
 
+## September 7, 2026 — EvidenceGate hardening
+
+- Closed four evidence-gate fail-open categories: unapproved clearance, excluded required inputs, unsupported freshness and unknown/unavailable source categories; added 16 regression cases.
+- Added safe authentication configuration validation, bounded session/sign-in waits, protection against stale session-read races, render-crash recovery and validated deployment number ranges.
+- Repaired production signing/provider environment propagation, inherited host-port removal, readiness healthchecks and Supabase content-security-policy integration.
+- Added redacted production preflight and CI deployment tests; production startup still needs actual infrastructure and credentials.
+- Hardened archive paths, credential exclusions/signature scanning and atomic ZIP replacement; added a no-extraction checksum verifier and adversarial regression tests.
+- Preserved original measured experiment files; reruns now go to separate directories and refuse to overwrite previous observations.
+
+The original debug APK, original study results and uncompleted field-validation/submission requirements remain explicitly identified. These improvements do not establish safety certification or guaranteed INSEF acceptance.
+
 ## v5.2 — LiveOps and production ML foundation
 
 - Added a normalized live-data envelope, validation, freshness, bounded retry/backoff, circuit breaking, durable observations, Redis latest-value cache, provider runtime state, and a single live-ingestor worker.

@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

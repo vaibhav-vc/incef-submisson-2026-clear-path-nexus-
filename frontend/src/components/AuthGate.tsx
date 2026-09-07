@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { isSupabaseConfigured, onAuthStateChange, supabase } from '../services/supabaseClient'
+import { authConfigurationError, isSupabaseConfigured, onAuthStateChange, supabase } from '../services/supabaseClient'
+import { watchSession, withTimeout } from '../lib/sessionLifecycle'
 import './AuthGate.css'
 
 const EVIDENCE_STATES = [
@@ -42,9 +43,10 @@ function ConfigurationRequired() {
         <p className="auth-kicker">Configuration required</p>
         <h1 id="configuration-title">Connect trusted services before operating.</h1>
         <p className="auth-config__intro">
-          This build has no Supabase project configuration. EvidenceGate has stopped before sign-in
+          This build has missing or invalid Supabase configuration. EvidenceGate has stopped before sign-in
           instead of substituting demo credentials or fabricated live data.
         </p>
+        <p className="auth-config__diagnostic" role="status">{authConfigurationError}</p>
         <div className="auth-config__requirements" aria-label="Required configuration">
           <p><code>VITE_SUPABASE_URL</code><span>Public Supabase project URL</span></p>
           <p><code>VITE_SUPABASE_ANON_KEY</code><span>Public RLS-scoped anonymous key</span></p>
@@ -73,24 +75,22 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       setChecking(false)
       return
     }
-    let active = true
-    void client.auth.getSession().then(({ data, error: sessionError }) => {
-      if (!active) return
-      setSession(data.session)
-      if (sessionError) setError('The secure session could not be verified. Please sign in again.')
-      setChecking(false)
+    return watchSession<Session>({
+      read: async () => {
+        const { data, error: sessionError } = await client.auth.getSession()
+        return { session: data.session, error: sessionError }
+      },
+      subscribe: onAuthStateChange,
+      onSession: (nextSession) => {
+        setSession(nextSession)
+        if (nextSession) setError(null)
+        setChecking(false)
+      },
+      onError: () => {
+        setError('The secure session could not be verified. Check your connection and sign in again.')
+        setChecking(false)
+      },
     })
-
-    const unsubscribe = onAuthStateChange((nextSession) => {
-      if (!active) return
-      setSession(nextSession)
-      setChecking(false)
-    })
-
-    return () => {
-      active = false
-      unsubscribe()
-    }
   }, [])
 
   async function handleSignIn(event: React.FormEvent<HTMLFormElement>) {
@@ -105,13 +105,18 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       return
     }
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    })
-
-    if (signInError) setError(signInError.message)
-    setSubmitting(false)
+    try {
+      const { error: signInError } = await withTimeout(supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      }))
+      if (signInError) setError(signInError.message)
+      else setPassword('')
+    } catch (signInError) {
+      setError(signInError instanceof Error ? signInError.message : 'Sign-in could not complete. Check your connection and retry.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   if (!isSupabaseConfigured || !supabase) return <ConfigurationRequired />

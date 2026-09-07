@@ -159,8 +159,10 @@ def styles():
             borderWidth=1,
             borderPadding=8,
             backColor=PALE,
-            spaceBefore=5,
-            spaceAfter=8,
+            # Paragraph borders extend outside the layout box by borderPadding.
+            # Reserve that padding so callouts cannot strike through headings.
+            spaceBefore=14,
+            spaceAfter=16,
         ),
         "table": ParagraphStyle(
             "TableText",
@@ -674,7 +676,11 @@ def build_report():
             PageBreak(),
             P("8. Conclusion and future work", "h1"),
             P(
-                "EvidenceGate 6.0.0 achieved 100% expected-state agreement across 1,600 controlled trials, with no false READY result in 1,400 adverse trials. The public-provider check successfully validated five Open-Meteo and five NOAA SWPC responses during the recorded observation window. These results support the prototype's fail-closed software behavior and reproducibility claims.",
+                "EvidenceGate 6.0.0 achieved 100% expected-state agreement across 1,600 controlled trials, with no false READY result in 1,400 adverse trials. The original public-provider check successfully validated five Open-Meteo and five NOAA SWPC responses during the 31 August 2026 observation window. These results support the prototype's fail-closed software behavior under the tested conditions.",
+            ),
+            P(
+                "Later verification, 7 September 2026: a separate controlled rerun again passed all 1,600 cases. NOAA returned five valid responses, but all five Open-Meteo requests timed out from the test host. These later observations are preserved separately under submission/experiments/runs and do not replace the original study data. Live availability is not guaranteed.",
+                "small",
             ),
             P(
                 "The experiment does not establish real-world railway safety or live freight-port accuracy. The next phase is field validation with authorized partners and certified data, followed by longer-duration provider monitoring and human-factors testing with intended operators.",

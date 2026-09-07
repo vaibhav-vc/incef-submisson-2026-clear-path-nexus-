@@ -3,15 +3,20 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import math
 import statistics
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import httpx
+if __package__:
+    from .output_paths import parse_output_directory
+else:
+    from output_paths import parse_output_directory
 
 
-OUTPUT_DIR = Path(__file__).resolve().parent
+EXPERIMENT_DIR = Path(__file__).resolve().parent
+OUTPUT_FILES = ("live_provider_observations.csv", "live_provider_summary.json")
 OPEN_METEO_URL = (
     "https://api.open-meteo.com/v1/forecast"
     "?latitude=19.0760&longitude=72.8777"
@@ -43,7 +48,23 @@ def validate_open_meteo(payload: object) -> tuple[bool, str, str]:
     missing = sorted(required - set(current))
     if missing:
         return False, str(current.get("time", "")), f"missing: {','.join(missing)}"
-    return True, str(current["time"]), "required fields present"
+    if not valid_timestamp(current["time"]):
+        return False, "", "timestamp missing or invalid"
+    for field in sorted(required - {"time"}):
+        value = current[field]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            return False, str(current["time"]), f"invalid numeric field: {field}"
+    return True, str(current["time"]), "required numeric fields and timestamp valid"
+
+
+def valid_timestamp(value: object) -> bool:
+    if not isinstance(value, str) or not value.strip() or "T" not in value:
+        return False
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
 
 
 def validate_noaa(payload: object) -> tuple[bool, str, str]:
@@ -52,16 +73,21 @@ def validate_noaa(payload: object) -> tuple[bool, str, str]:
     latest = payload[-1]
     timestamp = latest.get("time_tag")
     kp = latest.get("Kp")
+    if isinstance(kp, bool):
+        return False, str(timestamp or ""), "Kp is not numeric"
     try:
         kp_value = float(kp)
     except (TypeError, ValueError):
         return False, str(timestamp or ""), "Kp is not numeric"
-    if timestamp is None or not 0 <= kp_value <= 9:
-        return False, str(timestamp or ""), "timestamp missing or Kp outside 0-9"
+    if not valid_timestamp(timestamp) or not math.isfinite(kp_value) or not 0 <= kp_value <= 9:
+        return False, str(timestamp or ""), "timestamp invalid or Kp outside 0-9"
     return True, str(timestamp), f"Kp={kp_value:.2f}"
 
 
-def main() -> None:
+def main() -> int:
+    output_dir = parse_output_directory(EXPERIMENT_DIR, "live_providers", OUTPUT_FILES)
+    import httpx
+
     rows: list[dict[str, object]] = []
     with httpx.Client(timeout=15.0, follow_redirects=True) as client:
         for repetition in range(1, REPETITIONS + 1):
@@ -96,8 +122,8 @@ def main() -> None:
                     }
                 )
 
-    csv_path = OUTPUT_DIR / "live_provider_observations.csv"
-    with csv_path.open("w", newline="", encoding="utf-8") as stream:
+    csv_path = output_dir / OUTPUT_FILES[0]
+    with csv_path.open("x", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -130,11 +156,12 @@ def main() -> None:
             "Railway and maritime enterprise feeds were not tested because credentials were unavailable.",
         ],
     }
-    (OUTPUT_DIR / "live_provider_summary.json").write_text(
-        json.dumps(summary, indent=2), encoding="utf-8"
-    )
+    with (output_dir / OUTPUT_FILES[1]).open("x", encoding="utf-8") as stream:
+        json.dump(summary, stream, indent=2)
+    print(f"Measured outputs saved to: {output_dir}")
     print(json.dumps(summary, indent=2))
+    return 0 if all(bool(row["schema_valid"]) for row in rows) else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

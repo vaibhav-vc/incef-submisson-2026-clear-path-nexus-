@@ -1,6 +1,43 @@
 # EvidenceGate verification and handoff
 
-Prepared 7 September 2026. Full backend/client and fresh-provider measurements below were executed on 1 September 2026. Packaging checks are repeated when the bundle is built. This date distinction prevents historical observations being presented as continuously live results.
+## September 7, 2026 hardening verification
+
+The upgrade is a tested research prototype, **not a fully live or certified submission**. The original study files and Android binary are preserved. The PDF retains the original controlled study and labels the later verification separately in its conclusion; new raw observations are stored separately and must not be substituted for the original results.
+
+| Current check | Measured result |
+| --- | --- |
+| Backend | 231 passed, independently repeated; 16 new fail-closed regressions |
+| Python checks | Backend and new tooling Ruff checks passed; pip check passed |
+| Release/experiment tests | 29 passed, 1 skipped because Windows did not grant physical symlink creation; mocked link rejection also passed |
+| Deployment preflight tests | 15 passed; configuration fixtures are synthetic, not live accounts |
+| Frontend | 12 tests passed; type-check, lint and production build passed (202 modules) |
+| Private client-key guard | A synthetic server key caused Vite to exit 1 before bundling, without echoing the key |
+| Browser smoke | Final production setup page checked at 390x844 and 1440x1000; no page errors or mobile horizontal overflow; malformed-URL setup also checked earlier |
+| Controlled repeat | 1,600/1,600 expected decisions, including 1,400 adverse trials with zero false READY |
+| Current public requests | NOAA SWPC 5/5 HTTP 200/schema-valid; Open-Meteo 0/5, all five requests timed out on this host |
+| Docker execution | Not run: Docker executable unavailable; preflight correctly exited 1 with COMPOSE_UNAVAILABLE |
+| Deployment definitions | Compose/CI YAML parsed with PyYAML, including custom !reset handling; actual Compose merge/build remains unverified locally |
+| Linux launchers | Android Gradle and backend startup shell files normalized to LF; Git attributes preserve LF in future checkouts |
+
+Current raw outputs: [controlled repeat](../submission/experiments/runs/20260907T084720727010Z_evidencegate_d2bc4940/evidencegate_experimental_summary.json) and [live observation, including failures](../submission/experiments/runs/20260907T084729589519Z_live_providers_34602b14/live_provider_summary.json). The live-observation command returned exit 1. Public-provider responses prove only the measured observations, not continuous uptime or authenticated railway/port integration.
+
+### What changed
+
+- Only explicitly APPROVED clearance can reach READY. Excluded required records, unsupported freshness labels and unknown/unavailable source categories now fail closed, even when the evidence was signed.
+- Authentication handles malformed configuration, failed/stalled SDK promises and stale session-read races; rendering failures show a recovery screen instead of an empty workspace. Client builds reject recognized privileged keys and credential-bearing public URLs. This follows [Supabase's public/server key separation](https://supabase.com/docs/guides/getting-started/api-keys); no database policy or live authentication change is claimed.
+- Backend and workers receive matching signing/provider settings. Production removes inherited internal ports, disables auth bypass/demo/debug modes, gates health on dependency readiness and permits only the configured Supabase origin through the edge CSP.
+- Experiment reruns use fresh output directories, refuse overwrite and exit nonzero on failed measurements. Numeric/timestamp provider validation is stricter.
+- Packaging checks portable paths, collisions, linked files, selected credential signatures and every generated payload hash. ZIP replacement is atomic per archive. A standalone verifier checks the bundle without extraction. These checks complement, not replace, an independent security audit; checksums are not digital signatures.
+- PDF callout spacing now reserves its border padding so boxes do not overlap preceding headings; the conclusion distinguishes the original successful observation from the later weather timeouts.
+- CI now defines deployment, release and frontend regression gates. The disposable container job needs an actual successful CI run before its result can be claimed.
+
+### Limits of this verification
+
+No Docker/container deployment, real Supabase sign-in, authenticated end-to-end operation, new Android build/device installation, independent field validation or official INSEF review was performed in this hardening pass. Open-Meteo was unavailable from this host during the current observation. No success state or substitute observation was manufactured to hide that failure.
+
+## Historical September 1 verification
+
+The following measurements were executed on September 1, 2026, not during the current hardening run. Packaging checks are repeated when the bundle is built. This date distinction prevents historical observations being presented as continuously live results.
 
 | Check | Observed result |
 | --- | --- |

@@ -25,6 +25,37 @@ jobs:
       - run: python -m compileall app scripts alembic
       - run: ruff check app scripts alembic
       - run: python -m pytest -q
+      - run: python -m unittest discover -s submission/tests -v
+        working-directory: .
+
+  deployment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Disposable CI fixtures only. Never use these values in a real deployment.
+    env:
+      SECRET_KEY: ci-only-session-secret-not-for-deployment-001
+      EVIDENCE_SIGNING_KEY: ci-only-evidence-secret-not-for-deployment-002
+      POSTGRES_PASSWORD: ci-only-database-password-003
+      SUPABASE_URL: https://auth.evidencegate.test
+      VITE_SUPABASE_URL: https://auth.evidencegate.test
+      VITE_SUPABASE_ANON_KEY: sb_publishable_synthetic_ci_fixture_only
+      DOMAIN: evidencegate.test
+      CORS_ORIGINS: '["https://evidencegate.test"]'
+      ALLOWED_HOSTS: '["evidencegate.test","127.0.0.1","backend"]'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: python -m unittest discover -s scripts/tests -v
+      - run: python scripts/deployment_preflight.py --env-file .env.example
+      - name: Build and exercise production API with real PostgreSQL and Redis
+        run: docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait --wait-timeout 180 backend
+      - name: Confirm live readiness inside the API container
+        run: docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.prod.yml exec -T backend python -c "import json, urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=5))['status'] == 'ready'"
+      - name: Remove disposable services and volumes
+        if: always()
+        run: docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.prod.yml down --volumes
 
   frontend:
     runs-on: ubuntu-latest
@@ -43,6 +74,7 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
+      - run: pnpm test
       - run: pnpm run build
       - run: pnpm run lint
       - run: pnpm audit --prod --audit-level=high

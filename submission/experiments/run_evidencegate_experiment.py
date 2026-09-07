@@ -10,6 +10,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+if __package__:
+    from .output_paths import parse_output_directory
+else:
+    from output_paths import parse_output_directory
+
 from app.core.config import settings
 from app.models.provenance import ProvenanceRecord, RouteDecisionSnapshot
 from app.services.evidence_gate import REQUIRED_DECISION_ROLES, assess_decision_evidence
@@ -18,7 +23,8 @@ from app.services.provenance import SOURCE_IDS, seal_decision_evidence, stable_c
 
 TRIALS_PER_SCENARIO = 200
 EXPERIMENT_SEED = 20260831
-OUTPUT_DIR = Path(__file__).resolve().parent
+EXPERIMENT_DIR = Path(__file__).resolve().parent
+OUTPUT_FILES = ("evidencegate_experimental_results.csv", "evidencegate_experimental_summary.json")
 
 
 def stable_uuid(label: str) -> UUID:
@@ -138,7 +144,8 @@ def percentile(values: list[float], percentile_value: float) -> float:
     return ordered[index]
 
 
-def main() -> None:
+def main() -> int:
+    output_dir = parse_output_directory(EXPERIMENT_DIR, "evidencegate", OUTPUT_FILES)
     settings.EVIDENCE_SIGNING_KEY_ID = "insef-experiment-key"
     settings.EVIDENCE_SIGNING_ALGORITHM = "HMAC-SHA256"
     settings.EVIDENCE_SIGNING_KEY = "insef-experiment-only-key-2026-08-31-do-not-deploy"
@@ -161,8 +168,8 @@ def main() -> None:
         for trial in range(1, TRIALS_PER_SCENARIO + 1)
     ]
 
-    csv_path = OUTPUT_DIR / "evidencegate_experimental_results.csv"
-    with csv_path.open("w", newline="", encoding="utf-8") as stream:
+    csv_path = output_dir / OUTPUT_FILES[0]
+    with csv_path.open("x", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -211,10 +218,13 @@ def main() -> None:
             "No claim is made that seeded corridor engineering limits are certified operational data.",
         ],
     }
-    summary_path = OUTPUT_DIR / "evidencegate_experimental_summary.json"
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    summary_path = output_dir / OUTPUT_FILES[1]
+    with summary_path.open("x", encoding="utf-8") as stream:
+        json.dump(summary, stream, indent=2)
+    print(f"Measured outputs saved to: {output_dir}")
     print(json.dumps(summary, indent=2))
+    return 0 if all(bool(row["passed"]) for row in rows) else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

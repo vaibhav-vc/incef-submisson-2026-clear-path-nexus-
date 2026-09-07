@@ -24,6 +24,17 @@ EVIDENCEGATE - INSEF 2026-27 SHAREABLE SUBMISSION BUNDLE
 7. VERIFICATION_REPORT.md
    Dated verification results and remaining deployment/submission requirements.
 
+8. verify_release.py
+   Python 3.11+ verifier. Run against the complete ZIP with --checksum pointing
+   to its trusted outer .sha256 file. It checks every top-level payload without
+   extracting files. Hashes detect corruption, not authenticity or live readiness.
+
+September 7 hardening updates apply to the source and web assets. The Android
+binary and original experimental observations retain their original provenance.
+Read VERIFICATION_REPORT.md before demonstrating: the current NOAA check passed
+5/5 requests, but Open-Meteo timed out 5/5 on this host. The new dated results
+are included in the experimental package without replacing the original study.
+
 The backend needs configured PostgreSQL/PostGIS, Redis, Supabase and signing
 keys. Verify /ready returns 200 and test authenticated workflows on the actual
 demonstration device. This ZIP is not a self-contained hosted/live service.

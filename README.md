@@ -6,6 +6,8 @@ EvidenceGate is a student engineering prototype that checks whether a logistics 
 
 **Status: tested research prototype; live deployment and submission details remain incomplete.** The September 1 verification passed 215 backend tests twice, web type-check/lint/build, and Android build/tests. These checks do not establish an operational deployment. The audited host returned `/health` 200 and `/ready` 503 because PostgreSQL and Redis were unavailable. The packaged APK has emulator/placeholder configuration and must be rebuilt for a real phone demonstration. The web build displays `Configuration required` when Supabase settings are missing.
 
+**September 7 hardening update:** the backend now passes 231 tests, including 16 new regressions preventing malformed or excluded evidence from becoming READY. Authentication has bounded waits, session-race protection and crash recovery; deployment configuration and release integrity have new automated checks. See the [dated verification report](docs/VERIFICATION_REPORT.md) for measured results and remaining limits. The Android binary and original experimental observations are unchanged, not newly certified by these tests.
+
 | Download | Contents / requirement |
 | --- | --- |
 | [Complete shareable ZIP](output/shareable/EvidenceGate_INSEF_2026_27_COMPLETE_SHAREABLE.zip) | Source, debug APK, web assets, report, experiment files and checksums |
@@ -19,11 +21,21 @@ EvidenceGate is a student engineering prototype that checks whether a logistics 
 
 GitHub may show a download button instead of previewing ZIP/APK files. Download the complete ZIP and read `START_HERE.txt`. It is a distributable project package, not a hosted application.
 
+Verify a downloaded bundle without extracting its payloads (Python 3.11+):
+
+```sh
+python submission/verify_release.py output/shareable/EvidenceGate_INSEF_2026_27_COMPLETE_SHAREABLE.zip --checksum output/shareable/EvidenceGate_INSEF_2026_27_COMPLETE_SHAREABLE.zip.sha256
+```
+
+Obtain the outer checksum from a trusted copy of this repository. Hashes detect corruption; they do not prove authorship, live operation or research validity.
+
 ## Experimental evidence
 
 The original August 31, 2026 controlled run contains **1,600 trials across eight scenarios**: 200 READY baselines and 1,400 adverse trials with zero false READY results. Each scenario repeats deterministic software checks with different identifiers; these are not independent railway field events. Raw [trial data](submission/experiments/evidencegate_experimental_results.csv) and [method/scripts](submission/experiments/README.md) are included.
 
 Open-Meteo and NOAA SWPC returned **10/10 HTTP 200 and schema-valid responses** in the original observation and a fresh September 1 check. This short observation does not establish continuous availability. Authorized freight, berth and certified engineering feeds were not available for live validation. Seeded data remains labelled and cannot qualify critical clearance as READY.
+
+**September 7 repeat:** the controlled experiment again passed 1,600/1,600 cases. NOAA passed 5/5 live requests, but Open-Meteo timed out on all five requests from this host. Both successful and failed observations are preserved under [dated runs](submission/experiments/runs/); the original report data was not overwritten. These results do not support an "everything is live" claim.
 
 ## Before a live INSEF demonstration
 
