@@ -8,6 +8,7 @@ from fastapi import HTTPException, Request, status
 from redis.asyncio import Redis
 
 from app.core.config import settings
+from app.core.redis import create_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +25,13 @@ async def enforce_rate_limit(
     action: str,
     limit: int,
     window_seconds: int,
-    redis_factory: Callable[..., Redis] = Redis,
+    redis_factory: Callable[..., Redis] | None = None,
 ) -> None:
     key = f"nexus:rate:{action}:{_identity(request, subject)}"
-    redis = redis_factory(
-        host=settings.REDIS_HOST,
-        port=settings.REDIS_PORT,
-        db=settings.REDIS_DB,
-        socket_connect_timeout=2,
-        socket_timeout=2,
+    redis = (
+        create_redis_client(socket_connect_timeout=2, socket_timeout=2)
+        if redis_factory is None
+        else redis_factory(socket_connect_timeout=2, socket_timeout=2)
     )
     try:
         count = await redis.incr(key)

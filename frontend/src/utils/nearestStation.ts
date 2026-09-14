@@ -1,5 +1,6 @@
 import type { Station } from '../types/route'
 import type { OsmStation } from '../components/StationPickerModal'
+import { LOCAL_DEMO_MODE } from '../lib/runtimeMode'
 
 export interface NearestStationResult {
   station: Station
@@ -51,6 +52,7 @@ export async function fetchNearbyStationsOSM(
   lon: number,
   radiusKm = 20,
 ): Promise<OsmStation[]> {
+  if (LOCAL_DEMO_MODE) return []
   const radiusM = radiusKm * 1000
   // Query both node and way features tagged railway=station or railway=halt
   const query = `

@@ -8,6 +8,13 @@ EvidenceGate is a student engineering prototype that checks whether a logistics 
 
 **September 7 hardening update:** the backend now passes 231 tests, including 16 new regressions preventing malformed or excluded evidence from becoming READY. Authentication has bounded waits, session-race protection and crash recovery; deployment configuration and release integrity have new automated checks. See the [dated verification report](docs/VERIFICATION_REPORT.md) for measured results and remaining limits. The Android binary and original experimental observations are unchanged, not newly certified by these tests.
 
+**September 14 judge/deployment update:** the backend passes 237 tests and the frontend passes 16.
+The repository now has explicit `online` and `offline-judge` build contracts, a one-laptop LAN
+judge edition with generated secrets and a no-build offline launch, managed PostgreSQL/Redis URL
+support, Supabase Data API table lockdown, and separate online/offline runbooks. Docker execution,
+real Supabase login, live hosting, and a new Android build still require the corresponding local or
+cloud infrastructure; they are not represented as completed by source-level checks.
+
 | Download | Contents / requirement |
 | --- | --- |
 | [Complete shareable ZIP](output/shareable/EvidenceGate_INSEF_2026_27_COMPLETE_SHAREABLE.zip) | Source, debug APK, web assets, report, experiment files and checksums |
@@ -128,7 +135,26 @@ Every routing, clearance, compliance, and prediction decision is backed by a Sou
 
 ## Quick start
 
+### Offline judge edition
+
+For a venue-safe demonstration on one laptop and judge devices connected to the same local
+network, install Docker Desktop and run:
+
+```powershell
+.\scripts\start_judge_demo.ps1
+```
+
+This separate build disables authentication only in guarded development mode, labels all seeded
+data, makes no live-provider calls, and exposes the web console on port `8080`. See the
+[offline judge guide](docs/JUDGE_DEMO.md). It must never be deployed publicly.
+Run the ordinary launcher once with internet to build/cache the containers; use
+`.\scripts\start_judge_demo.ps1 -Offline` for the disconnected judging-day rehearsal and event.
+
+### Authenticated online edition
+
 Copy `.env.example` to `.env` and provide your own Supabase project settings. Never expose a Supabase service-role key to either client.
+For the split Vercel + Supabase + managed API deployment, follow the
+[online deployment runbook](docs/ONLINE_DEPLOYMENT.md).
 
 ```powershell
 docker compose up --build
@@ -152,7 +178,8 @@ ruff check .
 
 cd ..\frontend
 pnpm install
-pnpm run build
+pnpm run build:online
+pnpm run build:judge
 pnpm run lint
 ```
 

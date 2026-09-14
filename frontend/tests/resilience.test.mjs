@@ -3,9 +3,42 @@ import { test } from 'node:test'
 import { assertPublicBuildEnvironment, validateAuthConfiguration } from '../src/lib/authConfiguration.ts'
 import { boundedEnvNumber } from '../src/lib/deploymentValues.ts'
 import { watchSession, withTimeout } from '../src/lib/sessionLifecycle.ts'
+import { publicBooleanFlag, resolveApiBaseUrl, resolveRuntimeMode } from '../src/lib/runtimeMode.ts'
 
 const publicTestKey = 'sb_publishable_fixture_not_a_real_key'
 const jwt = (role) => `test.${Buffer.from(JSON.stringify({ role })).toString('base64url')}.test`
+
+test('local demo mode requires an explicit true flag', () => {
+  for (const value of [undefined, '', 'false', '0', 'yes', ' true-ish ']) {
+    assert.equal(publicBooleanFlag(value), false)
+  }
+  assert.equal(publicBooleanFlag('true'), true)
+  assert.equal(publicBooleanFlag(' TRUE '), true)
+})
+
+test('runtime modes are explicit and conflicting flags fail closed', () => {
+  assert.equal(resolveRuntimeMode('online', undefined), 'online')
+  assert.equal(resolveRuntimeMode('offline-judge', undefined), 'offline-judge')
+  assert.equal(resolveRuntimeMode(undefined, 'true'), 'offline-judge')
+  assert.throws(() => resolveRuntimeMode('preview', undefined), /VITE_APP_MODE/)
+  assert.throws(() => resolveRuntimeMode('online', 'true'), /Conflicting runtime flags/)
+})
+
+test('offline judge API traffic is restricted to the serving origin', () => {
+  assert.equal(resolveApiBaseUrl(undefined, 'offline-judge'), '/api/v1')
+  assert.equal(resolveApiBaseUrl('/api/v1/', 'offline-judge'), '/api/v1')
+  for (const value of ['//remote.example/api', 'https://api.example/api', 'http://localhost:8000/api']) {
+    assert.throws(() => resolveApiBaseUrl(value, 'offline-judge'), /same-origin/)
+  }
+})
+
+test('online API targets require safe HTTPS or loopback HTTP', () => {
+  assert.equal(resolveApiBaseUrl('https://api.example/v1/', 'online'), 'https://api.example/v1')
+  assert.equal(resolveApiBaseUrl('http://localhost:8000/api/v1', 'online'), 'http://localhost:8000/api/v1')
+  for (const value of ['javascript:alert(1)', 'http://remote.example/api', 'https://user:pass@api.example/v1', 'https://api.example/v1?key=x']) {
+    assert.throws(() => resolveApiBaseUrl(value, 'online'), /VITE_API_BASE_URL/)
+  }
+})
 
 test('missing and whitespace configuration fail safely', () => {
   assert.ok(validateAuthConfiguration(undefined, undefined).error)

@@ -1,0 +1,120 @@
+name: evidencegate-judge-demo
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.4
+    environment:
+      POSTGRES_USER: judge_demo
+      POSTGRES_PASSWORD: ${JUDGE_DEMO_POSTGRES_PASSWORD:?Run a judge-demo launcher to generate credentials}
+      POSTGRES_DB: evidencegate_demo
+    volumes:
+      - judge_demo_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      # Local socket authentication lets the container rotate this role's
+      # password on every launcher invocation while retaining the data volume.
+      test:
+        - CMD-SHELL
+        - >-
+          if [ ! -f /tmp/evidencegate-password-synchronised ]; then
+            psql -U judge_demo -d evidencegate_demo
+            --set=demo_password="$${POSTGRES_PASSWORD}"
+            --command="ALTER ROLE judge_demo WITH PASSWORD :'demo_password';"
+            >/dev/null && touch /tmp/evidencegate-password-synchronised;
+          fi && pg_isready -U judge_demo -d evidencegate_demo
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - judge_demo_internal
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - judge_demo_internal
+
+  backend:
+    build: ./backend
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "false"
+      PROJECT_NAME: EvidenceGate Offline Judge Edition
+      SECRET_KEY: ${JUDGE_DEMO_SESSION_SECRET:?Run a judge-demo launcher to generate credentials}
+      EVIDENCE_SIGNING_KEY: ${JUDGE_DEMO_EVIDENCE_SIGNING_KEY:?Run a judge-demo launcher to generate credentials}
+      EVIDENCE_SIGNING_KEY_ID: ${JUDGE_DEMO_EVIDENCE_SIGNING_KEY_ID:?Run a judge-demo launcher to generate credentials}
+      EVIDENCE_VERIFICATION_KEYS: '{}'
+      AUTH_DISABLED: "true"
+      DEMO_DATA_ENABLED: "true"
+      SUPABASE_URL: ""
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: judge_demo
+      POSTGRES_PASSWORD: ${JUDGE_DEMO_POSTGRES_PASSWORD:?Run a judge-demo launcher to generate credentials}
+      POSTGRES_DB: evidencegate_demo
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      CORS_ORIGINS: '["http://localhost:8080"]'
+      ALLOWED_HOSTS: '["*"]'
+      APPROVAL_ALLOWED_ROLES: '["operator"]'
+      ENGINEERING_CERTIFICATION_ALLOWED_ISSUERS: '[]'
+      LIVE_DATA_ENABLED: "false"
+      ENABLE_LIVE_WEATHER: "false"
+      ENABLE_LIVE_RAIL: "false"
+      ENABLE_LIVE_AIS: "false"
+      ENABLE_LIVE_GPS: "false"
+      ENABLE_EVENT_ENGINE: "false"
+      ENABLE_ML_INFERENCE: "false"
+      AIS_COLLECTOR_ENABLED: "false"
+      LIVE_CONGESTION_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: sh scripts/start.sh
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3))['status'] == 'ready'"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+    restart: unless-stopped
+    networks:
+      - judge_demo_internal
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_APP_MODE: offline-judge
+        VITE_API_BASE_URL: /api/v1
+        VITE_LOCAL_DEMO_MODE: "true"
+        VITE_SUPABASE_URL: ""
+        VITE_SUPABASE_ANON_KEY: ""
+    ports:
+      - "${JUDGE_DEMO_BIND_ADDRESS:-0.0.0.0}:${JUDGE_DEMO_PORT:-8080}:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5173/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+    networks:
+      - judge_demo_internal
+
+volumes:
+  judge_demo_pg_data:
+
+networks:
+  judge_demo_internal:
+    internal: true

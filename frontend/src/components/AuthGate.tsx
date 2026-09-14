@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { authConfigurationError, isSupabaseConfigured, onAuthStateChange, supabase } from '../services/supabaseClient'
+import { LOCAL_DEMO_MODE } from '../lib/runtimeMode'
 import { watchSession, withTimeout } from '../lib/sessionLifecycle'
 import './AuthGate.css'
 
@@ -70,6 +71,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const errorId = useId()
 
   useEffect(() => {
+    if (LOCAL_DEMO_MODE) {
+      setChecking(false)
+      return
+    }
     const client = supabase
     if (!client) {
       setChecking(false)
@@ -119,6 +124,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     }
   }
 
+  if (LOCAL_DEMO_MODE) return <>{children}</>
   if (!isSupabaseConfigured || !supabase) return <ConfigurationRequired />
   if (checking) return <SessionCheck />
   if (session) return <>{children}</>

@@ -7,6 +7,7 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 import type { EnvironmentalZone, MapCondition, SegmentPath, Station, TrackSegmentDetail, TrainPosition } from '../types/route'
 import MapLegend from './MapLegend'
+import { LOCAL_DEMO_MODE } from '../lib/runtimeMode'
 import {
   MAP_CONDITION_RADIUS_M,
   MAP_DEFAULT_CENTER,
@@ -64,8 +65,8 @@ export default function MapViewer({
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border border-slate-700/60 shadow-2xl shadow-blue-950/60">
-      <MapContainer center={MAP_DEFAULT_CENTER} zoom={MAP_DEFAULT_ZOOM} className="h-full w-full" scrollWheelZoom>
-        <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      <MapContainer center={MAP_DEFAULT_CENTER} zoom={MAP_DEFAULT_ZOOM} className="h-full w-full" scrollWheelZoom style={LOCAL_DEMO_MODE ? { background: '#0f172a' } : undefined}>
+        {!LOCAL_DEMO_MODE && <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />}
         <FitRoute points={points} />
         {segments.map((segment, index) => (
           <Polyline key={segment.id} positions={segment.coordinates.map(([lat, lon]) => [lat, lon] as [number, number])} pathOptions={{ color: segment.status === 'HARD_BLOCKED' ? '#ef4444' : index === 0 ? '#22d3ee' : '#60a5fa', weight: 5 }}>

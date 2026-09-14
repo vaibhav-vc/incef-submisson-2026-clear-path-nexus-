@@ -216,6 +216,10 @@ class RailRadarClient:
         )
 
     async def fetch_station(self, code: str) -> StationCongestion:
+        if not settings.LIVE_DATA_ENABLED or not settings.ENABLE_LIVE_RAIL:
+            return StationCongestion(
+                code, RailDataSource.UNAVAILABLE, detail="External rail providers are disabled"
+            )
         cached = self._cached(code)
         if cached is not None:
             return cached
@@ -349,6 +353,11 @@ class RailRadarClient:
     async def fetch_corridor(
         self, stations: tuple[str, ...] | None = None
     ) -> CorridorCongestion:
+        if not settings.LIVE_DATA_ENABLED or not settings.ENABLE_LIVE_RAIL:
+            return CorridorCongestion(
+                source=RailDataSource.UNAVAILABLE,
+                detail="External rail providers are disabled",
+            )
         all_requested_stations = tuple(
             dict.fromkeys(
                 code.strip().upper()

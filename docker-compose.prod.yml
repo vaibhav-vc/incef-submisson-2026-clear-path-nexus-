@@ -21,6 +21,7 @@ services:
     ports: !reset []
     build:
       args:
+        VITE_APP_MODE: "online"
         VITE_LOCAL_DEMO_MODE: "false"
 
   live-ingestor:

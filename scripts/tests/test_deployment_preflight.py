@@ -25,7 +25,7 @@ def config():
         "backend": {"environment": env}, "live-ingestor": {"environment": copy.deepcopy(env)},
         "postgres": {}, "redis": {}, "frontend": {"build": {"args": {
             "VITE_SUPABASE_URL": env["SUPABASE_URL"], "VITE_SUPABASE_ANON_KEY": "sb_publishable_synthetic_test_key_only",
-            "VITE_LOCAL_DEMO_MODE": "false"}}}, "https": {"environment": {
+            "VITE_APP_MODE": "online", "VITE_LOCAL_DEMO_MODE": "false"}}}, "https": {"environment": {
                 "DOMAIN": "evidencegate.test", "SUPABASE_URL": env["SUPABASE_URL"]}}}}
 
 
@@ -89,6 +89,11 @@ class DeploymentPreflightTests(unittest.TestCase):
         model = config()
         model["services"]["backend"]["environment"].update(AUTH_DISABLED="true", APPROVAL_ALLOWED_ROLES='["authenticated"]')
         self.assertTrue({"UNSAFE_FLAG", "OVERBROAD_APPROVAL"} <= self.codes(model))
+
+    def test_offline_frontend_mode_is_blocked_in_production(self):
+        model = config()
+        model["services"]["frontend"]["build"]["args"]["VITE_APP_MODE"] = "offline-judge"
+        self.assertIn("INVALID_FRONTEND_MODE", self.codes(model))
 
     def test_errors_do_not_leak_values(self):
         model = config()

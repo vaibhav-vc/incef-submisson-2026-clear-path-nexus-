@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -54,6 +55,14 @@ def main() -> None:
     apk = release / "EvidenceGate-v6.0.0-debug.apk"
     if not apk.is_file():
         raise ValueError("Build/provide the audited debug APK first.")
+    # The standalone web payload is always the authenticated online contract.
+    # The offline judge contract is built from the source archive by its
+    # dedicated Compose launcher, so a developer's last local Vite mode cannot
+    # silently change what web.zip means.
+    pnpm = shutil.which("pnpm")
+    if not pnpm:
+        raise ValueError("pnpm is required to build the authenticated web release.")
+    subprocess.run([pnpm, "run", "build:online"], cwd=ROOT / "frontend", check=True)
     dist = ROOT / "frontend/dist"
     if not (dist / "index.html").is_file():
         raise ValueError("Build frontend first.")

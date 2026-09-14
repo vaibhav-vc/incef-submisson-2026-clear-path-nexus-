@@ -11,12 +11,12 @@ from typing import Any
 from uuid import uuid4
 
 import httpx
-from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.observability import provider_status
+from app.core.redis import create_redis_client
 from app.models.live_ops import ProviderObservation
 from app.models.provenance import DataSource, ProvenanceRecord
 from app.schemas.live_ops import LiveDataEnvelope, ObservationLocation, ObservationQuality
@@ -109,6 +109,14 @@ class LiveDataProvider(ABC):
     async def fetch(self, context: dict[str, Any]) -> LiveDataEnvelope:
         request_id = str(uuid4())
         location = context.get("location")
+        if not settings.LIVE_DATA_ENABLED:
+            return self.unavailable(
+                "external providers are disabled",
+                request_id,
+                utc_now(),
+                location,
+                status="UNAVAILABLE",
+            )
         if not self.breaker.allow():
             return self.unavailable(
                 "provider circuit is open", request_id, utc_now(), location
@@ -202,7 +210,7 @@ class OpenMeteoProvider(LiveDataProvider):
             "current": "temperature_2m,relative_humidity_2m,precipitation,rain,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility",
         }
         async with httpx.AsyncClient(timeout=settings.PROVIDER_TIMEOUT_SECONDS) as client:
-            response = await client.get("https://api.open-meteo.com/v1/forecast", params=params)
+            response = await client.get(settings.OPEN_METEO_FORECAST_URL, params=params)
             response.raise_for_status()
             current = response.json().get("current")
         if not isinstance(current, dict) or "time" not in current:
@@ -341,15 +349,9 @@ async def persist_envelope(
 async def cache_latest(envelope: LiveDataEnvelope, observation_type: str) -> None:
     if not envelope.quality.valid:
         return
-    redis: Redis | None = None
+    redis = None
     try:
-        redis = Redis(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            db=settings.REDIS_DB,
-            socket_connect_timeout=1,
-            socket_timeout=1,
-        )
+        redis = create_redis_client(socket_connect_timeout=1, socket_timeout=1)
         await redis.setex(f"live:{envelope.provider_key}:{observation_type}", settings.LIVE_OBSERVATION_CACHE_SECONDS, envelope.model_dump_json())
     except Exception:
         return

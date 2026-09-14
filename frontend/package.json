@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:judge": "vite --mode offline-judge --host 0.0.0.0",
     "build": "tsc -b && vite build",
+    "build:online": "tsc -b && vite build --mode online",
+    "build:judge": "tsc -b && vite build --mode offline-judge",
     "typecheck": "tsc -b",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "lint": "eslint .",

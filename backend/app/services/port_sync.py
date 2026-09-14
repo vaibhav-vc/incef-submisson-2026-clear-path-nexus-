@@ -125,6 +125,15 @@ async def fetch_port_schedule(
             manifest_sha256=operator_window.manifest_sha256,
         )
 
+    if not settings.LIVE_DATA_ENABLED:
+        return PortSchedule(
+            source=PortDataSource.UNAVAILABLE,
+            port_id=port_id,
+            vessel_id=vessel_id,
+            detail="External maritime providers are disabled",
+            fetched_at=fetched_at,
+        )
+
     if not settings.MARITIME_BERTH_DATA_FEED:
         return PortSchedule(
             source=PortDataSource.UNAVAILABLE,

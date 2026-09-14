@@ -11,6 +11,7 @@ import redis.asyncio as aioredis
 
 from app.core.config import settings
 from app.core.observability import provider_status
+from app.core.redis import create_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -102,12 +103,7 @@ class SpaceWeatherService:
 
     async def _get_redis(self) -> aioredis.Redis:
         if self._redis is None:
-            self._redis = aioredis.Redis(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                db=settings.REDIS_DB,
-                decode_responses=True,
-            )
+            self._redis = create_redis_client(decode_responses=True)
         return self._redis
 
     async def _cache_get(self, key: str) -> dict[str, Any] | None:
@@ -132,6 +128,10 @@ class SpaceWeatherService:
 
     async def fetch_route_environmental_risks(self, lat: float, lon: float) -> dict[str, Any]:
         """Fetch configured weather data, falling back to Open-Meteo."""
+        if not settings.LIVE_DATA_ENABLED or not settings.ENABLE_LIVE_WEATHER:
+            return _with_provenance(
+                UNAVAILABLE_WEATHER, provider="offline_demo", raw_state="UNAVAILABLE"
+            )
         cache_key = f"weather:{lat:.2f}:{lon:.2f}"
         cached = await self._cache_get(cache_key)
         if cached:
@@ -151,9 +151,16 @@ class SpaceWeatherService:
 
         if not settings.OPENWEATHER_API_KEY:
             try:
-                url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,visibility"
+                params = {
+                    "latitude": lat,
+                    "longitude": lon,
+                    "current": (
+                        "temperature_2m,relative_humidity_2m,weather_code,"
+                        "wind_speed_10m,visibility"
+                    ),
+                }
                 async with httpx.AsyncClient(timeout=5.0) as client:
-                    resp = await client.get(url)
+                    resp = await client.get(settings.OPEN_METEO_FORECAST_URL, params=params)
                     resp.raise_for_status()
                     current = resp.json().get("current", {})
                     required = {
@@ -214,12 +221,11 @@ class SpaceWeatherService:
                     UNAVAILABLE_WEATHER, provider="open_meteo", raw_state="UNAVAILABLE"
                 )
 
-        url = "https://api.openweathermap.org/data/2.5/weather"
         params = {"lat": lat, "lon": lon, "appid": settings.OPENWEATHER_API_KEY, "units": "metric"}
 
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(url, params=params)
+                resp = await client.get(settings.OPENWEATHER_API_URL, params=params)
                 resp.raise_for_status()
                 payload = resp.json()
                 validate_scoring_weather(payload)
@@ -262,17 +268,28 @@ class SpaceWeatherService:
         self, point_id: str, lat: float, lon: float
     ) -> dict[str, Any]:
         """Return a fully populated live weather record or an explicit unavailable result."""
+        if not settings.LIVE_DATA_ENABLED or not settings.ENABLE_LIVE_WEATHER:
+            return {
+                "id": point_id,
+                "lat": lat,
+                "lon": lon,
+                "available": False,
+                "message": "Live weather is disabled in this offline demonstration.",
+            }
         cache_key = f"route_weather:{lat:.3f}:{lon:.3f}"
         cached = await self._cache_get(cache_key)
         if cached:
             return {"id": point_id, "lat": lat, "lon": lon, "available": True, **cached}
 
-        url = (
-            "https://api.open-meteo.com/v1/forecast"
-            "?current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,"
-            "wind_speed_10m,wind_direction_10m,visibility,uv_index,precipitation"
-            f"&latitude={lat}&longitude={lon}&timezone=auto"
-        )
+        params = {
+            "current": (
+                "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,"
+                "wind_speed_10m,wind_direction_10m,visibility,uv_index,precipitation"
+            ),
+            "latitude": lat,
+            "longitude": lon,
+            "timezone": "auto",
+        }
         required = {
             "temperature_2m",
             "apparent_temperature",
@@ -286,7 +303,7 @@ class SpaceWeatherService:
         }
         try:
             async with httpx.AsyncClient(timeout=6.0) as client:
-                response = await client.get(url)
+                response = await client.get(settings.OPEN_METEO_FORECAST_URL, params=params)
                 response.raise_for_status()
                 current = response.json().get("current", {})
             if not required.issubset(current):
@@ -308,6 +325,10 @@ class SpaceWeatherService:
 
     async def fetch_kp_index(self) -> dict[str, Any]:
         """Parse NOAA planetary Kp-index feed."""
+        if not settings.LIVE_DATA_ENABLED:
+            return _with_provenance(
+                UNAVAILABLE_KP, provider="offline_demo", raw_state="UNAVAILABLE"
+            )
         cache_key = "noaa:kp_index"
         cached = await self._cache_get(cache_key)
         if cached:

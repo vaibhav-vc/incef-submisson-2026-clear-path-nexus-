@@ -1,6 +1,6 @@
 {
-  "buildCommand": "npm run build",
+  "buildCommand": "pnpm run build:online",
   "outputDirectory": "dist",
-  "installCommand": "npm ci",
+  "installCommand": "pnpm install --frozen-lockfile",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

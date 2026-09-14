@@ -14,9 +14,10 @@ import type {
   SourceBrief,
   ComplianceCheck,
 } from '../types/route'
+import { APP_RUNTIME_MODE, resolveApiBaseUrl } from '../lib/runtimeMode'
 import { getAccessToken } from './supabaseClient'
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+export const API_BASE_URL = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, APP_RUNTIME_MODE)
 
 export const api = axios.create({
   baseURL: API_BASE_URL,

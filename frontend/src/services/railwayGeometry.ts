@@ -4,6 +4,8 @@
  * so route polylines on the map follow actual railway tracks, not straight lines.
  */
 
+import { LOCAL_DEMO_MODE } from '../lib/runtimeMode'
+
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
 
 interface OverpassNode {
@@ -198,6 +200,7 @@ export async function fetchRailwayTrack(
   toLat: number,
   toLon: number,
 ): Promise<[number, number][] | undefined> {
+  if (LOCAL_DEMO_MODE) return undefined
   const key = segmentKey(fromLat, fromLon, toLat, toLon)
 
   if (trackCache.has(key)) {

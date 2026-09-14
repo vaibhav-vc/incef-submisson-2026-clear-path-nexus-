@@ -56,6 +56,14 @@ async def analyze_dust_storm_hazard(
     movement authority. Therefore this endpoint never recommends a speed.
     """
 
+    if not settings.LIVE_DATA_ENABLED:
+        return _unavailable(
+            lat,
+            lon,
+            location_name,
+            "External providers are disabled for this offline deployment.",
+        )
+
     if not settings.DUST_AIR_QUALITY_FEED_URL:
         return _unavailable(
             lat,

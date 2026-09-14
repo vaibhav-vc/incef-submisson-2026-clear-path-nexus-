@@ -43,6 +43,13 @@ deployment secret store and set at minimum:
 - authorized `MARITIME_BERTH_DATA_FEED` / `MARITIME_FEED_API_KEY` and
   `RAILWAY_OPERATIONS_FEED` / `RAILWAY_FEED_API_KEY` pairs
 
+Managed services can be supplied through `DATABASE_URL` and `REDIS_URL`; TLS,
+credentials and database selection are preserved. Keep the bounded queue pool
+for direct or session-pooled PostgreSQL. Supabase's transaction endpoint is
+rejected because SQLAlchemy asyncpg prepares every statement; use the direct
+endpoint or session pooler for this persistent API.
+See the [split online runbook](ONLINE_DEPLOYMENT.md) for Vercel and Supabase.
+
 Set matching `SUPABASE_URL` and `VITE_SUPABASE_URL` HTTPS origins and a public
 publishable/anonymous `VITE_SUPABASE_ANON_KEY`. Never pass a secret/service-role
 key to Vite. The edge content security policy permits only the configured
@@ -89,7 +96,8 @@ pnpm install --frozen-lockfile
 pnpm run typecheck
 pnpm run lint
 pnpm test
-pnpm run build
+pnpm run build:online
+pnpm run build:judge
 pnpm audit --prod --audit-level=high
 ```
 

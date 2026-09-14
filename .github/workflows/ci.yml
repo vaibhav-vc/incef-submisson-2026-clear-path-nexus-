@@ -75,9 +75,34 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: pnpm test
-      - run: pnpm run build
+      - run: pnpm run build:online
+      - run: pnpm run build:judge
+      - name: Confirm judge build has an offline network boundary
+        run: |
+          grep -q "Content-Security-Policy" dist/index.html
+          grep -q "connect-src.*self" dist/index.html
       - run: pnpm run lint
       - run: pnpm audit --prod --audit-level=high
+
+  judge-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and smoke-test the self-contained judge edition
+        run: |
+          chmod +x scripts/start_judge_demo.sh backend/scripts/start.sh
+          ./scripts/start_judge_demo.sh
+      - name: Confirm the published LAN gateway is ready
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:8080/ready
+          curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/planner/stations
+      - name: Remove disposable judge services and volume
+        if: always()
+        env:
+          JUDGE_DEMO_POSTGRES_PASSWORD: stop-only-placeholder-value
+          JUDGE_DEMO_SESSION_SECRET: stop-only-placeholder-value
+        run: docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml down --volumes --remove-orphans
 
   android:
     runs-on: ubuntu-latest

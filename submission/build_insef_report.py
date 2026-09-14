@@ -19,7 +19,6 @@ from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
     HRFlowable,
-    KeepTogether,
     PageBreak,
     PageTemplate,
     Paragraph,

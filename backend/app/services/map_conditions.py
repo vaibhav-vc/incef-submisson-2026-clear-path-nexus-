@@ -5,14 +5,8 @@ from typing import Any
 
 import httpx
 
+from app.core.config import settings
 from app.services.space_weather import space_weather_service
-
-OPEN_METEO = (
-    "https://api.open-meteo.com/v1/forecast"
-    "?current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,visibility,uv_index"
-    "&timezone=auto"
-)
-
 
 def _primary_weather_type(code: int) -> str:
     if code == 0:
@@ -244,15 +238,25 @@ def validate_open_meteo_current(data: Any) -> dict[str, float]:
 
 
 async def fetch_open_meteo(lat: float, lon: float) -> dict[str, Any]:
+    if not settings.LIVE_DATA_ENABLED or not settings.ENABLE_LIVE_WEATHER:
+        raise RuntimeError("External weather provider is disabled")
     cache_key = f"openmeteo:{lat:.2f}:{lon:.2f}"
     cached = await space_weather_service._cache_get(cache_key)
     if cached:
         validate_open_meteo_current(cached)
         return cached
 
-    url = f"{OPEN_METEO}&latitude={lat}&longitude={lon}"
+    params = {
+        "current": (
+            "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,"
+            "visibility,uv_index"
+        ),
+        "timezone": "auto",
+        "latitude": lat,
+        "longitude": lon,
+    }
     async with httpx.AsyncClient(timeout=8.0) as client:
-        resp = await client.get(url)
+        resp = await client.get(settings.OPEN_METEO_FORECAST_URL, params=params)
         resp.raise_for_status()
         payload = resp.json()
         if not isinstance(payload, dict):

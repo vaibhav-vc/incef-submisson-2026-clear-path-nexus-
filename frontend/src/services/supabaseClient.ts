@@ -1,5 +1,6 @@
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
 import { validateAuthConfiguration } from '../lib/authConfiguration'
+import { LOCAL_DEMO_MODE } from '../lib/runtimeMode'
 import { withTimeout } from '../lib/sessionLifecycle'
 
 // Auth stays with Supabase, same as the Android client: we sign in here and
@@ -13,10 +14,10 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 
 const configuration = validateAuthConfiguration(SUPABASE_URL, SUPABASE_ANON_KEY)
-export const authConfigurationError = configuration.error
-export const isSupabaseConfigured = !authConfigurationError
+export const authConfigurationError = LOCAL_DEMO_MODE ? null : configuration.error
+export const isSupabaseConfigured = !LOCAL_DEMO_MODE && !authConfigurationError
 
-if (!isSupabaseConfigured) {
+if (!LOCAL_DEMO_MODE && !isSupabaseConfigured) {
   // Fail loud in dev rather than silently sending unauthenticated requests
   // that the backend will 401 on one-by-one.
   console.error(
@@ -30,6 +31,7 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
   : null
 
 export async function getAccessToken(): Promise<string | null> {
+  if (LOCAL_DEMO_MODE) return null
   if (!supabase) return null
   const { data, error } = await withTimeout(supabase.auth.getSession())
   if (error) {

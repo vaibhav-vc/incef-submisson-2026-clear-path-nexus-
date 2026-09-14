@@ -115,6 +115,8 @@ def validate(model: dict) -> list[dict[str, str]]:
         fail("INVALID_PUBLIC_KEY", "Frontend requires a publishable or legacy anon key, never a secret/service-role key.")
     if str(args.get("VITE_LOCAL_DEMO_MODE", "false")).lower() != "false":
         fail("FRONTEND_AUTH_BYPASS", "Frontend local demo mode must be false.")
+    if str(args.get("VITE_APP_MODE", "")) != "online":
+        fail("INVALID_FRONTEND_MODE", "Production frontend must be built in explicit online mode.")
     edge = services.get("https", {}).get("environment", {})
     domain = str(edge.get("DOMAIN") or "")
     if not https_origin("https://" + domain) or "/" in domain or placeholder(domain):

@@ -33,8 +33,6 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-AIS_STREAM_URL = "wss://stream.aisstream.io/v0/stream"
-
 # JNPT / Nhava Sheva approach and anchorage, Mumbai harbour.
 # [[NE corner], [SW corner]] - aisstream accepts either corner order.
 JNPT_BBOX: list[list[float]] = [[19.05, 73.05], [18.85, 72.80]]
@@ -183,6 +181,11 @@ class AisCollector:
         self._vessels = {m: v for m, v in self._vessels.items() if v.seen_at >= cutoff}
 
     def snapshot(self) -> PortActivity:
+        if not settings.LIVE_DATA_ENABLED:
+            return PortActivity(
+                PortActivitySource.UNAVAILABLE,
+                detail="External AIS provider is disabled",
+            )
         if not settings.AISSTREAM_API_KEY:
             return PortActivity(PortActivitySource.UNAVAILABLE, detail="AISSTREAM_API_KEY not set")
 
@@ -245,7 +248,7 @@ class AisCollector:
         backoff = 2.0
         while True:
             try:
-                async with websockets.connect(AIS_STREAM_URL) as ws:
+                async with websockets.connect(settings.AISSTREAM_URL) as ws:
                     # Subscription must arrive within 3s or the socket is closed.
                     await ws.send(subscription)
                     backoff = 2.0
@@ -267,6 +270,9 @@ class AisCollector:
             backoff = min(backoff * 2, 120.0)  # BETA service: back off politely
 
     async def start(self) -> None:
+        if not settings.LIVE_DATA_ENABLED or not settings.ENABLE_LIVE_AIS:
+            logger.info("AIS collection disabled by runtime configuration")
+            return
         if not settings.AISSTREAM_API_KEY:
             logger.info("AISSTREAM_API_KEY not set - port activity stays UNAVAILABLE")
             return

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import AuthGate from './components/AuthGate'
 import HeaderNavbar, { type ActiveTab } from './components/HeaderNavbar'
+import { LOCAL_DEMO_MODE } from './lib/runtimeMode'
 
 const CommandDashboard = lazy(() => import('./components/DashboardTab'))
 const RouteHistoryPanel = lazy(() => import('./components/RouteHistoryPanel'))
@@ -61,7 +62,9 @@ function OperationsApp() {
         </Suspense>
       </main>
       <footer className="bg-slate-950 border-t border-slate-900 py-4 px-6 text-center text-xs text-slate-500">
-        ClearPath Nexus v6.0 • Supabase-secured EvidenceGate decision support
+        {LOCAL_DEMO_MODE
+          ? 'ClearPath Nexus v6.0 • Offline judge demonstration • Local seeded evidence • Not operational authority'
+          : 'ClearPath Nexus v6.0 • Online operator mode • Supabase-secured EvidenceGate decision support'}
       </footer>
     </div>
   )

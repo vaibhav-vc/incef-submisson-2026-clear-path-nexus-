@@ -67,6 +67,9 @@ async def fetch_trains_between(source_code: str, dest_code: str) -> dict[str, An
     provider in this codebase: show real data when it's there, say plainly
     when it isn't, never fabricate a result.
     """
+    if not settings.LIVE_DATA_ENABLED or not settings.ENABLE_LIVE_RAIL:
+        return _unavailable("DISABLED", "External rail providers are disabled.")
+
     if not settings.RAILRADAR_API_KEY:
         return UNAVAILABLE_TRAFFIC
 

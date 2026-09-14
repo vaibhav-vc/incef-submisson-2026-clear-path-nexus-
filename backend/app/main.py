@@ -133,24 +133,22 @@ async def readiness_check() -> dict[str, str]:
     from sqlalchemy import text
 
     from app.core.database import AsyncSessionLocal
-    from redis.asyncio import Redis
+    from app.core.redis import create_redis_client
 
+    redis = None
     try:
         async with AsyncSessionLocal() as session:
             await session.execute(text("SELECT 1"))
-        redis = Redis(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            db=settings.REDIS_DB,
-            socket_connect_timeout=2,
-        )
+        redis = create_redis_client(socket_connect_timeout=2, socket_timeout=2)
         await redis.ping()
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database or Redis dependency is unavailable",
         ) from exc
-    await redis.aclose()
+    finally:
+        if redis is not None:
+            await redis.aclose()
     return {"status": "ready", "service": settings.PROJECT_NAME}
 
 

@@ -5,16 +5,16 @@ from typing import Any
 
 import httpx
 
+from app.core.config import settings
 from app.services.space_weather import space_weather_service
 
 logger = logging.getLogger(__name__)
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-
-
 async def fetch_railway_geometry_from_overpass(
     min_lat: float, min_lon: float, max_lat: float, max_lon: float
 ) -> list[dict[str, Any]]:
+    if not settings.LIVE_DATA_ENABLED:
+        return []
     cache_key = f"osm_geometry:{min_lat:.2f}:{min_lon:.2f}:{max_lat:.2f}:{max_lon:.2f}"
     cached = await space_weather_service._cache_get(cache_key)
     if cached:
@@ -36,7 +36,7 @@ out skel qt;
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                OVERPASS_URL,
+                settings.OVERPASS_API_URL,
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 content=f"data={httpx.QueryParams({'data': query})['data']}",
             )

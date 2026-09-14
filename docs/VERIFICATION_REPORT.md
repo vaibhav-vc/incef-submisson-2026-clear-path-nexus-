@@ -1,5 +1,62 @@
 # EvidenceGate verification and handoff
 
+## September 14, 2026 online/offline deployment verification
+
+This pass adds two explicit runtime contracts rather than allowing a demonstration bypass to leak
+into a public build. The authenticated `online` build uses Supabase and a configured HTTPS API.
+The `offline-judge` build uses only its same-origin Docker gateway, disables every external
+operational provider, labels its identity and seeded evidence, and is intentionally unsuitable for
+public exposure.
+
+| Current check | Measured result |
+| --- | --- |
+| Backend | 237/237 tests passed; Ruff, compileall and dependency checks passed |
+| Frontend | 16/16 tests passed; type-check and lint passed |
+| Explicit builds | Online and offline-judge builds passed, 203 modules each |
+| Production dependencies | `pnpm audit --prod --audit-level=high`: no known vulnerabilities |
+| Release/experiment tests | 29 passed, 1 skipped because this Windows host does not grant symlink creation |
+| Deployment preflight tests | 16/16 passed, including rejection of offline frontend mode in production |
+| Credential signatures | 384 included source files scanned; no recognized private credential signature found |
+| Managed services | PostgreSQL/Supabase URL normalization, bounded pools, explicit transaction-pooler rejection, and TLS Redis URLs tested |
+| Supabase table exposure | Migration head `20260913_15` enables RLS and revokes `PUBLIC`, `anon`, and `authenticated` access to all 28 backend-owned tables |
+| Judge launcher | PowerShell parsed; Compose YAML parsed; launcher performs gateway/readiness/station smoke checks after startup |
+| Controlled repeat | 1,600/1,600 expected states; 1,400 adverse trials produced zero false `READY` results |
+| Docker execution | Not run on this host because Docker is not installed; the judge Compose runtime remains to be rehearsed on the demonstration laptop |
+| Android | Not rebuilt in this pass; the previously audited debug APK remains unchanged |
+
+The database review followed Supabase's connection-pooling, prepared-statement, least-privilege,
+and RLS guidance. The backend-owned schema deliberately has no permissive browser policies; the
+browser uses Supabase Auth while FastAPI owns operational data authorization. The online runbook
+documents the supported direct/session-pooler choices and rejects the incompatible transaction endpoint.
+
+### Added deployment controls
+
+- `VITE_APP_MODE` is the canonical mode switch. Offline mode rejects absolute API URLs, never
+  constructs a Supabase client, omits map tiles and Overpass calls, and adds a restrictive CSP.
+- `LIVE_DATA_ENABLED=false` is a backend master network kill switch. Weather, geometry, rail,
+  AIS, port, dust and provider adapters return explicit unavailable values without an HTTP or
+  WebSocket call.
+- The judge launcher generates run-scoped database/session secrets. Its evidence-signing key is
+  generated once per persistent dataset so prior evidence remains verifiable. No demo password is
+  committed.
+- The explicit `-Offline` / `--offline` launch forbids a container rebuild after the initial
+  internet-connected preparation, avoiding judging-day registry dependence.
+- The online path accepts managed `DATABASE_URL` and `REDIS_URL` values without discarding TLS or
+  credentials. Vercel now uses the pnpm lockfile and an explicit online build.
+
+### Remaining external proof
+
+Install Docker Desktop on the judge laptop and complete the documented online preparation plus a
+disconnected rehearsal. Provision the real Supabase/Vercel/API/Redis environment and test sign-in,
+RLS migration, `/ready`, evidence export, restart verification and the complete judge walkthrough.
+No authorized freight, port, certified engineering, or independent field-validation dataset was
+added. These are external deployment and research gates, not facts that can be manufactured in
+source code.
+
+The dated raw repeat is preserved at
+[`20260914T041823845605Z_evidencegate_c2a60ced`](../submission/experiments/runs/20260914T041823845605Z_evidencegate_c2a60ced/evidencegate_experimental_summary.json).
+Its CSV SHA-256 is `cf6afd7ac5c407b48af039e4d7b9b5520540c7037e1fc5dc39e38e96b381730a`.
+
 ## September 7, 2026 hardening verification
 
 The upgrade is a tested research prototype, **not a fully live or certified submission**. The original study files and Android binary are preserved. The PDF retains the original controlled study and labels the later verification separately in its conclusion; new raw observations are stored separately and must not be substituted for the original results.
@@ -73,4 +130,9 @@ The repository and measured experiments are ready to share for review. A fully l
 
 ## Reproducing the artifacts
 
-Build the web client, then run `python submission/package_release.py` from the repository root in an environment with ReportLab installed. It rebuilds the source, web, PDF, experiment and complete archives and their checksums. It does not invent deployment credentials or rebuild/sign Android; the existing audited debug APK is included explicitly as such. Original experiment outputs remain preserved.
+Run `python submission/package_release.py` from the repository root in an environment with pnpm
+and ReportLab installed. It explicitly builds the authenticated online web contract, then rebuilds
+the source, web, PDF, experiment and complete archives and their checksums. The offline judge
+edition is reproduced from the source archive with its dedicated Compose launcher. Packaging does
+not invent deployment credentials or rebuild/sign Android; the existing audited debug APK is
+included explicitly as such. Original experiment outputs remain preserved.

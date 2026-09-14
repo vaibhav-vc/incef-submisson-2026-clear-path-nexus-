@@ -1,5 +1,5 @@
 from typing import Literal
-from urllib.parse import quote
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -40,12 +40,21 @@ class Settings(BaseSettings):
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "clearpath_nexus_db"
     DATABASE_URL: str = ""
+    DATABASE_POOL_MODE: Literal["queue", "null"] = "queue"
+    DATABASE_POOL_SIZE: int = 5
+    DATABASE_MAX_OVERFLOW: int = 10
+    DATABASE_POOL_TIMEOUT_SECONDS: int = 30
+    DATABASE_PREPARED_STATEMENT_CACHE_SIZE: int = 100
 
+    REDIS_URL: str = ""
     REDIS_HOST: str = "127.0.0.1"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
 
     OPENWEATHER_API_KEY: str = ""
+    OPENWEATHER_API_URL: str = "https://api.openweathermap.org/data/2.5/weather"
+    OPEN_METEO_FORECAST_URL: str = "https://api.open-meteo.com/v1/forecast"
+    OVERPASS_API_URL: str = "https://overpass-api.de/api/interpreter"
     DUST_AIR_QUALITY_FEED_URL: str = ""
     DUST_AIR_QUALITY_PROVIDER_NAME: str = "open_meteo_air_quality"
     NOAA_SPACE_WEATHER_FEED_URL: str = (
@@ -82,6 +91,7 @@ class Settings(BaseSettings):
     IXIGO_SYNC_ENABLED: bool = False
     IXIGO_SYNC_INTERVAL_SECONDS: int = 900
     AISSTREAM_API_KEY: str = ""
+    AISSTREAM_URL: str = "wss://stream.aisstream.io/v0/stream"
     AIS_COLLECTOR_ENABLED: bool = True
     LIVE_CONGESTION_ENABLED: bool = True
     LIVE_CONGESTION_WEIGHT: float = 0.6
@@ -178,6 +188,13 @@ if settings.ENVIRONMENT.lower() in {"production", "staging"} and settings.DEMO_D
 if settings.ENVIRONMENT.lower() in {"production", "staging"} and settings.AUTH_DISABLED:
     raise RuntimeError("AUTH_DISABLED must be false outside development")
 
+if settings.ENVIRONMENT.lower() in {"production", "staging"} and not (
+    settings.SUPABASE_URL.strip() or settings.SUPABASE_JWT_SECRET.strip()
+):
+    raise RuntimeError(
+        "SUPABASE_URL or legacy SUPABASE_JWT_SECRET must be configured outside development"
+    )
+
 if settings.AUTH_COOKIE_SAMESITE == "none" and not settings.AUTH_COOKIE_SECURE:
     raise RuntimeError("AUTH_COOKIE_SECURE must be true when AUTH_COOKIE_SAMESITE=none")
 
@@ -208,8 +225,61 @@ if (
 ):
     raise RuntimeError("Route reliability weights must sum to 1.0")
 
+def normalize_async_database_url(value: str) -> str:
+    """Accept provider-style Postgres URLs and make them asyncpg compatible.
+
+    Supabase and several other managed Postgres services issue ``postgres://``
+    or ``postgresql://`` URLs with libpq's ``sslmode`` query parameter. The
+    application uses SQLAlchemy's asyncpg dialect, whose equivalent parameter
+    is named ``ssl``.
+    """
+
+    parsed = urlsplit(value.strip())
+    if (
+        parsed.hostname
+        and parsed.hostname.endswith(".pooler.supabase.com")
+        and parsed.port == 6543
+    ):
+        raise RuntimeError(
+            "Supabase transaction-pooler URLs are not supported by the SQLAlchemy asyncpg "
+            "runtime; use the direct or session-pooler endpoint"
+        )
+
+    if parsed.scheme in {"postgres", "postgresql"}:
+        parsed = parsed._replace(scheme="postgresql+asyncpg")
+    elif parsed.scheme != "postgresql+asyncpg":
+        raise RuntimeError("DATABASE_URL must use a PostgreSQL URL")
+
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    sslmode = query.pop("sslmode", None)
+    if sslmode and "ssl" not in query:
+        query["ssl"] = sslmode
+    return urlunsplit(parsed._replace(query=urlencode(query)))
+
+
 if not settings.DATABASE_URL:
     settings.DATABASE_URL = (
         f"postgresql+asyncpg://{quote(settings.POSTGRES_USER, safe='')}:{quote(settings.POSTGRES_PASSWORD, safe='')}"
         f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{quote(settings.POSTGRES_DB, safe='')}"
     )
+settings.DATABASE_URL = normalize_async_database_url(settings.DATABASE_URL)
+
+if not settings.REDIS_URL:
+    settings.REDIS_URL = (
+        f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
+    )
+
+if urlsplit(settings.REDIS_URL).scheme not in {"redis", "rediss", "unix"}:
+    raise RuntimeError("REDIS_URL must use redis://, rediss://, or unix://")
+
+if settings.DATABASE_POOL_SIZE < 1:
+    raise RuntimeError("DATABASE_POOL_SIZE must be at least 1")
+
+if settings.DATABASE_MAX_OVERFLOW < 0:
+    raise RuntimeError("DATABASE_MAX_OVERFLOW cannot be negative")
+
+if settings.DATABASE_POOL_TIMEOUT_SECONDS < 1:
+    raise RuntimeError("DATABASE_POOL_TIMEOUT_SECONDS must be at least 1")
+
+if settings.DATABASE_PREPARED_STATEMENT_CACHE_SIZE < 0:
+    raise RuntimeError("DATABASE_PREPARED_STATEMENT_CACHE_SIZE cannot be negative")

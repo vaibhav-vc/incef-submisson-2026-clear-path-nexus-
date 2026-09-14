@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 import httpx
 
+from app.core.config import settings
 from app.schemas.railways import IndianRailwaysNetworkResponse, RailwayZoneStatus, StationForecast
 from app.services.space_weather import space_weather_service
 
@@ -27,6 +28,27 @@ async def fetch_indian_railways_live_forecast() -> IndianRailwaysNetworkResponse
     forecasts: list[StationForecast] = []
     alerts: list[str] = []
 
+    if not settings.LIVE_DATA_ENABLED or not settings.ENABLE_LIVE_WEATHER:
+        forecasts = [
+            StationForecast(
+                station_code=station["code"],
+                station_name=station["name"],
+                zone=station["zone"],
+                lat=station["lat"],
+                lon=station["lon"],
+                condition_label="UNAVAILABLE",
+                delay_advisory="External weather providers are disabled.",
+            )
+            for station in INDIAN_RAILWAY_STATIONS
+        ]
+        return IndianRailwaysNetworkResponse(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            overall_health_score=None,
+            active_zones=[],
+            station_forecasts=forecasts,
+            network_alerts=["Live weather is disabled for this deployment."],
+        )
+
     for st in INDIAN_RAILWAY_STATIONS:
         cache_key = f"ir_forecast:{st['code']}"
         cached = await space_weather_service._cache_get(cache_key)
@@ -35,14 +57,18 @@ async def fetch_indian_railways_live_forecast() -> IndianRailwaysNetworkResponse
             forecasts.append(StationForecast(**cached))
             continue
 
-        url = (
-            f"https://api.open-meteo.com/v1/forecast?latitude={st['lat']}&longitude={st['lon']}"
-            "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,visibility,precipitation"
-            "&timezone=Asia%2FKolkata"
-        )
+        params = {
+            "latitude": st["lat"],
+            "longitude": st["lon"],
+            "current": (
+                "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,"
+                "visibility,precipitation"
+            ),
+            "timezone": "Asia/Kolkata",
+        }
         try:
             async with httpx.AsyncClient(timeout=6.0) as client:
-                resp = await client.get(url)
+                resp = await client.get(settings.OPEN_METEO_FORECAST_URL, params=params)
                 resp.raise_for_status()
                 current = resp.json().get("current", {})
 

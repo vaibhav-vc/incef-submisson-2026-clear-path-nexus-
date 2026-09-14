@@ -39,6 +39,17 @@ The backend needs configured PostgreSQL/PostGIS, Redis, Supabase and signing
 keys. Verify /ready returns 200 and test authenticated workflows on the actual
 demonstration device. This ZIP is not a self-contained hosted/live service.
 
+September 14 adds an offline-capable judge edition to the source archive. After
+extracting the source, install Docker and follow docs/JUDGE_DEMO.md. Build once
+with internet, then use the explicit -Offline/--offline launcher for the venue.
+It runs the web app, FastAPI, PostGIS and Redis on one laptop and prints LAN URLs
+for judge devices. This mode has no sign-in and must never be exposed publicly.
+
+The authenticated online path is documented in docs/ONLINE_DEPLOYMENT.md. It
+uses Vercel only for the React frontend; FastAPI still needs a persistent API
+container plus PostgreSQL/PostGIS and Redis. Real account credentials and live
+provider licenses are not included in this bundle.
+
 Before an official INSEF upload, complete the student, grade, school and guide
 lines on the report cover, record and test the demonstration-video URL, and
 confirm the current regional submission requirements.
