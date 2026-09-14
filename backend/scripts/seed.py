@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.security import get_password_hash
+import app.models.consist  # noqa: F401 - register TrainConsist relationships in this process
 from app.models.route import LineSegment, PortBerth, Station
 from app.models.user import User
 
