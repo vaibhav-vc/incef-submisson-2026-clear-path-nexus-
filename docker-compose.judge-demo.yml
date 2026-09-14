@@ -112,6 +112,7 @@ services:
     restart: unless-stopped
     networks:
       - judge_demo_internal
+      - judge_demo_gateway
 
 volumes:
   judge_demo_pg_data:
@@ -119,3 +120,8 @@ volumes:
 networks:
   judge_demo_internal:
     internal: true
+  # Only nginx joins this ordinary bridge, allowing its published port to be
+  # reached from the judge laptop/LAN. Backend, PostgreSQL, and Redis remain
+  # reachable exclusively through the externally isolated internal network.
+  judge_demo_gateway:
+    driver: bridge

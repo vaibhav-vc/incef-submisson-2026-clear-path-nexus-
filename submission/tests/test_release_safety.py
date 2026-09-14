@@ -1,7 +1,9 @@
 """Run with python -m unittest discover -s submission/tests -v."""
-import hashlib
+
 import base64
+import hashlib
 import json
+import re
 import stat
 import tempfile
 import unittest
@@ -161,6 +163,31 @@ class ReleaseSafetyTests(unittest.TestCase):
                          f"{'0' * 64}  a\n{'1' * 64}  A\n"):
             with self.subTest(manifest=manifest), self.assertRaises(ValueError):
                 parse_manifest(manifest)
+
+    def test_judge_gateway_is_published_without_exposing_private_services(self):
+        compose_path = Path(__file__).resolve().parents[2] / "docker-compose.judge-demo.yml"
+        compose = compose_path.read_text(encoding="utf-8")
+
+        def service_block(name):
+            match = re.search(
+                rf"(?ms)^  {re.escape(name)}:\n(.*?)(?=^  [a-z][a-z0-9_-]*:\n|^volumes:)",
+                compose,
+            )
+            self.assertIsNotNone(match, f"Missing judge-demo service: {name}")
+            return match.group(1)
+
+        frontend = service_block("frontend")
+        self.assertIn("ports:", frontend)
+        self.assertIn("- judge_demo_gateway", frontend)
+        self.assertIn("- judge_demo_internal", frontend)
+
+        for name in ("backend", "postgres", "redis"):
+            private_service = service_block(name)
+            self.assertNotIn("ports:", private_service)
+            self.assertNotIn("judge_demo_gateway", private_service)
+            self.assertIn("- judge_demo_internal", private_service)
+
+        self.assertRegex(compose, r"(?m)^  judge_demo_internal:\n    internal: true$")
 
 
 if __name__ == "__main__":

@@ -93,7 +93,11 @@ jobs:
         run: |
           chmod +x scripts/start_judge_demo.sh backend/scripts/start.sh
           ./scripts/start_judge_demo.sh
-      - name: Dump judge service logs when startup fails
+      - name: Confirm the published LAN gateway is ready
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:8080/ready
+          curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/planner/stations
+      - name: Dump judge service and gateway diagnostics when verification fails
         if: failure()
         env:
           JUDGE_DEMO_POSTGRES_PASSWORD: diagnostic-placeholder-value
@@ -102,11 +106,8 @@ jobs:
           JUDGE_DEMO_EVIDENCE_SIGNING_KEY_ID: judge-demo-diagnostic
         run: |
           docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml ps -a
-          docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml logs --no-color --tail=300 backend postgres redis
-      - name: Confirm the published LAN gateway is ready
-        run: |
-          curl --fail --silent --show-error http://127.0.0.1:8080/ready
-          curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/planner/stations
+          docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml port frontend 5173 || true
+          docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml logs --no-color --tail=300 frontend backend postgres redis
       - name: Remove disposable judge services and volume
         if: always()
         env:

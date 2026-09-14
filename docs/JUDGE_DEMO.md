@@ -7,7 +7,9 @@ same trusted Wi-Fi or Ethernet network can open the interface without installing
 This is an **offline-capable judging environment**, not a public deployment configuration. It
 intentionally disables sign-in and live providers, so never run it on Vercel, Netlify, Firebase,
 a public VM, a port-forwarded router, or untrusted public Wi-Fi. Only the web gateway is published
-to the laptop; the API, database, and Redis remain on a private Docker network.
+to the laptop. The nginx gateway alone joins a second bridge network for the published laptop/LAN
+port; the API, database, and Redis have no published ports and remain on an externally isolated
+Docker network.
 
 ## Prepare before judging day
 

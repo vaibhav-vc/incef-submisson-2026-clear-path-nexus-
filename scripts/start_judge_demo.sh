@@ -143,6 +143,22 @@ fi
 docker compose --env-file "$runtime_file" -f "$compose_file" exec -T backend \
   python -c "import json,urllib.request; ready=json.load(urllib.request.urlopen('http://frontend:5173/ready',timeout=5)); stations=json.load(urllib.request.urlopen('http://frontend:5173/api/v1/planner/stations',timeout=10)); assert ready.get('status')=='ready' and isinstance(stations,list) and stations"
 
+gateway_address=$bind_address
+if [ "$gateway_address" = '0.0.0.0' ]; then
+  gateway_address='127.0.0.1'
+fi
+gateway_url="http://${gateway_address}:${port}"
+if command -v curl >/dev/null 2>&1; then
+  curl --fail --silent --show-error "$gateway_url/ready" >/dev/null
+  curl --fail --silent --show-error "$gateway_url/api/v1/planner/stations" >/dev/null
+elif command -v wget >/dev/null 2>&1; then
+  wget -q -O /dev/null "$gateway_url/ready"
+  wget -q -O /dev/null "$gateway_url/api/v1/planner/stations"
+else
+  printf '%s\n' 'curl or wget is required to verify the published judge-demo gateway.' >&2
+  exit 1
+fi
+
 printf '\nEvidenceGate is ready on this computer: http://localhost:%s\n' "$port"
 lan_addresses=''
 if command -v hostname >/dev/null 2>&1; then

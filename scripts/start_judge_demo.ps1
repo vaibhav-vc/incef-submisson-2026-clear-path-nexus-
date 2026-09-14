@@ -110,6 +110,14 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Judge-demo containers did not become ready.' }
     docker compose --env-file $runtimeFile -f $composeFile exec -T backend python -c "import json,urllib.request; ready=json.load(urllib.request.urlopen('http://frontend:5173/ready',timeout=5)); stations=json.load(urllib.request.urlopen('http://frontend:5173/api/v1/planner/stations',timeout=10)); assert ready.get('status')=='ready' and isinstance(stations,list) and stations"
     if ($LASTEXITCODE -ne 0) { throw 'Judge-demo gateway smoke test failed.' }
+
+    $gatewayAddress = if ($bindAddress -eq '0.0.0.0') { '127.0.0.1' } else { $bindAddress }
+    $gatewayUrl = "http://${gatewayAddress}:$parsedPort"
+    $readyResponse = Invoke-RestMethod -Uri "$gatewayUrl/ready" -TimeoutSec 10
+    $stationResponse = Invoke-RestMethod -Uri "$gatewayUrl/api/v1/planner/stations" -TimeoutSec 10
+    if ($readyResponse.status -ne 'ready' -or $stationResponse.Count -lt 1) {
+        throw 'Published judge-demo gateway did not return ready status and seeded stations.'
+    }
 }
 finally {
     if (Test-Path -LiteralPath $runtimeFile) {
