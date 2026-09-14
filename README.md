@@ -8,12 +8,16 @@ EvidenceGate is a student engineering prototype that checks whether a logistics 
 
 **September 7 hardening update:** the backend now passes 231 tests, including 16 new regressions preventing malformed or excluded evidence from becoming READY. Authentication has bounded waits, session-race protection and crash recovery; deployment configuration and release integrity have new automated checks. See the [dated verification report](docs/VERIFICATION_REPORT.md) for measured results and remaining limits. The Android binary and original experimental observations are unchanged, not newly certified by these tests.
 
-**September 14 judge/deployment update:** the backend passes 237 tests and the frontend passes 16.
+**September 14 six-phase hardening update:** the backend passes 264 tests and the frontend passes 16.
 The repository now has explicit `online` and `offline-judge` build contracts, a one-laptop LAN
 judge edition with generated secrets and a no-build offline launch, managed PostgreSQL/Redis URL
 support, Supabase Data API table lockdown, and separate online/offline runbooks. Docker execution,
 real Supabase login, live hosting, and a new Android build still require the corresponding local or
-cloud infrastructure; they are not represented as completed by source-level checks.
+cloud infrastructure; they are not represented as completed by source-level checks. The six-phase
+hardening also adds provenance-checked GTFS/India timetable ingestion, carriage-level consist
+manifests, network-wide section/headway conflict checks, fail-closed speed-risk advisories, and a
+judge-facing web panel. These features require real provider or operator evidence; seeded and
+simulated records remain ineligible for operational `READY` decisions.
 
 | Download | Contents / requirement |
 | --- | --- |
