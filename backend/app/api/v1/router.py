@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     compliance,
+    consist_conflicts,
     geometry,
     live,
     live_ops,
@@ -13,11 +14,16 @@ from app.api.v1 import (
     predictive,
     provenance,
     railways,
+    speed,
+    timetables,
     weather,
 )
 
 api_router = APIRouter()
 api_router.include_router(planner.router, prefix="/planner", tags=["planner"])
+api_router.include_router(
+    consist_conflicts.router, prefix="/planner", tags=["consist-and-conflicts"]
+)
 api_router.include_router(port.router, prefix="/port", tags=["port"])
 api_router.include_router(weather.router, prefix="/weather", tags=["weather"])
 api_router.include_router(geometry.router, prefix="/geometry", tags=["geometry"])
@@ -34,3 +40,5 @@ api_router.include_router(
 )
 api_router.include_router(provenance.router, prefix="/provenance", tags=["provenance"])
 api_router.include_router(compliance.router, prefix="/compliance", tags=["compliance"])
+api_router.include_router(speed.router, prefix="/speed", tags=["speed-advisory"])
+api_router.include_router(timetables.router, prefix="/timetables", tags=["timetables"])

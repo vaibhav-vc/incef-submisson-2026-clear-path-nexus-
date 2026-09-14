@@ -18,6 +18,7 @@ from app.models.live_ops import (
 )
 from app.models.ml import MLDataset, MLModelVersion, MLPrediction, MLTrainingRun
 from app.models.multimodal import MultimodalLeg, MultimodalPlan
+from app.models.consist import CarriageLoad, RouteOccupationWindow, TrackSectionPolicy, TrainConsist
 
 __all__ = [
     "Base",
@@ -49,4 +50,8 @@ __all__ = [
     "MLPrediction",
     "MultimodalPlan",
     "MultimodalLeg",
+    "TrainConsist",
+    "CarriageLoad",
+    "RouteOccupationWindow",
+    "TrackSectionPolicy",
 ]

@@ -22,6 +22,9 @@ authority, and approval gates can participate in an operational `READY` decision
 | Authorized maritime berth feed (optional, no default URL) | Operator-approved berth schedules and port alignment | `MARITIME_BERTH_DATA_FEED`, `MARITIME_FEED_API_KEY` | `AUTHORIZED_FEED` only after the operator supplies a contractual/legitimate endpoint and key. Unconfigured data remains `UNAVAILABLE`. |
 | Authorized railway operations feed (optional, no default URL) | Engineering restrictions, maintenance windows, and operational constraints | `RAILWAY_OPERATIONS_FEED`, `RAILWAY_FEED_API_KEY` | Must be supplied by an authorized owner and imported with checksum/signature metadata. No public endpoint is assumed. |
 | Authorized ixigo partner endpoint (optional, no default URL) | Supplementary passenger train status | `IXIGO_TRAIN_STATUS_URL`, `IXIGO_API_KEY`, `IXIGO_SYNC_ENABLED` | `AUTH_REQUIRED` unless separately authorized. Consumer pages are not scraped; this signal is never freight authority or train control. |
+| GTFS Static agency feed (optional, no default URL) | Real published stops, routes, trips, calendars, and stop times | `GTFS_STATIC_FEED_URL`, `GTFS_STATIC_SOURCE_NAME`, `GTFS_SOURCE_LICENSE` | Parsed as a ZIP and validated for required files, referential integrity, ordered stop times, and checksum. A static release is not automatically current; retain its release/ETag metadata and classify historical snapshots honestly. |
+| GTFS-Realtime agency feed (optional, no default URL) | Trip updates, vehicle positions, and service alerts | `GTFS_REALTIME_FEED_URL`, `GTFS_REALTIME_SOURCE_NAME`, `GTFS_SOURCE_LICENSE` | Standard protobuf is supported when `gtfs-realtime-bindings` is installed; an equivalent JSON gateway is accepted for authorized integrations. Feed timestamp and payload checksum are retained. It is not signal, block, or movement authority. |
+| India Open Government Data timetable export/API (optional, no default URL) | Government-published timetable rows when a legitimate release is available | `INDIA_RAILWAYS_TIMETABLE_API_URL`, `INDIA_RAILWAYS_TIMETABLE_API_KEY`, `INDIA_RAILWAYS_SOURCE_NAME`, `INDIA_RAILWAYS_SOURCE_LICENSE` | Accepts JSON `records`/`data`/`results` or CSV. Required train/station/time fields must be explicitly present; no station, train, or time is filled from repository defaults. Check the release date before treating it as current. |
 | Operator input / uploaded documents | Shipment references, loading windows, declarations, permits, approvals, and document metadata | Authenticated API/import workflows | `OPERATOR_INPUT` or `IMPORTED_DOCUMENT`; owner-scoped, checksummed, expiry-checked, and audit logged. Human/legal responsibility remains with the operator. |
 | Engineering import | Bridge/OHE/structure-gauge/axle-load limits and approved segment restrictions | `scripts/import_engineering_evidence.py`; allow-listed issuer identities and checksum-certified files | `AUTHORIZED_FEED`/`IMPORTED_DOCUMENT` only after validation. Seeded limits cannot produce `READY`. |
 | Seeded baseline data shipped with the repository | Demo stations, static congestion, historical-delay factors, and other deterministic baseline values | Repository fixtures and migrations | `SEEDED_BASELINE`. This is reproducible demonstration data, not live railway authority data; it forces `HOLD` where authority is required. |
@@ -70,6 +73,37 @@ demonstration, not a claim that external conditions are live.
 
 - Use: optional AIS vessel-activity signal with legitimate configured access.
 - Limitation: AIS activity is not a verified berth schedule and must never generate a fictional loading window.
+
+## Timetable feeds
+
+The read-only timetable endpoints are mounted under `/api/v1/timetables`:
+
+- `GET /sources` reports whether a legitimate GTFS Static, GTFS-Realtime, or India
+  Open Data feed is configured. It does not claim that a source is live.
+- `GET /gtfs-static` fetches and validates the configured GTFS Static ZIP and returns
+  a bounded preview with the exact payload SHA-256, source URL, fetch time, and feed
+  release metadata.
+- `GET /gtfs-realtime` fetches and validates the configured GTFS-Realtime protobuf
+  or authorized JSON representation and returns trip updates, vehicle positions,
+  and alerts in a bounded preview.
+- `GET /india-open-data` fetches and validates a configured government JSON/CSV
+  release and returns normalized train rows in a bounded preview.
+
+All three feed URLs are blank in the example configuration. A missing, disabled,
+unreachable, unauthorized, malformed, or stale source produces an explicit error;
+the API never falls back to the seeded station/schedule baseline. Feed parsing is
+an evidence boundary only. A later scheduler must still require authoritative
+railway restrictions, block state, and dispatch approval before any operational
+decision.
+
+Provider URLs must not contain embedded credentials or API-key query parameters.
+The India Open Data key is supplied through `INDIA_RAILWAYS_TIMETABLE_API_KEY`
+on the server and is never returned in a source URL or browser configuration.
+
+For local research imports, use a `file://` source reference with the parser
+functions in `backend/app/services/timetable_ingestion.py` and store the resulting
+checksum and capture timestamp alongside the signed experiment artifact. A local
+file is real historical/replay evidence, not live data.
 
 ## Operator input and seeded baselines
 

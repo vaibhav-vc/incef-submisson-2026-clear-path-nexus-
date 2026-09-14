@@ -16,6 +16,7 @@ const SourceTrustCenter = lazy(() => import('./components/SourceTrustCenter'))
 const ComplianceGuard = lazy(() => import('./components/ComplianceGuard'))
 const LiveOps = lazy(() => import('./components/LiveOps'))
 const IntegratedOperations = lazy(() => import('./components/IntegratedOperations'))
+const SpeedRiskAdvisoryPanel = lazy(() => import('./components/SpeedRiskAdvisoryPanel'))
 
 function OperationsApp() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('command')
@@ -48,6 +49,7 @@ function OperationsApp() {
         {activeTab === 'compliance' && <ComplianceGuard />}
         {activeTab === 'liveOps' && <LiveOps />}
         {activeTab === 'integrated' && <IntegratedOperations />}
+        {activeTab === 'speedAdvisory' && <SpeedRiskAdvisoryPanel />}
         {activeTab === 'loadProfiles' && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
             <h2 className="text-xl font-bold text-slate-100">📦 Cargo Load Profiles</h2>

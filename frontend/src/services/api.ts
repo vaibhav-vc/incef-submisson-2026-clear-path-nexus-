@@ -14,6 +14,7 @@ import type {
   SourceBrief,
   ComplianceCheck,
 } from '../types/route'
+import type { SpeedRiskAdvisoryRequest, SpeedRiskAdvisoryResponse } from '../types/speed'
 import { APP_RUNTIME_MODE, resolveApiBaseUrl } from '../lib/runtimeMode'
 import { getAccessToken } from './supabaseClient'
 
@@ -90,6 +91,14 @@ export async function fetchRouteWeatherPoints(payload: {
   points: { id: string; lat: number; lon: number }[]
 }) {
   const { data } = await api.post('/weather/route-points', payload)
+  return data
+}
+
+/** Read-only speed advisory. The backend withholds a number if real evidence is missing. */
+export async function requestSpeedRiskAdvisory(
+  payload: SpeedRiskAdvisoryRequest,
+): Promise<SpeedRiskAdvisoryResponse> {
+  const { data } = await api.post<SpeedRiskAdvisoryResponse>('/speed/advisory', payload, { timeout: 15000 })
   return data
 }
 

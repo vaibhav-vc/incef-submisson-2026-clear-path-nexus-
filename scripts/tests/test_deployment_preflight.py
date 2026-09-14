@@ -17,7 +17,7 @@ def config():
            "EVIDENCE_SIGNING_KEY": "synthetic-evidence-" + "b" * 32,
            "EVIDENCE_SIGNING_KEY_ID": "test-v1", "POSTGRES_PASSWORD": "synthetic-db-" + "c" * 20,
            "SUPABASE_URL": "https://auth.evidencegate.test", "AUTH_DISABLED": "false",
-           "DEBUG": "false", "DEMO_DATA_ENABLED": "false",
+           "DEBUG": "false", "DEMO_DATA_ENABLED": "false", "REAL_DATA_ONLY": "true",
            "CORS_ORIGINS": '["https://evidencegate.test"]',
            "ALLOWED_HOSTS": '["evidencegate.test","127.0.0.1"]',
            "APPROVAL_ALLOWED_ROLES": '["admin","approver"]'}
@@ -35,6 +35,11 @@ class DeploymentPreflightTests(unittest.TestCase):
 
     def test_valid_configuration(self):
         self.assertEqual(preflight.validate(config()), [])
+
+    def test_real_data_policy_is_required_when_declared(self):
+        model = config()
+        model["services"]["backend"]["environment"]["REAL_DATA_ONLY"] = "false"
+        self.assertIn("REAL_DATA_POLICY_DISABLED", self.codes(model))
 
     def test_inherited_ports_block_production(self):
         model = config()

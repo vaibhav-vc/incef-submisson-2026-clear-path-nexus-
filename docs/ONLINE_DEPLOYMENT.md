@@ -41,6 +41,7 @@ ENVIRONMENT=production
 DEBUG=false
 AUTH_DISABLED=false
 DEMO_DATA_ENABLED=false
+REAL_DATA_ONLY=true
 SECRET_KEY=<random value of at least 32 characters>
 EVIDENCE_SIGNING_KEY=<different random value of at least 32 characters>
 EVIDENCE_SIGNING_KEY_ID=evidence-hmac-v1
@@ -57,6 +58,13 @@ DATABASE_POOL_TIMEOUT_SECONDS=30
 DATABASE_PREPARED_STATEMENT_CACHE_SIZE=100
 
 REDIS_URL=rediss://<user>:<password>@<redis-host>:<port>/<database-number>
+
+# Optional: configure only real, licensed agency/government timetable feeds.
+GTFS_STATIC_FEED_URL=https://<agency.example>/gtfs.zip
+GTFS_REALTIME_FEED_URL=https://<agency.example>/gtfs-rt.pb
+GTFS_SOURCE_LICENSE=<agency license>
+INDIA_RAILWAYS_TIMETABLE_API_URL=https://<data.gov.in authorized resource>
+INDIA_RAILWAYS_TIMETABLE_API_KEY=<server-side key if required>
 CORS_ORIGINS=["https://app.example.org"]
 ALLOWED_HOSTS=["api.example.org","127.0.0.1"]
 AUTH_COOKIE_SECURE=true
@@ -69,6 +77,10 @@ Provider URLs and keys are optional at startup. Unconfigured or disabled provide
 explicit `UNAVAILABLE` state and cannot silently become evidence eligible. Configure only feeds
 you are authorized to use. Open-source application code does not grant a license to third-party
 rail, port, weather, or AIS data.
+
+`REAL_DATA_ONLY=true` is a production/staging launch gate. It prevents seeded, simulated, or
+offline-computed evidence from being treated as operational input. The offline judge image sets
+this to `false` and is a labelled replay/rehearsal, not a live railway service.
 
 The deployment is healthy only when both probes pass:
 

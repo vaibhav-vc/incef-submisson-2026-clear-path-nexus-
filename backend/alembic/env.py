@@ -12,6 +12,7 @@ from app.models.route import Base
 import app.models.user  # noqa: F401 - registers User metadata
 import app.models.provenance  # noqa: F401 - registers SourceLine metadata
 import app.models.compliance  # noqa: F401 - registers ComplianceGuard metadata
+import app.models.consist  # noqa: F401 - registers train-consist metadata
 
 config = context.config
 if config.config_file_name is not None:

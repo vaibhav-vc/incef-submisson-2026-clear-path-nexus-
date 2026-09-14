@@ -9,6 +9,7 @@ export type ActiveTab =
   | 'sourceTrust' | 'compliance'
   | 'liveOps'
   | 'integrated'
+  | 'speedAdvisory'
 
 interface HeaderNavbarProps {
   activeTab: ActiveTab
@@ -18,6 +19,7 @@ interface HeaderNavbarProps {
 const tabs: Array<[ActiveTab, string]> = [
   ['integrated', '🧭 Nexus v6'], ['liveOps', '🟢 LiveOps'], ['command', '📍 Operations'], ['schedule', '🗓 Scheduler'], ['dispatch', '🚦 Dispatch'],
   ['predictive', '⚡ Predictive ETA'], ['dustRadar', '🌪️ Dust Radar'],
+  ['speedAdvisory', '🛡️ Speed Risk'],
   ['history', '📜 Audit'], ['weather', '🌦️ Telemetry'], ['liveTraffic', '🛰️ Live Traffic'],
   ['loadProfiles', '📦 Loads'],
   ['sourceTrust', '🔎 Sources'], ['compliance', '🛡️ Compliance'],

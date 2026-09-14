@@ -1,10 +1,14 @@
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from geoalchemy2 import Geometry
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+if TYPE_CHECKING:
+    from app.models.consist import RouteOccupationWindow, TrainConsist
 
 
 class Base(DeclarativeBase):
@@ -138,4 +142,17 @@ class TrainSchedule(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    consist: Mapped["TrainConsist | None"] = relationship(
+        "TrainConsist",
+        back_populates="schedule",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    occupation_windows: Mapped[list["RouteOccupationWindow"]] = relationship(
+        "RouteOccupationWindow",
+        back_populates="schedule",
+        cascade="all, delete-orphan",
+        order_by="RouteOccupationWindow.sequence_in_route",
     )

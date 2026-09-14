@@ -51,6 +51,7 @@ services:
       EVIDENCE_VERIFICATION_KEYS: '{}'
       AUTH_DISABLED: "true"
       DEMO_DATA_ENABLED: "true"
+      REAL_DATA_ONLY: "false"
       SUPABASE_URL: ""
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"

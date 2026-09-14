@@ -7,12 +7,12 @@ from alembic.script import ScriptDirectory
 
 def test_supabase_data_api_lockdown_is_the_migration_head() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_current_head() == "20260913_15"
+    assert script.get_current_head() == "20260914_16"
 
 
 def test_supabase_lockdown_covers_every_application_table() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    lockdown = script.get_revision("20260913_15").module
+    lockdown = script.get_revision("20260914_16").module
     created_tables: set[str] = set()
     for path in Path("alembic/versions").glob("*.py"):
         if path.name.startswith("20260913_15"):

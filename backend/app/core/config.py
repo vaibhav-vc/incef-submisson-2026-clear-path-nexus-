@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     AUTH_COOKIE_SECURE: bool = False
     AUTH_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
     DEMO_DATA_ENABLED: bool = False
+    # Production/staging must opt into this explicit fail-closed policy.  A
+    # development judge replay may disable it only with DEMO_DATA_ENABLED=true.
+    REAL_DATA_ONLY: bool = False
 
     # Supabase owns user registration, sign-in, refresh, and password policy.
     # The API only verifies the access tokens it issues.
@@ -55,6 +58,19 @@ class Settings(BaseSettings):
     OPENWEATHER_API_URL: str = "https://api.openweathermap.org/data/2.5/weather"
     OPEN_METEO_FORECAST_URL: str = "https://api.open-meteo.com/v1/forecast"
     OVERPASS_API_URL: str = "https://overpass-api.de/api/interpreter"
+    # Timetable feeds are intentionally unconfigured by default. A deployment
+    # must provide a legitimate agency/feed URL; no schedule is bundled or
+    # inferred from the repository.
+    GTFS_STATIC_FEED_URL: str = ""
+    GTFS_STATIC_SOURCE_NAME: str = "Configured GTFS static feed"
+    GTFS_REALTIME_FEED_URL: str = ""
+    GTFS_REALTIME_SOURCE_NAME: str = "Configured GTFS-Realtime feed"
+    GTFS_SOURCE_LICENSE: str = ""
+    INDIA_RAILWAYS_TIMETABLE_API_URL: str = ""
+    INDIA_RAILWAYS_TIMETABLE_API_KEY: str = ""
+    INDIA_RAILWAYS_SOURCE_NAME: str = "India Open Government Data timetable"
+    INDIA_RAILWAYS_SOURCE_LICENSE: str = ""
+    TIMETABLE_MAX_FEED_BYTES: int = 100 * 1024 * 1024
     DUST_AIR_QUALITY_FEED_URL: str = ""
     DUST_AIR_QUALITY_PROVIDER_NAME: str = "open_meteo_air_quality"
     NOAA_SPACE_WEATHER_FEED_URL: str = (
@@ -185,6 +201,9 @@ if settings.ENVIRONMENT.lower() in {"production", "staging"} and any(
 if settings.ENVIRONMENT.lower() in {"production", "staging"} and settings.DEMO_DATA_ENABLED:
     raise RuntimeError("DEMO_DATA_ENABLED must be false outside development")
 
+if settings.ENVIRONMENT.lower() in {"production", "staging"} and not settings.REAL_DATA_ONLY:
+    raise RuntimeError("REAL_DATA_ONLY must be true outside development")
+
 if settings.ENVIRONMENT.lower() in {"production", "staging"} and settings.AUTH_DISABLED:
     raise RuntimeError("AUTH_DISABLED must be false outside development")
 
@@ -209,6 +228,9 @@ if settings.REFRESH_TOKEN_EXPIRE_DAYS < 1:
 
 if settings.LIVE_OBSERVATION_RETENTION_DAYS < 1:
     raise RuntimeError("LIVE_OBSERVATION_RETENTION_DAYS must be at least 1")
+
+if settings.TIMETABLE_MAX_FEED_BYTES < 1_048_576:
+    raise RuntimeError("TIMETABLE_MAX_FEED_BYTES must be at least 1 MiB")
 
 if settings.POSITION_RETENTION_DAYS < 1:
     raise RuntimeError("POSITION_RETENTION_DAYS must be at least 1")

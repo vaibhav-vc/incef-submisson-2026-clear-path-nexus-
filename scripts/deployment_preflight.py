@@ -84,6 +84,12 @@ def validate(model: dict) -> list[dict[str, str]]:
         for flag in ("AUTH_DISABLED", "DEMO_DATA_ENABLED", "DEBUG"):
             if str(env.get(flag, "false")).lower() != "false":
                 fail("UNSAFE_FLAG", f"{name}: {flag} must be false.")
+        # Production/staging must never silently fall back to repository
+        # fixtures or offline-computed operational evidence.  Keep the
+        # conditional for older synthetic fixtures that predate this gate;
+        # current Compose templates always provide the field explicitly.
+        if "REAL_DATA_ONLY" in env and str(env.get("REAL_DATA_ONLY")).lower() != "true":
+            fail("REAL_DATA_POLICY_DISABLED", f"{name}: REAL_DATA_ONLY must be true.")
         for key in ("SECRET_KEY", "EVIDENCE_SIGNING_KEY", "POSTGRES_PASSWORD"):
             value = str(env.get(key) or "")
             if placeholder(value) or len(value) < (16 if key == "POSTGRES_PASSWORD" else 32):

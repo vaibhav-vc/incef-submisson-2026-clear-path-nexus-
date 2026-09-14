@@ -15,7 +15,8 @@ ClearPath Nexus must remain in staging until every required data, security, and 
 
 - [ ] Use managed PostgreSQL/PostGIS and Redis with private networking, encryption, backups, and a tested restore.
 - [ ] Run `alembic upgrade head` before starting the API; production startup performs this automatically.
-- [ ] Set `ENVIRONMENT=production`, `DEMO_DATA_ENABLED=false`, independent high-entropy `SECRET_KEY` and `EVIDENCE_SIGNING_KEY` values, and strong database credentials.
+- [ ] Set `ENVIRONMENT=production`, `DEMO_DATA_ENABLED=false`, `REAL_DATA_ONLY=true`, independent high-entropy `SECRET_KEY` and `EVIDENCE_SIGNING_KEY` values, and strong database credentials.
+- [ ] Configure and checksum every real timetable/operations source used by the demo (`GTFS_*`, `INDIA_RAILWAYS_*`, or an authorized railway feed); leave an unconfigured provider explicitly `UNAVAILABLE`.
 - [ ] Restrict `APPROVAL_ALLOWED_ROLES` to reviewed operational roles stored only in Supabase admin-controlled `app_metadata`; do not include generic `authenticated`.
 - [ ] Configure `ENGINEERING_CERTIFICATION_ALLOWED_ISSUERS` and prove unknown issuers and future-dated certificates are rejected before importing engineering limits.
 - [ ] Record the active evidence key ID and retain retired ID-to-key mappings in `EVIDENCE_VERIFICATION_KEYS`; prove an old snapshot verifies after rotation and an unknown key fails closed.

@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.security import CurrentUser, get_current_user
 from app.models.provenance import ProvenanceRecord, RouteDecisionSnapshot
+from app.models.consist import RouteOccupationWindow, TrackSectionPolicy
 from app.models.route import GeneratedRoute, LineSegment, Station, TrainSchedule
 from app.schemas.route import (
     AlternateRoute,
@@ -56,7 +57,7 @@ from app.services.router_engine import (
     validate_cargo_clearance,
 )
 from app.schemas.schedule import TrainScheduleCreate, TrainScheduleResponse, TrainScheduleUpdate
-from app.services.scheduling import assess_schedule
+from app.services.conflict_engine import assess_network_conflicts
 from app.services.space_weather import space_weather_service
 
 router = APIRouter()
@@ -948,15 +949,48 @@ async def _user_schedule_or_404(db: AsyncSession, schedule_id: UUID, user_id: st
 
 
 async def _reassess_schedule(db: AsyncSession, schedule: TrainSchedule) -> None:
+    """Reassess against network-wide, source-backed section occupations.
+
+    A schedule with no consist/windows is intentionally ``UNAVAILABLE``. The
+    previous coarse same-destination overlap check could not prove that an
+    unseen train would not be interrupted, so it must not promote a schedule
+    to ``READY``.
+    """
+
     result = await db.execute(
-        select(TrainSchedule).where(TrainSchedule.user_id == schedule.user_id)
+        select(TrainSchedule)
+        .where(TrainSchedule.schedule_status != "CANCELLED")
+        .options(selectinload(TrainSchedule.occupation_windows))
     )
-    others = list(result.scalars().all())
-    status, reason = assess_schedule(schedule, others)
-    schedule.conflict_status = status
-    schedule.conflict_reason = reason
+    schedules = list(result.scalars().all())
+    # Query explicitly instead of triggering an async lazy-load on the ORM
+    # relationship. This also works for a newly flushed schedule whose
+    # relationship collection has not been populated yet.
+    window_result = await db.execute(
+        select(RouteOccupationWindow)
+        .where(RouteOccupationWindow.schedule_id == schedule.id)
+        .order_by(RouteOccupationWindow.sequence_in_route.asc())
+    )
+    candidate_windows = list(window_result.scalars().all())
+    segment_ids = {item.segment_id for item in candidate_windows}
+    policies: list[TrackSectionPolicy] = []
+    if segment_ids:
+        policy_result = await db.execute(
+            select(TrackSectionPolicy).where(TrackSectionPolicy.segment_id.in_(segment_ids))
+        )
+        policies = list(policy_result.scalars().all())
+    others = [item for item in schedules if item.id != schedule.id]
+    assessment = assess_network_conflicts(
+        schedule,
+        candidate_windows,
+        others,
+        policies,
+        network_schedule_ids=[item.id for item in schedules],
+    )
+    schedule.conflict_status = assessment.status
+    schedule.conflict_reason = assessment.explanation
     if schedule.schedule_status not in {"DISPATCHED", "CANCELLED"}:
-        schedule.schedule_status = "READY" if status == "CLEAR" else "PLANNED"
+        schedule.schedule_status = "READY" if assessment.status == "CLEAR" else "PLANNED"
 
 
 @router.get("/schedules", response_model=list[TrainScheduleResponse])
@@ -1071,14 +1105,22 @@ async def dispatch_schedule(
     user: CurrentUser = Depends(get_current_user),
 ) -> TrainScheduleResponse:
     schedule = await _user_schedule_or_404(db, schedule_id, user.id)
-    if schedule.conflict_status == "BLOCKED":
+    if schedule.schedule_status == "DISPATCHED":
+        return TrainScheduleResponse.model_validate(schedule)
+
+    # Recompute from the current network snapshot immediately before any
+    # dispatch checks.  A stale stored CLEAR must never authorize movement.
+    await _reassess_schedule(db, schedule)
+    if schedule.conflict_status != "CLEAR":
         raise HTTPException(
-            status_code=409, detail=schedule.conflict_reason or "Schedule is blocked"
+            status_code=409,
+            detail=(
+                schedule.conflict_reason
+                or "Current real network occupation evidence is unavailable"
+            ),
         )
     if schedule.schedule_status == "CANCELLED":
         raise HTTPException(status_code=409, detail="Cancelled schedules cannot be dispatched")
-    if schedule.schedule_status == "DISPATCHED":
-        return TrainScheduleResponse.model_validate(schedule)
 
     if schedule.generated_route_id is None:
         raise HTTPException(
