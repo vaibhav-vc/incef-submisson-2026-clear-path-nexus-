@@ -93,6 +93,16 @@ jobs:
         run: |
           chmod +x scripts/start_judge_demo.sh backend/scripts/start.sh
           ./scripts/start_judge_demo.sh
+      - name: Dump judge service logs when startup fails
+        if: failure()
+        env:
+          JUDGE_DEMO_POSTGRES_PASSWORD: diagnostic-placeholder-value
+          JUDGE_DEMO_SESSION_SECRET: diagnostic-placeholder-value
+          JUDGE_DEMO_EVIDENCE_SIGNING_KEY: diagnostic-placeholder-value
+          JUDGE_DEMO_EVIDENCE_SIGNING_KEY_ID: judge-demo-diagnostic
+        run: |
+          docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml ps -a
+          docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml logs --no-color --tail=300 backend postgres redis
       - name: Confirm the published LAN gateway is ready
         run: |
           curl --fail --silent --show-error http://127.0.0.1:8080/ready
