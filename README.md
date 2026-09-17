@@ -8,6 +8,8 @@ The current six-phase architecture, real-data/API registry, carriage-level evide
 
 ## Readiness and downloads
 
+Read [international evaluation, Indian Railway references and AI-assistance disclosure](docs/INTERNATIONAL_AND_INDIAN_ALIGNMENT.md) before preparing competition materials. The generated engineering notes are not a student-authored submission.
+
 For a government technical discussion, start with [the evaluation pack and acceptance matrix](docs/GOVERNMENT_TECHNICAL_EVALUATION.md). It maps the full replacement objective to implemented capabilities, required field evidence and the proposed authorized evaluation procedure.
 
 **September 17 source upgrade:** 346 backend regression tests pass. The default Evidence Assurance workspace now supports cases, source attribution and licence details, policy matrices, signed exports and assigned independent reviewers. Mandatory subject/context binding, transitive lineage checks, one final review per snapshot and offline checksum reconstruction are implemented. Carriage manifests require an explicit complete count. See [the three-part release audit](docs/V7_RELEASE_AUDIT.md) for exact coverage, current CI status and remaining integration work.

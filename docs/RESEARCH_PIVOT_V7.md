@@ -1,5 +1,7 @@
 # EvidenceGate v7 research and system-design plan
 
+**Authorship notice:** this is AI-assisted internal engineering planning, not a student-authored fair submission. See [international/Indian alignment and assistance disclosure](INTERNATIONAL_AND_INDIAN_ALIGNMENT.md). Students must prepare their own required submission materials under the actual fair's rules.
+
 **Working title:** *From Prediction to Proof: Provenance-Aware Admissibility Gating for Railway Decision Support*
 
 **Submission target:** INSEF 2026–27. **Software status:** research prototype, not an operational railway system. **Safety boundary:** EvidenceGate never issues movement authority, changes a signal, controls an interlocking, applies brakes, or instructs a driver.

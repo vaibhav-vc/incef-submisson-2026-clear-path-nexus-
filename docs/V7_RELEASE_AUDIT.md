@@ -39,6 +39,8 @@ The verifier detects changed or duplicate records, changed terms, altered lineag
 
 ## Audit 3 — release verification
 
+**Verified runtime release:** commit `7dfc91bd063e26f73084301bf0b2cce8f1619adb` passed all five jobs in [CI run 35176284755](https://github.com/vaibhav-vc/incef-submisson-2026-clear-path-nexus-/actions/runs/35176284755), including the HTTP/PostgreSQL assurance smoke and offline reconstruction. Subsequent alignment documentation does not change that runtime code.
+
 Local results and GitHub CI are recorded below after final execution. Existing packaged v6 ZIP/APK/PDF files are historical and do not contain these source upgrades.
 
 - Backend regression suite: 346 passed (13.99 seconds); one dependency deprecation warning.
