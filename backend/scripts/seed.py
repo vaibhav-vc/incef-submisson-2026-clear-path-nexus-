@@ -35,6 +35,10 @@ SEGMENTS = [
 
 
 async def seed() -> None:
+    if settings.REAL_DATA_ONLY:
+        raise RuntimeError("Synthetic corridor seeding is forbidden in REAL_DATA_ONLY mode.")
+    if settings.ENVIRONMENT.lower() != "development":
+        raise RuntimeError("Synthetic corridor seeding is allowed only in development.")
     if not settings.DEMO_DATA_ENABLED:
         raise RuntimeError("Demo data is disabled. Run Alembic migrations and set DEMO_DATA_ENABLED=true locally.")
 

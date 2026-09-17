@@ -2,6 +2,14 @@
 
 Status: software research milestone. The national railway replacement objective remains open. This audit covers code, data provenance and release reproducibility; it does not establish railway field safety or incumbent-system parity.
 
+## Follow-up — synthetic seed isolation
+
+Configuration now rejects `REAL_DATA_ONLY=true` together with `DEMO_DATA_ENABLED=true` in every environment. The standalone seed function independently rejects real-only mode, disabled demo mode and any environment other than development before opening a database session. Regression tests cover these rejection paths and configuration startup.
+
+This prevents new seed writes; it does not remove historical rows or establish the authenticity of imported data. The existing `docker-compose.judge-demo.yml` still explicitly selects synthetic demonstration mode. A real-recorded offline edition remains unfinished; do not describe that compose profile as real-data-only or live.
+
+Verification: 353 backend tests passed using `--basetemp .pytest-tmp-real-policy-1`; targeted seed/model tests passed (8), and Ruff passed for the changed Python files. The first full run encountered five fixture setup errors from Windows access denial on the system pytest temporary directory; the project-local rerun completed without those errors. One existing Starlette deprecation warning remains.
+
 ## Audit 1 — code and trust boundaries
 
 The independent review reproduced required operator assertions becoming REVIEWABLE, optional invalid ancestors being ignored, evidence reuse without subject binding, self-attestation, and missing lineage verification. These findings caused implementation changes before release:

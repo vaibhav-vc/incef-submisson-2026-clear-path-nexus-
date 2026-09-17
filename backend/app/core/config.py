@@ -201,6 +201,9 @@ if settings.ENVIRONMENT.lower() in {"production", "staging"} and any(
 ):
     raise RuntimeError("APPROVAL_ALLOWED_ROLES must not grant approval to authenticated")
 
+if settings.REAL_DATA_ONLY and settings.DEMO_DATA_ENABLED:
+    raise RuntimeError("DEMO_DATA_ENABLED cannot be combined with REAL_DATA_ONLY")
+
 if settings.ENVIRONMENT.lower() in {"production", "staging"} and settings.DEMO_DATA_ENABLED:
     raise RuntimeError("DEMO_DATA_ENABLED must be false outside development")
 
