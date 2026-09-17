@@ -97,6 +97,8 @@ jobs:
         run: |
           curl --fail --silent --show-error http://127.0.0.1:8080/ready
           curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/planner/stations
+      - name: Exercise assurance persistence and offline reconstruction
+        run: python3 scripts/smoke_assurance_judge.py --disposable-ci-stack
       - name: Dump judge service and gateway diagnostics when verification fails
         if: failure()
         env:

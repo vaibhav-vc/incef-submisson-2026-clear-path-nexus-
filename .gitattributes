@@ -4,4 +4,4 @@ gradlew text eol=lf
 
 # Immutable research receipts must retain byte-for-byte checksums on all hosts.
 submission/experiments/runs/20260916T064806641708Z_sncf_snapshot_2dc07b37/** -text
-submission/experiments/runs/20260916T064855068103Z_evidence_assurance_1431e7d7/** -text
+submission/experiments/runs/20260916T064855068103Z_evidence_assurance_1431e7d7/** -text whitespace=cr-at-eol
