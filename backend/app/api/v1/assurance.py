@@ -597,6 +597,9 @@ async def assess_assurance_case(
     ]
     seal_snapshot(case, snapshot, findings)
     db.add(snapshot)
+    # These append-only models have no ORM relationship cascade. Persist the
+    # parent first so PostgreSQL can enforce the findings' foreign key.
+    await db.flush()
     db.add_all(findings)
     case.status = "ASSESSED"
     await db.commit()
