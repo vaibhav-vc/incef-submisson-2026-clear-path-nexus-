@@ -41,7 +41,7 @@ The verifier detects changed or duplicate records, changed terms, altered lineag
 
 Local results and GitHub CI are recorded below after final execution. Existing packaged v6 ZIP/APK/PDF files are historical and do not contain these source upgrades.
 
-- Backend regression suite: 342 passed (17.88 seconds); one dependency deprecation warning.
+- Backend regression suite: 346 passed (13.99 seconds); one dependency deprecation warning.
 - Backend Ruff and Python compilation: passed.
 - Frontend: 22 tests, typecheck, lint and online/offline builds passed after review UI changes.
 - Frontend production dependency audit: no known vulnerabilities at this check.
@@ -49,6 +49,16 @@ Local results and GitHub CI are recorded below after final execution. Existing p
 - Deployment script tests: 17 passed in the preceding verification pass.
 - Local Docker and JDK executables are unavailable. Docker services, PostgreSQL migrations, Redis readiness and Android therefore require the GitHub CI jobs before their status can be claimed.
 - Hosted authentication, a configured public deployment, official Indian operational feeds and testing on the actual judge device remain incomplete.
+
+The initial upgrade commit `249bdcf` passed all five GitHub jobs (backend,
+frontend, deployment, judge-demo and Android). A subsequently added HTTP/PostgreSQL
+assurance smoke test exposed findings being inserted before their parent snapshot.
+The fix explicitly flushes the parent. Evidence capture also seals the database's
+numeric representation after refresh, preventing float/Decimal checksum drift.
+The smoke now exercises empty-case UNAVAILABLE, unverified capture, HOLD,
+persisted signature verification, bundle export, offline reconstruction and
+self-review rejection. Final verification of the latest commit is recorded in
+the linked GitHub run and the release handoff.
 
 ### Deployment and rollback
 

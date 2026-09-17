@@ -10,7 +10,7 @@ The current six-phase architecture, real-data/API registry, carriage-level evide
 
 For a government technical discussion, start with [the evaluation pack and acceptance matrix](docs/GOVERNMENT_TECHNICAL_EVALUATION.md). It maps the full replacement objective to implemented capabilities, required field evidence and the proposed authorized evaluation procedure.
 
-**September 17 source upgrade:** 342 backend regression tests pass. The default Evidence Assurance workspace now supports cases, source attribution and licence details, policy matrices, signed exports and assigned independent reviewers. Mandatory subject/context binding, transitive lineage checks, one final review per snapshot and offline checksum reconstruction are implemented. Carriage manifests require an explicit complete count. See [the three-part release audit](docs/V7_RELEASE_AUDIT.md) for exact coverage, current CI status and remaining integration work.
+**September 17 source upgrade:** 346 backend regression tests pass. The default Evidence Assurance workspace now supports cases, source attribution and licence details, policy matrices, signed exports and assigned independent reviewers. Mandatory subject/context binding, transitive lineage checks, one final review per snapshot and offline checksum reconstruction are implemented. Carriage manifests require an explicit complete count. See [the three-part release audit](docs/V7_RELEASE_AUDIT.md) for exact coverage, current CI status and remaining integration work.
 
 **Historical packages:** the ZIP/APK/PDF downloads below predate this v7 source upgrade. Build from the current checkout for the upgraded code. They are retained for traceability and are not presented as updated v7 binaries.
 

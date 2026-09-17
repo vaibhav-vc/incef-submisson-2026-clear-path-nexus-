@@ -122,6 +122,22 @@ def test_valid_attributable_evidence_is_reviewable() -> None:
     assert result.metrics["satisfied_required_role_count"] == 1
 
 
+@pytest.mark.parametrize("source_type,code", [
+    ("IMPORTED_DOCUMENT", "SOURCE_AUTHENTICITY_UNVERIFIED"),
+    ("OFFLINE_COMPUTED", "DERIVED_LINEAGE_MISSING"),
+    ("LIVE_PROVIDER", "EVIDENCE_FRESHNESS_UNBOUNDED"),
+])
+def test_alternative_source_labels_cannot_bypass_trust_rules(source_type, code):
+    case = _case()
+    source = _source()
+    record = _record(case, source, source_type=source_type)
+    record.valid_until = None
+    record.integrity_checksum = stable_checksum(record_integrity_payload(record))
+    result = assess_case_evidence(case, [(record, source, "OBSERVATION", True)], [], now=NOW)
+    assert result.state == "HOLD"
+    assert code in {item.code for item in result.findings}
+
+
 @pytest.mark.parametrize(
     "metadata_key",
     ["assurance_subject_type", "assurance_subject_key", "assurance_context_checksum"],

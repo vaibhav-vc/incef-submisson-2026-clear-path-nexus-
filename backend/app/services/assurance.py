@@ -265,7 +265,10 @@ def assess_case_evidence(
                     "Provider evidence was not produced by an authenticated server connector.",
                 )
             )
-        if record.raw_source_state == "USER_DECLARED_DOCUMENT_IMPORT":
+        if record.canonical_source_type == "IMPORTED_DOCUMENT" and not (
+            record.raw_source_state == "AUTHENTICATED_IMPORT"
+            and metadata.get("signature_verified") is True
+        ):
             record_findings.append(
                 (
                     "SOURCE_AUTHENTICITY_UNVERIFIED",
@@ -315,6 +318,14 @@ def assess_case_evidence(
             record_findings.append(("EVIDENCE_EXPIRED", "Evidence validity window has expired."))
         stale_after_seconds = getattr(source, "stale_after_seconds", None) if source else None
         if (
+            record.canonical_source_type in provider_source_types
+            and record.valid_until is None
+            and stale_after_seconds is None
+        ):
+            record_findings.append(
+                ("EVIDENCE_FRESHNESS_UNBOUNDED", "Provider evidence has no bounded freshness policy.")
+            )
+        if (
             stale_after_seconds is not None
             and (assessed_at - observed).total_seconds() > stale_after_seconds
         ):
@@ -335,11 +346,11 @@ def assess_case_evidence(
             )
         if not record.value_summary:
             record_findings.append(("EVIDENCE_PAYLOAD_EMPTY", "Evidence payload is empty."))
-        if record.canonical_source_type == "DERIVED" and not parents_by_child.get(record.id):
+        if record.canonical_source_type in {"DERIVED", "OFFLINE_COMPUTED"} and not parents_by_child.get(record.id):
             record_findings.append(
                 ("DERIVED_LINEAGE_MISSING", "Derived evidence has no parent record in this case.")
             )
-        if record.canonical_source_type == "DERIVED" and external_parents_by_child.get(record.id):
+        if record.canonical_source_type in {"DERIVED", "OFFLINE_COMPUTED"} and external_parents_by_child.get(record.id):
             record_findings.append(
                 (
                     "DERIVED_LINEAGE_INCOMPLETE",
@@ -384,7 +395,7 @@ def assess_case_evidence(
     invalid_ancestors_by_record: dict[Any, set[Any]] = defaultdict(set)
     for child_id in lineage_order:
         child_record = record_rows[child_id][0]
-        if child_record.canonical_source_type != "DERIVED":
+        if child_record.canonical_source_type not in {"DERIVED", "OFFLINE_COMPUTED"}:
             continue
         for parent_id in parents_by_child.get(child_id, set()):
             if parent_id in invalid_record_ids:
