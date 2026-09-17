@@ -1,6 +1,6 @@
 # Judge Demo: One Laptop, Any Device
 
-The judge demo is a deliberately local, deterministic edition of EvidenceGate. It runs the web
+The judge demo is a deliberately local, reproducible edition of EvidenceGate. It runs the web
 app, API, PostgreSQL/PostGIS, and Redis on one laptop. Phones, tablets, and other laptops on the
 same trusted Wi-Fi or Ethernet network can open the interface without installing anything.
 
@@ -47,9 +47,9 @@ After the initial build, use:
 ./scripts/start_judge_demo.sh --offline
 ```
 
-The launcher waits for PostgreSQL, Redis, and the API, then exercises `/ready` and retrieves the
-seeded station list through the same web gateway the judges will use. It prints URLs only after
-that smoke test succeeds. Open one of the LAN URLs on a judge's device. If another device cannot
+The launcher waits for PostgreSQL, Redis, and the API, then exercises `/ready` and checks the
+captured source file hashes through the same web gateway the judges will use. It prints URLs only
+after that smoke test succeeds. Open one of the LAN URLs on a judge's device. If another device cannot
 connect, allow the chosen port through the laptop firewall for **private networks only**. Do not
 enable router port forwarding.
 
@@ -71,7 +71,7 @@ works without manual configuration.
 
 ## Persistence and generated secrets
 
-PostgreSQL evidence is stored in the judge-demo Compose project's named data volume. Ordinary
+PostgreSQL evidence is stored in the isolated `evidencegate-judge-real` Compose project's named data volume. Ordinary
 stops, container rebuilds, and laptop reboots preserve it.
 
 The launcher generates a new cryptographically random database password and session secret on
@@ -81,8 +81,8 @@ committed to the repository.
 
 The evidence-signing key is different: it must remain stable for as long as the saved evidence
 exists, or earlier audit records could no longer be verified. The launcher therefore generates it
-once per persistent demo dataset and keeps it in the git-ignored `.env.judge-demo.state` file.
-Treat that file and the judge-demo data volume as one unit. Do not commit, share, rename, or edit
+once per persistent judge dataset and keeps it in the git-ignored `.env.judge-real.state` file.
+Treat that file and the judge data volume as one unit. Do not commit, share, rename, or edit
 the state file manually.
 
 ## Stop without deleting evidence
@@ -96,7 +96,7 @@ stopping containers.
 ```powershell
 $env:JUDGE_DEMO_POSTGRES_PASSWORD = 'stop-only-placeholder-value'
 $env:JUDGE_DEMO_SESSION_SECRET = 'stop-only-placeholder-value'
-docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml down
+docker compose --env-file .env.judge-real.state -f docker-compose.judge-demo.yml down
 Remove-Item Env:JUDGE_DEMO_POSTGRES_PASSWORD, Env:JUDGE_DEMO_SESSION_SECRET
 ```
 
@@ -105,14 +105,14 @@ Remove-Item Env:JUDGE_DEMO_POSTGRES_PASSWORD, Env:JUDGE_DEMO_SESSION_SECRET
 ```sh
 JUDGE_DEMO_POSTGRES_PASSWORD=stop-only-placeholder-value \
 JUDGE_DEMO_SESSION_SECRET=stop-only-placeholder-value \
-docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml down
+docker compose --env-file .env.judge-real.state -f docker-compose.judge-demo.yml down
 ```
 
 ## Reset to a clean dataset
 
 Reset is explicit because it destroys judge-demo evidence. It removes only this Compose project's
 containers and named data volume, deletes its local signing state, generates fresh cryptographic
-values, and creates a new seeded dataset. It does not remove unrelated Docker volumes.
+values, and creates a new empty local database. It does not remove unrelated Docker volumes or the older synthetic demo project's volume.
 
 ### PowerShell
 
@@ -129,7 +129,8 @@ values, and creates a new seeded dataset. It does not remove unrelated Docker vo
 ## What this edition proves
 
 - The complete application can start from a clean checkout with its database migrations.
-- Seeded corridor records are labelled `SEEDED_BASELINE` and remain ineligible for `READY`.
+- A pinned, real SNCF publisher capture is mounted read-only and every feed is checked against its SHA-256 and byte count before the launcher reports success.
+- Synthetic corridor seeding is disabled and the real-data-only launch guard is active. The station list starts empty.
 - Live-provider failures cannot be concealed by substituting generated data.
 - Missing evidence produces `HOLD` or `UNAVAILABLE`; physical failures produce `HARD_BLOCKED`.
 - The interface and API remain usable during an internet outage.
@@ -139,7 +140,9 @@ values, and creates a new seeded dataset. It does not remove unrelated Docker vo
 
 - `AUTH_DISABLED=true` is allowed only because the backend runs in development mode.
 - Live weather, rail, AIS, GPS, event-engine, and ML-inference integrations are disabled.
-- Included observations are seeded or simulated and must never be described as live operations.
+- The recorded SNCF passenger feed was captured on 16 September 2026. It is French historical research data, not Indian Railways operational evidence, and is never called live at replay time.
+- The source panel shows publisher, licence, capture time and feed checksums. It does not import those bytes into operational route or assurance decisions.
+- Without an authorized Indian timetable and engineering source, the offline edition cannot demonstrate a verified Indian corridor or a safe speed/dispatch recommendation.
 - A high score cannot bypass a physical hard block or insufficient evidence.
 - Anyone who can reach the LAN URL can use the demo; there is no judge-demo user account.
 

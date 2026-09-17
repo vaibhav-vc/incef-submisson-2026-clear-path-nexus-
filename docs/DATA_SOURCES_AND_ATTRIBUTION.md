@@ -25,6 +25,7 @@ authority, and approval gates can participate in an operational `READY` decision
 | GTFS Static agency feed (optional, no default URL) | Real published stops, routes, trips, calendars, and stop times | `GTFS_STATIC_FEED_URL`, `GTFS_STATIC_SOURCE_NAME`, `GTFS_SOURCE_LICENSE` | Parsed as a ZIP and validated for required files, referential integrity, ordered stop times, and checksum. A static release is not automatically current; retain its release/ETag metadata and classify historical snapshots honestly. |
 | GTFS-Realtime agency feed (optional, no default URL) | Trip updates, vehicle positions, and service alerts | `GTFS_REALTIME_FEED_URL`, `GTFS_REALTIME_SOURCE_NAME`, `GTFS_SOURCE_LICENSE` | Standard protobuf is supported when `gtfs-realtime-bindings` is installed; an equivalent JSON gateway is accepted for authorized integrations. Feed timestamp and payload checksum are retained. It is not signal, block, or movement authority. |
 | India Open Government Data timetable export/API (optional, no default URL) | Government-published timetable rows when a legitimate release is available | `INDIA_RAILWAYS_TIMETABLE_API_URL`, `INDIA_RAILWAYS_TIMETABLE_API_KEY`, `INDIA_RAILWAYS_SOURCE_NAME`, `INDIA_RAILWAYS_SOURCE_LICENSE` | Accepts JSON `records`/`data`/`results` or CSV. Required train/station/time fields must be explicitly present; no station, train, or time is filled from repository defaults. Check the release date before treating it as current. |
+| SNCF Voyageurs public passenger GTFS and GTFS-Realtime capture, via [transport.data.gouv.fr](https://transport.data.gouv.fr/datasets/horaires-sncf?locale=fr) | A recorded 16 September 2026 French publisher snapshot shown in the offline source panel | Read-only `RECORDED_SOURCE_SNAPSHOT_DIR`; [capture manifest](../submission/experiments/runs/20260916T064806641708Z_sncf_snapshot_2dc07b37/source_manifest.json) | Real historical publisher bytes with per-file SHA-256 checks, URLs, timestamps and [ODbL notice](data/SNCF_ODBL_NOTICE.md). The realtime protobuf bytes were preserved without semantic decoding. No Indian operational or safety authority is inferred. This capture is not imported into route or assurance decisions. |
 | Operator input / uploaded documents | Shipment references, loading windows, declarations, permits, approvals, and document metadata | Authenticated API/import workflows | `OPERATOR_INPUT` or `IMPORTED_DOCUMENT`; owner-scoped, checksummed, expiry-checked, and audit logged. Human/legal responsibility remains with the operator. |
 | Engineering import | Bridge/OHE/structure-gauge/axle-load limits and approved segment restrictions | `scripts/import_engineering_evidence.py`; allow-listed issuer identities and checksum-certified files | `AUTHORIZED_FEED`/`IMPORTED_DOCUMENT` only after validation. Seeded limits cannot produce `READY`. |
 | Seeded baseline data shipped with the repository | Demo stations, static congestion, historical-delay factors, and other deterministic baseline values | Repository fixtures and migrations | `SEEDED_BASELINE`. This is reproducible demonstration data, not live railway authority data; it forces `HOLD` where authority is required. |
@@ -41,8 +42,9 @@ authority rules before a decision is eligible for approval.
 
 The online deployment may use managed Supabase Postgres and managed Redis. The offline judge
 edition uses local PostGIS and Redis containers, disables all external provider calls, and
-labels its output `OFFLINE_COMPUTED`/`SEEDED_BASELINE`. It is intentionally a reproducible
-demonstration, not a claim that external conditions are live.
+mounts the dated SNCF capture read-only. Its local database starts without seeded stations;
+case entries remain user declarations. The capture is reproducible historical research data,
+not a claim that external conditions are live.
 
 ## OpenStreetMap
 

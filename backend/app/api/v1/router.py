@@ -14,6 +14,7 @@ from app.api.v1 import (
     port,
     predictive,
     provenance,
+    recorded_sources,
     railways,
     speed,
     timetables,
@@ -41,6 +42,7 @@ api_router.include_router(
     operations.router, prefix="/operations", tags=["integrated-operations"]
 )
 api_router.include_router(provenance.router, prefix="/provenance", tags=["provenance"])
+api_router.include_router(recorded_sources.router, prefix="/research", tags=["research-sources"])
 api_router.include_router(compliance.router, prefix="/compliance", tags=["compliance"])
 api_router.include_router(speed.router, prefix="/speed", tags=["speed-advisory"])
 api_router.include_router(timetables.router, prefix="/timetables", tags=["timetables"])

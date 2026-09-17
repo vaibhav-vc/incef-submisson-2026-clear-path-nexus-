@@ -53,7 +53,7 @@ The available real research snapshot is official French SNCF public data with it
 
 The zero-cost web hosting and local judge deployment are suitable for development evaluation. No government production availability, response-time, data-residency, hosting approval, support SLA or disaster-recovery claim is made for a free hosting account. Hosting, network, operational staffing and assurance budgets must follow the agreed deployment requirement.
 
-Offline judge mode contains labelled staged data and a local demonstration identity. It proves a disconnected demonstration path; it does not establish a railway degraded-operation procedure or an independent-review identity system. Online multi-user access is required to evaluate the assigned reviewer workflow.
+Offline judge mode contains a labelled historical French publisher capture and a local demonstration identity. It proves a disconnected source-integrity inspection path; it does not establish a railway degraded-operation procedure or an independent-review identity system. Online multi-user access is required to evaluate the assigned reviewer workflow.
 
 ## Decision requested at a first technical meeting
 

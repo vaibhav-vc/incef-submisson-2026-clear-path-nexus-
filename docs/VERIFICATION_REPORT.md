@@ -1,6 +1,6 @@
 # EvidenceGate verification and handoff
 
-> **Historical v6 report:** The 1,600 executions below repeated eight deterministic templates and did not establish a field false-accept rate. A September 14 independent audit subsequently found normally signed unsupported constructions that could reach `READY`. EvidenceGate v2 regression hardening and the replacement comparative experiment supersede the broad trust claim; see [the v7 plan](RESEARCH_PIVOT_V7.md).
+> **Historical v6 report:** The 1,600 executions below repeated eight deterministic templates and did not establish a field false-accept rate. A September 14 independent audit subsequently found normally signed unsupported constructions that could reach `READY`. EvidenceGate v2 regression hardening and the replacement comparative experiment supersede the broad trust claim; see [the v7 plan](RESEARCH_PIVOT_V7.md). The offline profile described below was later replaced by the real-only, recorded-source edition in [the current judge guide](JUDGE_DEMO.md).
 
 ## September 14, 2026 online/offline deployment verification
 

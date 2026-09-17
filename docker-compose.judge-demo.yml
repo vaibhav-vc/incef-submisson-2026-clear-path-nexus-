@@ -1,4 +1,4 @@
-name: evidencegate-judge-demo
+name: evidencegate-judge-real
 
 services:
   postgres:
@@ -44,14 +44,15 @@ services:
     environment:
       ENVIRONMENT: development
       DEBUG: "false"
-      PROJECT_NAME: EvidenceGate Offline Judge Edition
+      PROJECT_NAME: EvidenceGate Recorded Source Judge Edition
       SECRET_KEY: ${JUDGE_DEMO_SESSION_SECRET:?Run a judge-demo launcher to generate credentials}
       EVIDENCE_SIGNING_KEY: ${JUDGE_DEMO_EVIDENCE_SIGNING_KEY:?Run a judge-demo launcher to generate credentials}
       EVIDENCE_SIGNING_KEY_ID: ${JUDGE_DEMO_EVIDENCE_SIGNING_KEY_ID:?Run a judge-demo launcher to generate credentials}
       EVIDENCE_VERIFICATION_KEYS: '{}'
       AUTH_DISABLED: "true"
-      DEMO_DATA_ENABLED: "true"
-      REAL_DATA_ONLY: "false"
+      DEMO_DATA_ENABLED: "false"
+      REAL_DATA_ONLY: "true"
+      RECORDED_SOURCE_SNAPSHOT_DIR: /opt/recorded-source
       SUPABASE_URL: ""
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
@@ -80,6 +81,8 @@ services:
       redis:
         condition: service_healthy
     command: sh scripts/start.sh
+    volumes:
+      - ./submission/experiments/runs/20260916T064806641708Z_sncf_snapshot_2dc07b37:/opt/recorded-source:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import json, urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3))['status'] == 'ready'"]
       interval: 10s

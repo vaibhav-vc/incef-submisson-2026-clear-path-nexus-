@@ -6,7 +6,7 @@ Status: software research milestone. The national railway replacement objective 
 
 Configuration now rejects `REAL_DATA_ONLY=true` together with `DEMO_DATA_ENABLED=true` in every environment. The standalone seed function independently rejects real-only mode, disabled demo mode and any environment other than development before opening a database session. Regression tests cover these rejection paths and configuration startup.
 
-This prevents new seed writes; it does not remove historical rows or establish the authenticity of imported data. The existing `docker-compose.judge-demo.yml` still explicitly selects synthetic demonstration mode. A real-recorded offline edition remains unfinished; do not describe that compose profile as real-data-only or live.
+This prevents new seed writes; it does not remove historical rows or establish the authenticity of imported data. The judge Compose profile now runs with `REAL_DATA_ONLY=true`, `DEMO_DATA_ENABLED=false`, and a separate `evidencegate-judge-real` volume. It mounts the 16 September 2026 SNCF capture read-only and recomputes the manifest and each file digest at startup. The captured publisher bytes remain historical French research data, not live Indian operational evidence. The snapshot is not imported into route or decision stores.
 
 Verification: 353 backend tests passed using `--basetemp .pytest-tmp-real-policy-1`; targeted seed/model tests passed (8), and Ruff passed for the changed Python files. The first full run encountered five fixture setup errors from Windows access denial on the system pytest temporary directory; the project-local rerun completed without those errors. One existing Starlette deprecation warning remains.
 

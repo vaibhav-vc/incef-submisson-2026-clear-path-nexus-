@@ -66,8 +66,8 @@ export function evidenceLicenseUrl(evidence: AssuranceEvidence): string | null {
 export function runtimeEvidenceNotice(mode: AppRuntimeMode): { title: string; detail: string } {
   return mode === 'offline-judge'
     ? {
-        title: 'Offline judge run · locally stored staged evidence',
-        detail: 'Records may be seeded or staged for demonstration. This workspace never relabels them as live provider observations.',
+        title: 'Offline judge run · recorded publisher source',
+        detail: 'The captured feed is historical research material. User-entered cases are declarations; neither is relabelled as live Indian Railways evidence.',
       }
     : {
         title: 'Online live API session · authenticated stored evidence',

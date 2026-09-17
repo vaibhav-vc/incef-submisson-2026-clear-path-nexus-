@@ -97,9 +97,9 @@ describe('assurance presentation model', () => {
     expect(evidenceLicenseUrl(evidence({ metadata: {} }))).toBeNull()
   })
 
-  it('labels offline evidence as staged and online records as stored', () => {
-    expect(runtimeEvidenceNotice('offline-judge').title).toMatch(/staged evidence/i)
-    expect(runtimeEvidenceNotice('offline-judge').detail).toMatch(/never relabels.*live/i)
+  it('labels the recorded offline source and online records separately', () => {
+    expect(runtimeEvidenceNotice('offline-judge').title).toMatch(/recorded publisher source/i)
+    expect(runtimeEvidenceNotice('offline-judge').detail).toMatch(/historical research material/i)
     expect(runtimeEvidenceNotice('online').title).toMatch(/stored evidence/i)
     expect(runtimeEvidenceNotice('online').detail).toMatch(/does not make every record live/i)
   })

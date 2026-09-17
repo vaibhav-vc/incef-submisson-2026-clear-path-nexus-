@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # Production/staging must opt into this explicit fail-closed policy.  A
     # development judge replay may disable it only with DEMO_DATA_ENABLED=true.
     REAL_DATA_ONLY: bool = False
+    # Read-only research snapshot presented in the local judge edition.
+    # It is never promoted to an operational evidence connector.
+    RECORDED_SOURCE_SNAPSHOT_DIR: str = ""
 
     # Supabase owns user registration, sign-in, refresh, and password policy.
     # The API only verifies the access tokens it issues.

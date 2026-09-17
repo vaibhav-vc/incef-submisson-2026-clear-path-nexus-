@@ -163,8 +163,7 @@ network, install Docker Desktop and run:
 .\scripts\start_judge_demo.ps1
 ```
 
-This separate build disables authentication only in guarded development mode, labels all seeded
-data, makes no live-provider calls, and exposes the web console on port `8080`. See the
+This separate build disables authentication only in guarded development mode, mounts a dated real publisher capture for offline source inspection, and leaves operational station data empty until authorized inputs are available. It labels captured data as historical French research material; it does not treat that feed as Indian Railways authority. The previous synthetic demo volume is isolated by the new Compose project name. The local edition makes no live-provider calls and exposes the web console on port `8080`. See the
 [offline judge guide](docs/JUDGE_DEMO.md). It must never be deployed publicly.
 Run the ordinary launcher once with internet to build/cache the containers; use
 `.\scripts\start_judge_demo.ps1 -Offline` for the disconnected judging-day rehearsal and event.

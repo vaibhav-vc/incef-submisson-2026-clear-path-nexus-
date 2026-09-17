@@ -132,7 +132,7 @@ Primary metrics are false-reviewable rate on critical-invalid cases and false-ho
 ### Phase 6 — Release, offline judge edition, and three audits
 
 - Build authenticated online and one-laptop/LAN offline judge editions from one commit.
-- The offline edition uses clearly labelled staged evidence and makes no live/real-data claim.
+- The offline edition presents a dated, byte-checked real publisher capture as research material and keeps case inputs user-declared. It makes no live or Indian operational authority claim.
 - Export source, experiment, policy, environment, and artifact checksums.
 - Rehearse clean installation, disconnected launch, evidence reconstruction, and bundle verification.
 - Audit 1: correctness/security and adversarial gate review.
@@ -208,7 +208,7 @@ raw snapshot ------------> schema/time/scope/authority/lineage checks
                               reviewer attestation + offline reconstruction
 ```
 
-Online mode uses Supabase-issued identity, Postgres persistence, protected signing keys, bounded connector timeouts, explicit degraded states, and metrics/logging. Offline judge mode serves a local API and staged bundle over LAN and is visibly labelled non-operational. Provider failure never substitutes a reassuring value; optional evidence may be excluded only when the selected policy says it is optional.
+Online mode uses Supabase-issued identity, Postgres persistence, protected signing keys, bounded connector timeouts, explicit degraded states, and metrics/logging. Offline judge mode serves a local API and read-only recorded publisher snapshot over LAN and is visibly labelled non-operational. Provider failure never substitutes a reassuring value; optional evidence may be excluded only when the selected policy says it is optional.
 
 ## 9. Sources and prior art
 

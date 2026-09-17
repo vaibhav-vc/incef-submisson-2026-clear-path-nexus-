@@ -30,6 +30,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--disposable-ci-stack", action="store_true", required=True)
     parser.parse_args()
+    recorded = request("/api/v1/research/recorded-source")
+    assert recorded["content_checksums_valid"] is True
+    assert recorded["evidence_classification"]["operational_authority"] == "NONE"
+    assert len(recorded["feeds"]) == 3
+    assert request("/api/v1/planner/stations") == []
     sources = request("/api/v1/provenance/sources")["items"]
     source = next(item for item in sources if item["key"] == "operator_input")
     case = request("/api/v1/assurance/cases", {

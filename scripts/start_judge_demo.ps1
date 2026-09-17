@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $composeFile = Join-Path $repoRoot 'docker-compose.judge-demo.yml'
-$stateFile = Join-Path $repoRoot '.env.judge-demo.state'
+$stateFile = Join-Path $repoRoot '.env.judge-real.state'
 
 function New-RandomHex {
     param([int]$ByteCount = 32)
@@ -108,15 +108,15 @@ try {
     }
     docker @upArguments
     if ($LASTEXITCODE -ne 0) { throw 'Judge-demo containers did not become ready.' }
-    docker compose --env-file $runtimeFile -f $composeFile exec -T backend python -c "import json,urllib.request; ready=json.load(urllib.request.urlopen('http://frontend:5173/ready',timeout=5)); stations=json.load(urllib.request.urlopen('http://frontend:5173/api/v1/planner/stations',timeout=10)); assert ready.get('status')=='ready' and isinstance(stations,list) and stations"
+    docker compose --env-file $runtimeFile -f $composeFile exec -T backend python -c "import json,urllib.request; ready=json.load(urllib.request.urlopen('http://frontend:5173/ready',timeout=5)); snapshot=json.load(urllib.request.urlopen('http://frontend:5173/api/v1/research/recorded-source',timeout=20)); assert ready.get('status')=='ready' and snapshot.get('content_checksums_valid') is True and snapshot.get('evidence_classification',{}).get('operational_authority')=='NONE'"
     if ($LASTEXITCODE -ne 0) { throw 'Judge-demo gateway smoke test failed.' }
 
     $gatewayAddress = if ($bindAddress -eq '0.0.0.0') { '127.0.0.1' } else { $bindAddress }
     $gatewayUrl = "http://${gatewayAddress}:$parsedPort"
     $readyResponse = Invoke-RestMethod -Uri "$gatewayUrl/ready" -TimeoutSec 10
-    $stationResponse = Invoke-RestMethod -Uri "$gatewayUrl/api/v1/planner/stations" -TimeoutSec 10
-    if ($readyResponse.status -ne 'ready' -or $stationResponse.Count -lt 1) {
-        throw 'Published judge-demo gateway did not return ready status and seeded stations.'
+    $snapshotResponse = Invoke-RestMethod -Uri "$gatewayUrl/api/v1/research/recorded-source" -TimeoutSec 20
+    if ($readyResponse.status -ne 'ready' -or $snapshotResponse.content_checksums_valid -ne $true) {
+        throw 'Published judge gateway did not return a valid recorded source.'
     }
 }
 finally {

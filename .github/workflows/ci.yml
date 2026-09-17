@@ -96,7 +96,7 @@ jobs:
       - name: Confirm the published LAN gateway is ready
         run: |
           curl --fail --silent --show-error http://127.0.0.1:8080/ready
-          curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/planner/stations
+          curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/research/recorded-source
       - name: Exercise assurance persistence and offline reconstruction
         run: python3 scripts/smoke_assurance_judge.py --disposable-ci-stack
       - name: Dump judge service and gateway diagnostics when verification fails
@@ -107,15 +107,15 @@ jobs:
           JUDGE_DEMO_EVIDENCE_SIGNING_KEY: diagnostic-placeholder-value
           JUDGE_DEMO_EVIDENCE_SIGNING_KEY_ID: judge-demo-diagnostic
         run: |
-          docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml ps -a
-          docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml port frontend 5173 || true
-          docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml logs --no-color --tail=300 frontend backend postgres redis
+          docker compose --env-file .env.judge-real.state -f docker-compose.judge-demo.yml ps -a
+          docker compose --env-file .env.judge-real.state -f docker-compose.judge-demo.yml port frontend 5173 || true
+          docker compose --env-file .env.judge-real.state -f docker-compose.judge-demo.yml logs --no-color --tail=300 frontend backend postgres redis
       - name: Remove disposable judge services and volume
         if: always()
         env:
           JUDGE_DEMO_POSTGRES_PASSWORD: stop-only-placeholder-value
           JUDGE_DEMO_SESSION_SECRET: stop-only-placeholder-value
-        run: docker compose --env-file .env.judge-demo.state -f docker-compose.judge-demo.yml down --volumes --remove-orphans
+        run: docker compose --env-file .env.judge-real.state -f docker-compose.judge-demo.yml down --volumes --remove-orphans
 
   android:
     runs-on: ubuntu-latest

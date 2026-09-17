@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { APP_RUNTIME_MODE, LOCAL_DEMO_MODE } from '../lib/runtimeMode'
+import RecordedSourcePanel from './RecordedSourcePanel'
 import {
   buildPendingMatrix,
   describeAssuranceError,
@@ -485,7 +486,7 @@ export default function AssuranceWorkspace() {
             </p>
           </div>
           <span className={`rounded-full border px-3 py-1 text-xs font-bold ${LOCAL_DEMO_MODE ? 'border-amber-400/40 bg-amber-400/10 text-amber-200' : 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'}`}>
-            {LOCAL_DEMO_MODE ? 'OFFLINE · STAGED' : 'ONLINE · STORED'}
+            {LOCAL_DEMO_MODE ? 'OFFLINE · RECORDED' : 'ONLINE · STORED'}
           </span>
         </div>
         <div className={`mt-4 rounded-xl border p-4 ${LOCAL_DEMO_MODE ? 'border-amber-400/30 bg-amber-400/5' : 'border-cyan-400/20 bg-cyan-400/5'}`} role="status">
@@ -496,6 +497,8 @@ export default function AssuranceWorkspace() {
           Non-vital research boundary: REVIEWABLE is evidence admissibility, not movement authority, driver-speed instruction, interlocking control, or dispatch approval.
         </p>
       </div>
+
+      {LOCAL_DEMO_MODE && <RecordedSourcePanel />}
 
       <div aria-live="polite" className="space-y-2">
         {error ? <p role="alert" className="rounded-xl border border-rose-700 bg-rose-950/30 p-4 text-sm text-rose-200">{error}</p> : null}

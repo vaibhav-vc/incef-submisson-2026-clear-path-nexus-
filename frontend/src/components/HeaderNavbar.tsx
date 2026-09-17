@@ -56,7 +56,7 @@ export default function HeaderNavbar({ activeTab, setActiveTab }: HeaderNavbarPr
       <div className="max-w-7xl mx-auto flex flex-col gap-3">
         {LOCAL_DEMO_MODE && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs text-amber-100" role="status">
-            <span><strong>Offline judge mode</strong> · local backend only · authentication bypassed · seeded demonstration data · no operational authority</span>
+            <span><strong>Offline judge mode</strong> · local backend only · authentication bypassed · dated publisher snapshot · no operational authority</span>
             <button
               type="button"
               className="rounded border border-amber-300/40 px-2 py-1 font-semibold hover:bg-amber-300/10"
