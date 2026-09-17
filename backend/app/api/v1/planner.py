@@ -63,6 +63,18 @@ from app.services.space_weather import space_weather_service
 router = APIRouter()
 
 
+def _raise_non_vital_dispatch_boundary() -> None:
+    """Prevent the research application from representing movement authority."""
+
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Operational dispatch was retired from EvidenceGate. Export the review bundle and "
+            "use the railway's authorized control, signalling, interlocking, and ATP systems."
+        ),
+    )
+
+
 async def _require_ready_route_evidence(
     db: AsyncSession, route_id: UUID, user_id: str
 ) -> RouteDecisionSnapshot:
@@ -828,6 +840,7 @@ async def dispatch_route(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> RouteDispatchResponse:
+    _raise_non_vital_dispatch_boundary()
     result = await db.execute(
         select(GeneratedRoute)
         .where(
@@ -871,6 +884,8 @@ async def dispatch_journey(
     user: CurrentUser = Depends(get_current_user),
 ) -> JourneyDispatchResponse:
     """Validate and dispatch every journey leg in one database transaction."""
+
+    _raise_non_vital_dispatch_boundary()
 
     result = await db.execute(
         select(GeneratedRoute)
@@ -990,7 +1005,9 @@ async def _reassess_schedule(db: AsyncSession, schedule: TrainSchedule) -> None:
     schedule.conflict_status = assessment.status
     schedule.conflict_reason = assessment.explanation
     if schedule.schedule_status not in {"DISPATCHED", "CANCELLED"}:
-        schedule.schedule_status = "READY" if assessment.status == "CLEAR" else "PLANNED"
+        # This is a non-vital captured-snapshot study. It may record conflicts,
+        # but it cannot promote a schedule to operational readiness.
+        schedule.schedule_status = "PLANNED"
 
 
 @router.get("/schedules", response_model=list[TrainScheduleResponse])
@@ -1104,6 +1121,7 @@ async def dispatch_schedule(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> TrainScheduleResponse:
+    _raise_non_vital_dispatch_boundary()
     schedule = await _user_schedule_or_404(db, schedule_id, user.id)
     if schedule.schedule_status == "DISPATCHED":
         return TrainScheduleResponse.model_validate(schedule)

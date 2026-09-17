@@ -1,5 +1,7 @@
 # Product truth — 22 August 2026
 
+> **v7 transition:** Public research functionality is evidence assessment, review attestation, and reconstruction. Legacy route/schedule/prediction/operations modules are case generators or archived adapters. All route, journey, and schedule dispatch endpoints are retired (HTTP 410).
+
 This file describes the repository, not planned marketing claims.
 
 ## Implemented

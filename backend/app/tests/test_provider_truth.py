@@ -46,14 +46,14 @@ def test_unavailable_environment_is_not_scored_as_clear() -> None:
     assert any("unavailable" in alert.lower() for alert in alerts)
 
 
-def test_live_weather_with_unavailable_noaa_is_not_scored_as_clear() -> None:
+def test_live_weather_is_scored_without_mandatory_noaa_input() -> None:
     score, alerts = SpaceWeatherService().weather_to_score(
         {"weather": [{"id": 800}], "wind": {"speed": 2}, "main": {"visibility": 10000}},
         {"status": "unavailable", "kp_index": None},
     )
 
-    assert score is None
-    assert any("NOAA" in alert for alert in alerts)
+    assert score == 100.0
+    assert not any("NOAA" in alert for alert in alerts)
 
 
 def test_malformed_weather_is_not_scored_as_clear() -> None:

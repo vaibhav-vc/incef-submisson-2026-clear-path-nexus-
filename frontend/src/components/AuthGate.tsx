@@ -144,7 +144,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
           <p className="auth-kicker">Rail decision assurance</p>
           <h1 id="evidencegate-title">Decide with evidence.<span>Release with confidence.</span></h1>
           <p className="auth-intro">
-            Route constraints, source provenance, and dispatch authorization—resolved into one
+            Source authority, temporal validity, and decision provenance—resolved into one
             auditable decision.
           </p>
         </div>

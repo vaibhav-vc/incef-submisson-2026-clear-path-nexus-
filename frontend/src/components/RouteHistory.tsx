@@ -40,25 +40,25 @@ export default function RouteHistory({ onBack, onSchedule }: Props) {
     <div className="min-h-screen bg-[#121a2e] text-white">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-800/60 bg-gradient-to-r from-blue-950 via-blue-900 to-indigo-950 px-6 py-4">
         <div>
-          <h1 className="text-xl font-bold">Route History / Dispatch Log</h1>
-          <p className="text-xs font-mono text-blue-300">Supabase-user scoped route evaluations</p>
+          <h1 className="text-xl font-bold">Evidence Reconstruction</h1>
+          <p className="text-xs font-mono text-blue-300">Owner-scoped historical cases and their preserved evidence state</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={onBack} className="rounded border border-slate-600 px-3 py-2 text-xs font-mono hover:bg-slate-800">Route Planner</button>
-          <button onClick={onSchedule} className="rounded border border-blue-500/50 px-3 py-2 text-xs font-mono text-blue-300 hover:bg-blue-950/50">Scheduler</button>
+          <button onClick={onBack} className="rounded border border-slate-600 px-3 py-2 text-xs font-mono hover:bg-slate-800">Case Builder</button>
+          <button onClick={onSchedule} className="rounded border border-blue-500/50 px-3 py-2 text-xs font-mono text-blue-300 hover:bg-blue-950/50">Timetable Study</button>
           <button onClick={() => void load()} className="rounded bg-blue-600 px-3 py-2 text-xs font-mono hover:bg-blue-500">Refresh</button>
         </div>
       </header>
       <main className="mx-auto max-w-7xl p-6">
         {error ? <div className="mb-4 rounded border border-red-600/40 bg-red-950/30 p-3 text-sm text-red-300">{error}</div> : null}
-        {loading ? <p className="font-mono text-slate-400">Loading dispatch log…</p> : null}
-        {!loading && items.length === 0 ? <p className="rounded border border-slate-700 bg-slate-900 p-4 font-mono text-sm text-slate-400">No evaluations yet. Run a route from the planner first.</p> : null}
+        {loading ? <p className="font-mono text-slate-400">Loading evidence history…</p> : null}
+        {!loading && items.length === 0 ? <p className="rounded border border-slate-700 bg-slate-900 p-4 font-mono text-sm text-slate-400">No cases yet. Create an external-decision test case first.</p> : null}
         <div className="overflow-x-auto rounded-xl border border-slate-700 bg-slate-900/80">
           {items.length > 0 ? (
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="border-b border-slate-700 bg-slate-950/60 text-[10px] font-mono uppercase text-slate-400">
                 <tr>
-                  <th className="p-3">Created</th><th className="p-3">Route</th><th className="p-3">Cargo H×W / T</th><th className="p-3">Clearance</th><th className="p-3">Reliability</th><th className="p-3">Dispatch</th><th className="p-3">Action</th>
+                  <th className="p-3">Created</th><th className="p-3">Case corridor</th><th className="p-3">Cargo H×W / T</th><th className="p-3">Legacy result</th><th className="p-3">Legacy score</th><th className="p-3">Archived v6 state</th><th className="p-3">Evidence finding</th>
                 </tr>
               </thead>
               <tbody>
@@ -75,14 +75,14 @@ export default function RouteHistory({ onBack, onSchedule }: Props) {
                     <td className="p-3 font-mono text-xs">{item.dispatch_status}</td>
                     <td className="p-3">
                       <span
-                        title={evidenceBlock ?? 'Dispatch complete journeys from Operations.'}
+                        title={evidenceBlock ?? 'Inspect and export the preserved evidence bundle.'}
                         className="text-xs font-mono text-slate-400"
                       >
                         {item.dispatch_status === 'DISPATCHED'
-                          ? 'Dispatched'
+                          ? 'Historical DISPATCHED record (v6)'
                           : evidenceBlock
                             ? evidenceKit ? `${evidenceKit.decision_state} · ${evidenceKit.kit_status}` : 'Evidence unavailable'
-                            : 'Audit only · use Operations'}
+                            : 'Reviewable evidence bundle'}
                       </span>
                     </td>
                   </tr>

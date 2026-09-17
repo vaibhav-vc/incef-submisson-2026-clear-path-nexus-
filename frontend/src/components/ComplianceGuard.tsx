@@ -42,16 +42,16 @@ export default function ComplianceGuard() {
         port_customs_reference: portCustomsReference.trim() || undefined,
       }))
     } catch {
-      setError('Compliance check failed. Verify the route and migrated database.')
+      setError('Document checklist failed. Verify the case and migrated database.')
     }
   }
 
   return (
     <section className="grid gap-5 lg:grid-cols-[360px_1fr]">
       <div className="h-fit rounded-2xl border border-slate-800 bg-slate-900 p-5">
-        <p className="text-xs font-mono uppercase tracking-wider text-amber-300">Nexus ComplianceGuard</p>
-        <h2 className="mt-2 text-xl font-bold">Pre-dispatch review</h2>
-        <p className="mt-2 text-xs text-slate-400">Deterministic metadata checks. This does not provide legal advice or declare regulatory compliance.</p>
+        <p className="text-xs font-mono uppercase tracking-wider text-amber-300">Document Evidence Checklist</p>
+        <h2 className="mt-2 text-xl font-bold">Reference completeness review</h2>
+        <p className="mt-2 text-xs text-slate-400">Deterministic metadata findings only. Operator declarations are not issuer verification, legal advice, or proof of regulatory compliance.</p>
         <label className="mt-5 block text-xs text-slate-400">Stored route</label>
         <select value={routeId} onChange={(event) => setRouteId(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm">
           {routes.map((route) => <option key={route.id} value={route.id}>{route.source_station_code} → {route.dest_station_code} · {route.status}</option>)}
@@ -72,7 +72,7 @@ export default function ComplianceGuard() {
         </div>
         <label className="mt-4 flex gap-2 text-xs text-slate-300"><input type="checkbox" checked={cargoComplete} onChange={(event) => setCargoComplete(event.target.checked)} /> Cargo declaration reviewed</label>
         <label className="mt-3 flex gap-2 text-xs text-slate-300"><input type="checkbox" checked={approved} onChange={(event) => setApproved(event.target.checked)} /> Human approval obtained</label>
-        <button onClick={() => void run()} disabled={!routeId} className="mt-5 w-full rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-bold text-slate-950 disabled:opacity-40">Run compliance check</button>
+        <button onClick={() => void run()} disabled={!routeId} className="mt-5 w-full rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-bold text-slate-950 disabled:opacity-40">Run document checklist</button>
         {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
       </div>
       <div className="space-y-4">

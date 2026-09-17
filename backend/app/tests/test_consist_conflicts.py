@@ -42,6 +42,7 @@ def _window(segment_id, *, start_minute: int, end_minute: int, direction="FORWAR
         source_type="AUTHORIZED_FEED",
         source_reference="https://railway.example.test/occupancy/1",
         source_checksum="b" * 64,
+        verification_state="VERIFIED",
         observed_at=NOW,
         fetched_at=NOW,
     )
@@ -55,6 +56,7 @@ def _policy(segment_id, *, single_track=False, headway=600):
         source_type="AUTHORIZED_FEED",
         source_reference="https://railway.example.test/policies/1",
         source_checksum="c" * 64,
+        verification_state="VERIFIED",
         observed_at=NOW,
         fetched_at=NOW,
     )
@@ -64,6 +66,7 @@ def test_consist_requires_contiguous_carriage_positions_and_real_source():
     with pytest.raises(ValueError, match="contiguous"):
         TrainConsistCreate(
             manifest_checksum="a" * 64,
+            expected_carriage_count=2,
             source_type="AUTHORIZED_FEED",
             source_reference="https://railway.example.test/manifest/1",
             observed_at=NOW,
@@ -83,6 +86,7 @@ def test_consist_requires_contiguous_carriage_positions_and_real_source():
 def test_manifest_checksum_is_deterministic_and_carriage_level():
     payload = TrainConsistCreate(
         manifest_checksum="a" * 64,
+        expected_carriage_count=1,
         source_type="AUTHORIZED_FEED",
         source_reference="https://railway.example.test/manifest/1",
         observed_at=NOW,
@@ -91,6 +95,19 @@ def test_manifest_checksum_is_deterministic_and_carriage_level():
     )
     assert canonical_manifest_checksum(payload) == canonical_manifest_checksum(payload)
     assert len(canonical_manifest_checksum(payload)) == 64
+
+
+def test_consist_rejects_a_contiguous_but_truncated_manifest():
+    with pytest.raises(ValueError, match="manifest is incomplete"):
+        TrainConsistCreate(
+            manifest_checksum="a" * 64,
+            expected_carriage_count=3,
+            source_type="AUTHORIZED_FEED",
+            source_reference="https://railway.example.test/manifest/1",
+            observed_at=NOW,
+            fetched_at=NOW,
+            carriages=[_carriage(position=1), _carriage(position=2)],
+        )
 
 
 def test_network_engine_blocks_same_section_overlap_and_headway():
@@ -158,3 +175,13 @@ def test_network_engine_never_returns_clear_for_historical_replay():
     result = assess_network_conflicts(candidate, [window], [], [policy])
     assert result.status == "UNAVAILABLE"
     assert result.evidence_state == "HISTORICAL_REPLAY"
+
+
+def test_network_engine_never_returns_clear_for_user_declared_sources():
+    segment_id = uuid4()
+    candidate = SimpleNamespace(id=uuid4(), train_code="FREIGHT-1", schedule_status="PLANNED")
+    window = _window(segment_id, start_minute=0, end_minute=5)
+    window.verification_state = "UNVERIFIED"
+    result = assess_network_conflicts(candidate, [window], [], [_policy(segment_id)])
+    assert result.status == "UNAVAILABLE"
+    assert any("SOURCE_AUTHENTICATION_UNVERIFIED" in item for item in result.missing_evidence)

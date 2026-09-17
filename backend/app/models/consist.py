@@ -39,6 +39,10 @@ class TrainConsist(Base):
     __tablename__ = "train_consists"
     __table_args__ = (
         CheckConstraint("manifest_checksum ~ '^[0-9A-Fa-f]{64}$'", name="ck_train_consist_checksum"),
+        CheckConstraint(
+            "expected_carriage_count > 0",
+            name="ck_train_consist_expected_count_positive",
+        ),
         UniqueConstraint("schedule_id", name="uq_train_consist_schedule"),
         Index("ix_train_consists_owner_observed", "user_id", "observed_at"),
     )
@@ -55,6 +59,7 @@ class TrainConsist(Base):
     source_type: Mapped[str] = mapped_column(String(40), nullable=False)
     source_reference: Mapped[str] = mapped_column(String(500), nullable=False)
     manifest_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    expected_carriage_count: Mapped[int] = mapped_column(Integer, nullable=False)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     verification_state: Mapped[str] = mapped_column(
@@ -93,6 +98,22 @@ class TrainConsist(Base):
     @property
     def maximum_axle_load_tons(self) -> float:
         return max(float(item.axle_load_tons) for item in self.carriages) if self.carriages else 0.0
+
+    @property
+    def manifest_complete(self) -> bool:
+        """Whether every declared carriage position is present exactly once.
+
+        Contiguous submitted positions alone cannot detect a truncated manifest.
+        The independently declared count closes that gap for both the API and
+        persisted responses.
+        """
+
+        positions = sorted(item.position_in_train for item in self.carriages)
+        return (
+            self.expected_carriage_count > 0
+            and len(positions) == self.expected_carriage_count
+            and positions == list(range(1, self.expected_carriage_count + 1))
+        )
 
 
 class CarriageLoad(Base):
@@ -186,6 +207,9 @@ class RouteOccupationWindow(Base):
     source_type: Mapped[str] = mapped_column(String(40), nullable=False)
     source_reference: Mapped[str] = mapped_column(String(500), nullable=False)
     source_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    verification_state: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="UNVERIFIED", index=True
+    )
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -221,6 +245,9 @@ class TrackSectionPolicy(Base):
     source_type: Mapped[str] = mapped_column(String(40), nullable=False)
     source_reference: Mapped[str] = mapped_column(String(500), nullable=False)
     source_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    verification_state: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="UNVERIFIED", index=True
+    )
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

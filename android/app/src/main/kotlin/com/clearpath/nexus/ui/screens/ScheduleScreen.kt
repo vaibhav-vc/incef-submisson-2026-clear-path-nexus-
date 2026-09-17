@@ -45,7 +45,6 @@ fun ScheduleScreen(modifier: Modifier = Modifier) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var evidenceKits by remember { mutableStateOf<Map<String, RouteEvidenceKitDto>>(emptyMap()) }
-    var inFlightScheduleId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     fun refresh() {
@@ -77,8 +76,8 @@ fun ScheduleScreen(modifier: Modifier = Modifier) {
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
-                Text("TRAIN SCHEDULER", color = TextLight, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text("Owner-scoped backend schedules", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                Text("TIMETABLE IMPACT STUDY", color = TextLight, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("Non-vital comparisons; no movement authority", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
             }
             Button(onClick = { refresh() }, colors = ButtonDefaults.buttonColors(containerColor = AccentSafetyBlue)) {
                 Text("Refresh", fontSize = 11.sp)
@@ -94,26 +93,6 @@ fun ScheduleScreen(modifier: Modifier = Modifier) {
                 ScheduleCard(
                     schedule = schedule,
                     evidenceKit = kit,
-                    dispatching = inFlightScheduleId == schedule.id,
-                    anotherDispatchInFlight = inFlightScheduleId != null,
-                    onDispatch = {
-                        scope.launch {
-                            inFlightScheduleId = schedule.id
-                            error = null
-                            try {
-                                val updated = ApiClient.approveThenDispatchSchedule(
-                                    scheduleId = schedule.id,
-                                    routeId = schedule.generatedRouteId,
-                                )
-                                schedules = schedules.map { if (it.id == updated.id) updated else it }
-                                error = null
-                            } catch (e: Exception) {
-                                error = e.message ?: "Dispatch failed"
-                            } finally {
-                                inFlightScheduleId = null
-                            }
-                        }
-                    },
                 )
             }
         }
@@ -124,9 +103,6 @@ fun ScheduleScreen(modifier: Modifier = Modifier) {
 private fun ScheduleCard(
     schedule: TrainScheduleDto,
     evidenceKit: RouteEvidenceKitDto?,
-    dispatching: Boolean,
-    anotherDispatchInFlight: Boolean,
-    onDispatch: () -> Unit,
 ) {
     val statusColor = when (schedule.conflictStatus) {
         "CLEAR" -> StatusApprovedGreen
@@ -163,9 +139,9 @@ private fun ScheduleCard(
         if (!linkedRouteAvailable || !evidenceReady) {
             Text(
                 if (!linkedRouteAvailable) {
-                    "Dispatch disabled: no linked evaluated route."
+                    "Evidence review unavailable: no linked test case."
                 } else {
-                    "Dispatch disabled: verified READY evidence is required."
+                    "Evidence is not reviewable under the current policy."
                 },
                 color = StatusBlockedRed,
                 fontFamily = FontFamily.Monospace,
@@ -173,24 +149,13 @@ private fun ScheduleCard(
             )
         }
         Button(
-            onClick = onDispatch,
-            enabled = schedule.conflictStatus != "BLOCKED" &&
-                schedule.scheduleStatus !in setOf("DISPATCHED", "CANCELLED") &&
-                linkedRouteAvailable &&
-                evidenceReady &&
-                !anotherDispatchInFlight,
+            onClick = {},
+            enabled = false,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = StatusApprovedGreen),
         ) {
             Text(
-                when {
-                    schedule.scheduleStatus == "DISPATCHED" -> "DISPATCHED"
-                    schedule.conflictStatus == "BLOCKED" -> "DISPATCH BLOCKED"
-                    dispatching -> "APPROVING & DISPATCHING…"
-                    !linkedRouteAvailable -> "NO LINKED ROUTE"
-                    !evidenceReady -> "EVIDENCE NOT READY"
-                    else -> "APPROVE EVIDENCE & DISPATCH"
-                },
+                "NON-VITAL TIMETABLE STUDY · NO DISPATCH",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
             )

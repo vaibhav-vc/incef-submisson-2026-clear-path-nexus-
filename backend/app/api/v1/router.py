@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    assurance,
     compliance,
     consist_conflicts,
     geometry,
@@ -20,6 +21,7 @@ from app.api.v1 import (
 )
 
 api_router = APIRouter()
+api_router.include_router(assurance.router, prefix="/assurance", tags=["evidence-assurance"])
 api_router.include_router(planner.router, prefix="/planner", tags=["planner"])
 api_router.include_router(
     consist_conflicts.router, prefix="/planner", tags=["consist-and-conflicts"]

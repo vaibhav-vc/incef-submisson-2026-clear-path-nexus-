@@ -57,9 +57,6 @@ fun TelemetryPanel(
     onSolarChange: (Float) -> Unit,
     onPortChange: (Float) -> Unit,
     onSimulate: () -> Unit,
-    journeyDispatching: Boolean,
-    journeyDispatchedAt: String?,
-    onDispatchJourney: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberScrollState()
@@ -152,26 +149,19 @@ fun TelemetryPanel(
         }
 
         Button(
-            onClick = onDispatchJourney,
-            enabled = result?.decisionState == "READY" &&
-                result.status == "APPROVED" &&
-                !journeyDispatching &&
-                journeyDispatchedAt == null,
+            onClick = {},
+            enabled = false,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = StatusApprovedGreen),
         ) {
             Text(
-                when {
-                    journeyDispatchedAt != null -> "JOURNEY DISPATCHED · $journeyDispatchedAt"
-                    journeyDispatching -> "VERIFYING, APPROVING & DISPATCHING…"
-                    else -> "APPROVE EVIDENCE & DISPATCH JOURNEY"
-                },
+                "OPERATIONAL DISPATCH RETIRED · EXPORT EVIDENCE BUNDLE",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
             )
         }
         Text(
-            "All evaluated legs dispatch atomically after fresh HOT evidence verification.",
+            "EvidenceGate is non-vital research software. Authorized railway systems retain movement authority.",
             color = TextMuted,
             fontSize = 9.sp,
             fontFamily = FontFamily.Monospace,

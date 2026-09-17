@@ -141,6 +141,7 @@ def _source_errors(record: Any, *, label: str) -> list[str]:
     source_type = str(getattr(record, "source_type", "")).upper()
     source_reference = getattr(record, "source_reference", None)
     source_checksum = getattr(record, "source_checksum", None)
+    verification_state = str(getattr(record, "verification_state", "")).upper()
     observed = _as_aware(getattr(record, "observed_at", None))
     fetched = _as_aware(getattr(record, "fetched_at", None))
     errors: list[str] = []
@@ -150,6 +151,8 @@ def _source_errors(record: Any, *, label: str) -> list[str]:
         errors.append(f"{label}:SOURCE_REFERENCE_MISSING")
     if not isinstance(source_checksum, str) or not SHA256_RE.fullmatch(source_checksum):
         errors.append(f"{label}:SOURCE_CHECKSUM_INVALID")
+    if verification_state != "VERIFIED":
+        errors.append(f"{label}:SOURCE_AUTHENTICATION_UNVERIFIED")
     if observed is None:
         errors.append(f"{label}:OBSERVED_AT_INVALID")
     if fetched is None:
@@ -378,8 +381,17 @@ def assess_network_conflicts(
     )
     if conflicts:
         status = "BLOCKED"
-        evidence_state = "HISTORICAL_REPLAY" if historical else "CURRENT_REAL"
-        explanation = "Network section occupancy or headway conflict detected; dispatch must remain blocked."
+        evidence_state = (
+            "HISTORICAL_REPLAY"
+            if historical
+            else ("INCOMPLETE" if unique_missing else "CURRENT_REAL")
+        )
+        explanation = (
+            "Potential network section occupancy or headway conflict detected in the captured "
+            "snapshot; retain the hold and obtain authenticated operational evidence."
+            if unique_missing
+            else "Network section occupancy or headway conflict detected in the captured snapshot."
+        )
     elif historical:
         # A replay is useful for research and judge demonstrations, but it is
         # never evidence that the live network is clear at the current time.
@@ -393,7 +405,10 @@ def assess_network_conflicts(
     else:
         status = "CLEAR"
         evidence_state = "CURRENT_REAL"
-        explanation = "All supplied real-source section windows satisfy the source-backed headway policies."
+        explanation = (
+            "No conflict was found among the authenticated section windows in this captured "
+            "snapshot; this is not movement authority or proof of national-network completeness."
+        )
 
     return NetworkConflictAssessment(
         status=status,

@@ -61,7 +61,7 @@ fun DispatchHistoryScreen(modifier: Modifier = Modifier) {
                     }
                 }
             } catch (e: Exception) {
-                error = e.message ?: "Could not load dispatch log"
+                error = e.message ?: "Could not load evidence history"
             } finally {
                 loading = false
             }
@@ -73,7 +73,7 @@ fun DispatchHistoryScreen(modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxSize().background(PanelDark).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
-                Text("ROUTE / DISPATCH LOG", color = TextLight, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("EVIDENCE RECONSTRUCTION HISTORY", color = TextLight, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 Text("Current Supabase user only", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
             }
             Button(onClick = { refresh() }, colors = ButtonDefaults.buttonColors(containerColor = AccentSafetyBlue)) { Text("Refresh", fontSize = 11.sp) }
@@ -112,7 +112,7 @@ fun DispatchHistoryScreen(modifier: Modifier = Modifier) {
                         )
                     }
                     Text(
-                        "Audit only. Dispatch the complete current journey from Telemetry.",
+                        "Historical v6 state only. Operational dispatch is retired; use the evidence bundle for reconstruction.",
                         color = TextMuted,
                         fontSize = 9.sp,
                         fontFamily = FontFamily.Monospace,

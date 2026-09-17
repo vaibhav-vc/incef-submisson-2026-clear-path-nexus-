@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { approveRoute, dispatchSchedule, fetchRouteEvidenceKit, fetchSchedules, synchronizeTrainSchedule, type TrainSyncState } from '../services/api'
+import { fetchRouteEvidenceKit, fetchSchedules, synchronizeTrainSchedule, type TrainSyncState } from '../services/api'
 import { evidenceKitBlockReason, type RouteEvidenceKit, type TrainSchedule } from '../types/route'
 import StatusBadge from './status/StatusBadge'
 import TrainSyncPanel from './TrainSyncPanel'
@@ -15,7 +15,6 @@ export default function ScheduleBoard({ onBack, onHistory }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [syncStates, setSyncStates] = useState<Record<string, TrainSyncState>>({})
   const [syncing, setSyncing] = useState<string | null>(null)
-  const [dispatching, setDispatching] = useState<string | null>(null)
   const [evidenceKits, setEvidenceKits] = useState<Record<string, RouteEvidenceKit | null>>({})
 
   const load = useCallback(async () => {
@@ -44,33 +43,6 @@ export default function ScheduleBoard({ onBack, onHistory }: Props) {
     void load()
   }, [load])
 
-  const dispatch = async (schedule: TrainSchedule) => {
-    setError(null)
-    if (!schedule.generated_route_id) {
-      setError('Dispatch blocked: this schedule is not linked to an owned EvidenceGate route.')
-      return
-    }
-    setDispatching(schedule.id)
-    try {
-      const approvalKit = await fetchRouteEvidenceKit(schedule.generated_route_id)
-      setEvidenceKits((current) => ({ ...current, [schedule.generated_route_id as string]: approvalKit }))
-      const approvalBlock = evidenceKitBlockReason(approvalKit)
-      if (approvalBlock) throw new Error(`Approval blocked: ${approvalBlock}`)
-      await approveRoute(schedule.generated_route_id)
-      const dispatchKit = await fetchRouteEvidenceKit(schedule.generated_route_id)
-      setEvidenceKits((current) => ({ ...current, [schedule.generated_route_id as string]: dispatchKit }))
-      const dispatchBlock = evidenceKitBlockReason(dispatchKit)
-      if (dispatchBlock) throw new Error(`Schedule dispatch blocked: ${dispatchBlock}`)
-      const updated = await dispatchSchedule(schedule.id)
-      setItems((prev) => prev.map((item) => (item.id === schedule.id ? updated : item)))
-    } catch (e) {
-      setEvidenceKits((current) => ({ ...current, [schedule.generated_route_id as string]: null }))
-      setError(e instanceof Error ? `Approval or schedule dispatch failed: ${e.message}` : 'Approval or schedule dispatch failed closed.')
-    } finally {
-      setDispatching(null)
-    }
-  }
-
   const synchronize = async (id: string) => {
     setSyncing(id)
     setError(null)
@@ -88,12 +60,12 @@ export default function ScheduleBoard({ onBack, onHistory }: Props) {
     <div className="min-h-screen bg-[#121a2e] text-white">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-800/60 bg-gradient-to-r from-blue-950 via-blue-900 to-indigo-950 px-6 py-4">
         <div>
-          <h1 className="text-xl font-bold">Train Scheduling Control</h1>
-          <p className="text-xs font-mono text-blue-300">Owned schedules · optional authorized ixigo passenger status · shared FastAPI state</p>
+          <h1 className="text-xl font-bold">Timetable Impact Research</h1>
+          <p className="text-xs font-mono text-blue-300">Non-vital schedule comparison · no movement authority or train dispatch</p>
         </div>
         <div className="flex gap-2">
           <button onClick={onBack} className="rounded border border-slate-600 px-3 py-2 text-xs font-mono hover:bg-slate-800">Route Planner</button>
-          <button onClick={onHistory} className="rounded border border-blue-500/50 px-3 py-2 text-xs font-mono text-blue-300 hover:bg-blue-950/50">Dispatch Log</button>
+          <button onClick={onHistory} className="rounded border border-blue-500/50 px-3 py-2 text-xs font-mono text-blue-300 hover:bg-blue-950/50">Evidence History</button>
           <button onClick={() => void load()} className="rounded bg-blue-600 px-3 py-2 text-xs font-mono hover:bg-blue-500">Refresh</button>
         </div>
       </header>
@@ -140,25 +112,14 @@ export default function ScheduleBoard({ onBack, onHistory }: Props) {
                 {syncing === item.id ? 'Synchronizing…' : 'Sync supplementary train status'}
               </button>
 
-              <button
-                type="button"
-                onClick={() => void dispatch(item)}
-                disabled={!item.generated_route_id || dispatching !== null || item.conflict_status === 'BLOCKED' || item.schedule_status === 'DISPATCHED' || item.schedule_status === 'CANCELLED' || evidenceBlock !== null}
-                title={evidenceBlock ?? 'Fresh HOT evidence will be checked again before approval and dispatch.'}
-                className="mt-4 w-full rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-3 text-sm font-semibold transition hover:from-emerald-500 hover:to-teal-500 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {item.schedule_status === 'DISPATCHED'
-                  ? 'Dispatched'
-                  : dispatching === item.id
-                    ? 'Approving linked route…'
-                    : !item.generated_route_id
-                      ? 'No EvidenceGate route'
-                      : item.conflict_status === 'BLOCKED'
-                        ? 'Dispatch Blocked'
-                        : evidenceBlock
-                          ? evidenceKit ? `${evidenceKit.decision_state} · ${evidenceKit.kit_status}` : 'Evidence unavailable'
-                        : 'Approve Route & Dispatch Train'}
-              </button>
+              <div className="mt-4 rounded-lg border border-cyan-800/70 bg-cyan-950/20 p-3 text-xs text-cyan-100">
+                <p className="font-semibold">Research-only schedule impact</p>
+                <p className="mt-1 text-cyan-200/80">
+                  {evidenceBlock
+                    ? evidenceKit ? `${evidenceKit.decision_state} · ${evidenceKit.kit_status}` : 'Evidence unavailable'
+                    : 'Evidence is reviewable. Export it for comparison; authorized railway systems retain control.'}
+                </p>
+              </div>
             </article>
             )
           })}

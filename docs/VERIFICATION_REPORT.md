@@ -1,5 +1,7 @@
 # EvidenceGate verification and handoff
 
+> **Historical v6 report:** The 1,600 executions below repeated eight deterministic templates and did not establish a field false-accept rate. A September 14 independent audit subsequently found normally signed unsupported constructions that could reach `READY`. EvidenceGate v2 regression hardening and the replacement comparative experiment supersede the broad trust claim; see [the v7 plan](RESEARCH_PIVOT_V7.md).
+
 ## September 14, 2026 online/offline deployment verification
 
 This pass adds two explicit runtime contracts rather than allowing a demonstration bypass to leak

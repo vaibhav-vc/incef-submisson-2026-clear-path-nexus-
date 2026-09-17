@@ -1,6 +1,8 @@
-# Nexus ComplianceGuard
+# Document Evidence Checklist (legacy name: Nexus ComplianceGuard)
 
-ComplianceGuard is a pre-dispatch legal and regulatory decision-support module. It is not a lawyer, government service, customs authority, or declaration of compliance.
+> **v7 status:** This is a metadata/reference checklist, not a compliance engine and not a pre-dispatch authority. Operator declarations are not independently verified issuer records.
+
+The checklist reports missing references, declared expiry, and review metadata. It is not a lawyer, government service, customs authority, or declaration of compliance.
 
 ## Implemented MVP rule pack
 

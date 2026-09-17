@@ -15,10 +15,15 @@ Every carriage, occupation window, and section policy requires:
 - a source reference;
 - a lowercase or uppercase SHA-256 checksum;
 - timezone-aware observed and fetched timestamps.
+- a server-assigned verification state.
 
 `SEEDED_BASELINE` and `SIMULATED` are rejected by the API. Historical and
 replayed real records remain available for research, but the conflict engine
 will return `UNAVAILABLE` instead of `CLEAR` for a current operational claim.
+Public API writes are always stored as `UNVERIFIED`; a caller cannot promote
+its own source labels or checksum to authenticated evidence. A future internal
+connector may write `VERIFIED` only after checking provider identity and source
+bytes.
 
 ## Carriage-level manifest
 
@@ -29,7 +34,10 @@ PUT /api/v1/planner/schedules/{schedule_id}/consist
 ```
 
 Each carriage must be listed in contiguous train order, starting at position
-1. The API validates that:
+1. The request must also declare `expected_carriage_count`, and the API rejects
+the manifest unless the number of carriage rows and the full `1..N` position
+set both match that independent count. This prevents a truncated but otherwise
+contiguous list from appearing complete. The API also validates that:
 
 ```text
 gross_weight = tare_weight + cargo_weight
@@ -81,13 +89,17 @@ The result is one of:
   minimum-headway violation exists;
 - `UNAVAILABLE`: the candidate or network coverage is missing, historical,
   malformed, or lacks a source-backed policy;
-- `CLEAR`: all supplied current real-source windows satisfy all supplied
-  policies.
+- `CLEAR`: no conflict exists among the authenticated windows in the captured
+  backend snapshot and every candidate section has an authenticated policy.
 
 `CLEAR` is deliberately stronger than “no overlap found.” If another active
 schedule has no occupation windows, or a candidate section has no policy, the
 engine returns `UNAVAILABLE` because it cannot prove that another train will
 not be interrupted.
+
+`CLEAR` is still non-vital research output: it does not prove that the backend
+contains the whole Indian Railways network, and it never changes a schedule to
+operational `READY` or authorizes movement.
 
 Every conflict includes the conflicting train code, segment ID, UTC conflict
 interval, required headway, and the policy source reference. This makes the

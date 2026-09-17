@@ -18,7 +18,7 @@ export default class AppErrorBoundary extends Component<{ children: ReactNode },
           <h1 id="recovery-title">The workspace could not be displayed.</h1>
           <p>No decision or release status can be confirmed from this screen. Reload to reconnect and review the latest server records.</p>
           <button type="button" onClick={() => window.location.reload()}>Reload workspace</button>
-          <p className="app-recovery__note">Unsaved form inputs may be lost. If an approval or dispatch was in progress, check its recorded status before attempting it again.</p>
+          <p className="app-recovery__note">Unsaved form inputs may be lost. If a review attestation was in progress, check its recorded evidence-root receipt before retrying.</p>
         </section>
       </main>
     )

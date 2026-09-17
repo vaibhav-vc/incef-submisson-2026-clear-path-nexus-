@@ -1,0 +1,125 @@
+{
+  "schema_version": "clearpath.external-source-snapshot.v1",
+  "recorder_version": "SNCF_SNAPSHOT_V1",
+  "capture_completed_at_utc": "2026-09-16T06:48:14.624116+00:00",
+  "capture_started_at_utc": "2026-09-16T06:48:06.640708+00:00",
+  "runtime": {
+    "python": "3.12.14",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "user_agent": "ClearPath-Nexus-INSEF/7.0 reproducible-research-recorder"
+  },
+  "source_catalog": {
+    "dataset_page": "https://transport.data.gouv.fr/datasets/horaires-sncf?locale=fr",
+    "publisher": "SNCF Voyageurs",
+    "license": "Open Database License (ODbL) 1.0",
+    "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+    "special_terms_url": "https://doc.transport.data.gouv.fr/le-point-d-acces-national/cadre-juridique/conditions-dutilisation-des-donnees/licence-odbl.md",
+    "attribution": "Contains information from SNCF Voyageurs' Réseau SNCF TGV, Intercités et TER dataset, available under ODbL 1.0 and the publisher/platform's stated particular conditions of use."
+  },
+  "evidence_classification": {
+    "records": "REAL_PUBLISHER_BYTES",
+    "incident_labels": "NONE",
+    "operational_authority": "NONE",
+    "intended_use": "RESEARCH_REPRODUCIBILITY_ONLY"
+  },
+  "feeds": [
+    {
+      "source_key": "sncf_gtfs_static",
+      "publisher": "SNCF Voyageurs (via transport.data.gouv.fr)",
+      "data_kind": "published_schedule",
+      "local_filename": "sncf_gtfs_static.zip",
+      "byte_length": 3861206,
+      "sha256": "d7257ee83abf3d54be85b1cc7f2413527402c08e2dd32f9ec552d0e594f8d6d6",
+      "transport": {
+        "http_status": 200,
+        "requested_url": "https://eu.ftp.opendatasoft.com/sncf/plandata/Export_OpenData_SNCF_GTFS_NewTripId.zip",
+        "final_url": "https://eu.ftp.opendatasoft.com/sncf/plandata/Export_OpenData_SNCF_GTFS_NewTripId.zip",
+        "request_started_at_utc": "2026-09-16T06:48:06.641708+00:00",
+        "response_completed_at_utc": "2026-09-16T06:48:09.458450+00:00",
+        "http_headers": {
+          "content-type": "application/zip",
+          "content-length": "3861206",
+          "date": "Wed, 16 Sep 2026 06:48:10 GMT",
+          "etag": "\"6aa9903b-3aead6\"",
+          "last-modified": "Tue, 15 Sep 2026 18:36:43 GMT"
+        }
+      },
+      "structural_validation": {
+        "validation": "ZIP_CRC_AND_REQUIRED_GTFS_MEMBERS_OK",
+        "member_count": 8,
+        "required_members": [
+          "agency.txt",
+          "routes.txt",
+          "stop_times.txt",
+          "stops.txt",
+          "trips.txt"
+        ],
+        "row_counts_excluding_header": {
+          "agency.txt": 6,
+          "routes.txt": 704,
+          "stop_times.txt": 330490,
+          "stops.txt": 8713,
+          "trips.txt": 38050
+        },
+        "uncompressed_byte_length": 63407516
+      }
+    },
+    {
+      "source_key": "sncf_gtfs_rt_trip_updates",
+      "publisher": "SNCF Voyageurs (via transport.data.gouv.fr)",
+      "data_kind": "realtime_trip_updates",
+      "local_filename": "sncf_gtfs_rt_trip_updates.pb",
+      "byte_length": 1148585,
+      "sha256": "9a4ede6bc5e5786d7a4e7e72c7a2b0a76e31fc6b18fe12a3a344ad8b231ce19c",
+      "transport": {
+        "http_status": 200,
+        "requested_url": "https://proxy.transport.data.gouv.fr/resource/sncf-gtfs-rt-trip-updates",
+        "final_url": "https://proxy.transport.data.gouv.fr/resource/sncf-gtfs-rt-trip-updates",
+        "request_started_at_utc": "2026-09-16T06:48:11.027574+00:00",
+        "response_completed_at_utc": "2026-09-16T06:48:12.911326+00:00",
+        "http_headers": {
+          "content-type": "application/x-protobuf; charset=UTF-8",
+          "content-length": "1148585",
+          "date": "Wed, 16 Sep 2026 06:47:46 GMT",
+          "cache-control": "max-age=0, private, must-revalidate"
+        }
+      },
+      "structural_validation": {
+        "validation": "NONEMPTY_PROTOBUF_BYTES_RECORDED",
+        "semantic_decode_performed": false
+      }
+    },
+    {
+      "source_key": "sncf_gtfs_rt_service_alerts",
+      "publisher": "SNCF Voyageurs (via transport.data.gouv.fr)",
+      "data_kind": "realtime_service_alerts",
+      "local_filename": "sncf_gtfs_rt_service_alerts.pb",
+      "byte_length": 1127536,
+      "sha256": "385c0b7f72b31293c4879269c73b34c5c1adc3082ff1db615c9c40b526f7cf47",
+      "transport": {
+        "http_status": 200,
+        "requested_url": "https://proxy.transport.data.gouv.fr/resource/sncf-gtfs-rt-service-alerts",
+        "final_url": "https://proxy.transport.data.gouv.fr/resource/sncf-gtfs-rt-service-alerts",
+        "request_started_at_utc": "2026-09-16T06:48:12.925611+00:00",
+        "response_completed_at_utc": "2026-09-16T06:48:14.598131+00:00",
+        "http_headers": {
+          "content-type": "application/x-protobuf; charset=UTF-8",
+          "content-length": "1127536",
+          "date": "Wed, 16 Sep 2026 06:48:08 GMT",
+          "cache-control": "max-age=0, private, must-revalidate"
+        }
+      },
+      "structural_validation": {
+        "validation": "NONEMPTY_PROTOBUF_BYTES_RECORDED",
+        "semantic_decode_performed": false
+      }
+    }
+  ],
+  "limitations": [
+    "This French passenger timetable snapshot is not an Indian Railways feed.",
+    "Public availability does not make the data safety-authoritative or suitable for control.",
+    "GTFS-RT payloads are preserved byte-for-byte but are not semantically decoded here.",
+    "Provider validation warnings or scope limitations may exist; consult the dataset page."
+  ],
+  "manifest_payload_sha256": "90e70476eb3376d01f9c91bc69133a4036b1fb718bab90c4d819b9992ee97a03"
+}

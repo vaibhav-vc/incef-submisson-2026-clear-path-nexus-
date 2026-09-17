@@ -341,7 +341,7 @@ async def test_captured_snapshot_keeps_reproducible_port_and_honest_provider_lin
         for edge in edges
         if edge.parent_record_id == by_type["SPACE_WEATHER_OBSERVATION"].id
     )
-    assert noaa_edge.relationship == "INPUT_TO"
+    assert noaa_edge.relationship == "REFERENCES"
     assert by_type["WEATHER_SCORE"].used_in_decision is False
     assert by_type["WEATHER_SCORE"].availability_state == "UNAVAILABLE"
     assert "weather" in snapshot.excluded_factors

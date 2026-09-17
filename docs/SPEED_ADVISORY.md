@@ -1,9 +1,16 @@
 # Evidence-backed speed-risk advisory
 
-`POST /api/v1/speed/advisory` is a read-only, fail-closed research advisory.
-It does not send commands to a locomotive, signal, interlocking, ATP/Kavach
-system, driver, or dispatch system. It cannot replace railway movement
-authority or collision protection.
+`POST /api/v1/speed/advisory` now returns **HTTP 410**. The earlier endpoint
+accepted authority labels and checksums supplied by the caller, which could not
+prove that a railway authority issued the underlying values. Keeping that path
+public would make a driver-facing number look more trustworthy than it was.
+
+The pure calculator remains available to tests and explicitly labelled
+simulation research. It does not send commands to a locomotive, signal,
+interlocking, ATP/Kavach system, driver, or dispatch system. A future network
+endpoint must load certified movement authority, restrictions, braking data,
+consist identity and territory context from authenticated server-side records;
+it must not accept those trust claims in a request body.
 
 ## Required evidence
 
@@ -32,7 +39,7 @@ cannot be labelled authoritative in the request schema. Private provider keys
 must remain server-side; the browser should submit only references and values
 obtained through the authenticated API/import workflow.
 
-## Request contract
+## Retired request contract (simulation reference only)
 
 The `constraints` array accepts these categories:
 
@@ -97,7 +104,8 @@ authorized evidence.
 
 ## Response semantics
 
-- `ADVISORY`: all required evidence is current and authoritative. The numeric
+- `ADVISORY` in the pure simulation result: all supplied test inputs satisfy
+  the calculator's validation rules. It is not a driver instruction. The numeric
   result is the minimum of the supplied authoritative caps, with a transparent
   stopping-distance calculation from the supplied braking evidence.
 - `HOLD`: at least one required input was submitted but it is missing, stale,

@@ -1,79 +1,83 @@
-# EvidenceGate operations
+# EvidenceGate v2/v7 transition
 
-EvidenceGate is the release boundary between a route calculation and an operational dispatch action. It never turns missing data into an all-clear result.
+EvidenceGate is a non-vital evidence-admissibility boundary. It evaluates stored evidence for an externally supplied research case and produces deterministic findings and a reconstruction bundle. It never issues movement authority, dispatches a train, sets a signal, overrides an interlocking/ATP system, certifies engineering data, or tells a driver what speed to use.
 
-## Canonical states
+## Assessment states
 
-| State | Meaning | Dispatch |
+| Stored state | v7 presentation | Meaning |
 | --- | --- | --- |
-| `HARD_BLOCKED` | A physical cargo/segment clearance rule failed. This has absolute precedence. | Refused |
-| `UNAVAILABLE` | No stored decision evidence exists. | Refused |
-| `HOLD` | Evidence exists but is missing, stale, aging, unavailable, seeded, simulated, or fails integrity verification. | Refused |
-| `READY` | Every required role is trustworthy, current, available, and covered by the signed evidence root. | Human approval still required |
+| `HARD_BLOCKED` | `CONFLICTING_EVIDENCE` | The legacy cargo/segment rule reports an explicit physical conflict. This is evidence of a conflict, not a certified railway prohibition. |
+| `UNAVAILABLE` | `UNAVAILABLE` | No stored assessment evidence exists. |
+| `HOLD` | `REVIEW_REQUIRED` | Required evidence is missing, stale, aging, unavailable, excluded, malformed, unauthorized, context-mismatched, contradictory, or fails integrity/lineage checks. |
+| `READY` | `REVIEWABLE` | Every required policy-v2 role passed the implemented checks. It does not mean safe, compliant, cleared, or authorized to move. |
 
-Required roles are clearance, corridor weather (including NOAA Kp input), port alignment, congestion, and historical delay.
+The transitional route policy requires one direct record for each legacy role: clearance finding, local weather, port alignment, congestion, and historical delay. Each direct role has an exact expected entity type and a minimum semantic payload schema. Required transitive parents must be present, used in the decision, current for their source class, and connected by a trust-relevant lineage edge.
 
-An operator berth window is eligible for trust only when its request includes a manifest reference and the reviewed manifest file's 64-character SHA-256 digest. The digest and reference are sealed into the port evidence record; older or incomplete operator windows remain `HOLD`.
+NOAA planetary Kp is supplementary `REFERENCES` telemetry. It is not a required weather ancestor and cannot raise or lower ordinary railway evidence sufficiency. An asset-specific policy may require geomagnetic evidence only when it names the susceptible equipment, authority, geography, validity interval, threshold, and human response.
 
-Live records are re-aged whenever EvidenceGate is evaluated. A route that was `READY` can return to `HOLD` after its provider evidence expires. The operator must run a new evaluation; the application does not silently refresh or rewrite an old decision snapshot.
+## Fail-closed checks
 
-## Certified engineering import
+EvidenceGate v2 currently verifies:
 
-Seeded engineering values deliberately force `HOLD`. To make engineering evidence eligible for `READY`, an authorized operator prepares a CSV containing these columns:
+- exact owner, route/case, snapshot, and request binding;
+- known source ID and source/type compatibility;
+- expected entity type and role-specific payload structure;
+- nonempty payload and calculated completeness marker;
+- aware fetch/observation/validity timestamps, future-time rejection, live-source freshness, and conservative maximum age for imports/operator statements without issuer expiry;
+- availability and explicit unavailable/degraded states;
+- value checksum and trust-field envelope checksum;
+- one unambiguous direct record per required role;
+- complete, non-excluded transitive ancestors;
+- missing endpoints and cycles in trust-relevant lineage;
+- clearance/derived score consistency with the signed snapshot;
+- signed evidence-root completeness and verification.
 
-```text
-source_code,destination_code,max_height,max_width,max_weight,congestion_factor,historical_delay_hours,geometry_lon_lat,source_reference,certified_by,certified_at,source_type
-```
+All uncertainty fails to `HOLD`/`REVIEW_REQUIRED`. A valid application HMAC over a malformed or unsupported construction does not make it reviewable.
 
-- `geometry_lon_lat` is JSON such as `[[79.08,21.14],[75.56,19.87]]`.
-- `source_type` must be `OPERATOR_INPUT` or `IMPORTED_DOCUMENT`.
-- `source_reference`, `certified_by`, and timezone-aware `certified_at` are mandatory.
-- `certified_by` must exactly match an issuer configured in
-  `ENGINEERING_CERTIFICATION_ALLOWED_ISSUERS`; an empty allowlist, an unknown issuer, or a
-  future certification timestamp is rejected.
-- Every source/destination pair must already identify a known segment.
-- The importer validates the entire file before committing and calculates the canonical SHA-256 checksum used by routing evidence. The digest binds the engineering values, source type, document reference, issuer identity, and certification timestamp.
+## Authenticity boundary
 
-Run:
+Three claims are deliberately separate:
 
-```powershell
-cd backend
-python scripts/import_engineering_evidence.py C:\secure\authorized-segments.csv
-```
+1. SHA-256 says current bytes match recorded bytes.
+2. The EvidenceGate HMAC says this application sealed the recorded envelope with the configured key.
+3. External authenticity says a scoped railway, infrastructure, port, weather, or other authority issued the content.
 
-## Approval and atomic dispatch
+Only the first two are implemented generically. External authenticity requires a provider-authenticated connector, independently verifiable issuer signature/public key, or governed ingestion service. Typing an allowlisted issuer name or a 64-character hash is not sufficient. Existing CSV engineering imports are integrity-preserved but set `signature_verified=false`, so they cannot independently satisfy the authoritative engineering contract.
 
-1. Evaluate every route leg.
-2. Inspect the journey evidence bundle. Each leg has a manifest checksum and signed evidence root; the browser export adds a deterministic journey-root checksum.
-3. An authenticated user in a configured approval role approves each current evidence root.
-4. Dispatch the complete journey through the batch endpoint. The backend locks and validates every owned leg before committing any dispatch state.
+Operator-entered berth windows are retained as supplementary/pending evidence. They cannot satisfy the authoritative port role by themselves; a server-observed document whose bytes are hashed and whose issuer/scope is verified, or an authenticated berth connector, is required.
 
-Approval is invalid when its evidence-root checksum does not match the current stored snapshot. Schedules without a linked, owned, approved EvidenceGate route cannot dispatch.
+## Time policy
 
-## Incident kit
+Live-source observations are dynamically re-aged at every assessment. Operator/imported evidence must include an aware issue/observation time. If an issuer does not provide `valid_until`, v2 applies a conservative maximum age (24 hours for operator statements and approximately one year for imported documents). Production policies should instead store issuer-provided effective-from, valid-until, version, supersession, and revocation data.
 
-`GET /api/v1/provenance/routes/{route_id}/evidence-kit` returns stored evidence only. It never refetches a provider during an incident. The response includes:
+## Review attestation and dispatch retirement
 
-- decision and kit states;
-- reason codes and required-role status;
-- value and record-envelope checksum verification;
-- stored and computed signed evidence roots;
-- complete stored evidence/lineage;
+The legacy route approval endpoint records that an authenticated configured role reviewed one exact evidence root. The web client presents this as an **evidence review attestation**, not route approval.
+
+Route, multi-leg journey, and schedule dispatch endpoints are retired and return HTTP 410 before database access. The UI exposes no dispatch action. Users export the deterministic evidence bundle and continue in the railway's authorized control, signalling, interlocking, and ATP workflow.
+
+Future v7 work replaces mutable legacy route approval columns with append-only, separately signed review receipts bound to case, snapshot, evidence root, reviewer identity/role, purpose, time, expiry, and revocation state. Any evidence/context/policy change creates a new root and never inherits an old receipt.
+
+## Incident/reconstruction kit
+
+`GET /api/v1/provenance/routes/{route_id}/evidence-kit` is the legacy transition endpoint. It returns stored evidence only and never refreshes external providers while reconstructing the historical case. It includes:
+
+- assessment/kit state and reason codes;
+- requirement-level status;
+- stored and recomputed value/envelope checksums;
+- stored and recomputed signed evidence root;
+- evidence records and lineage;
 - known limitations.
 
-The web console caches the last retrieved integrity kit for the current browser session and can export all journey legs as one deterministic JSON bundle. A cached kit is clearly labelled and never authorizes dispatch.
+The browser can export all legs as one deterministic JSON bundle. Browser hashing supports reproducibility; it is not external issuer authentication.
 
-## Production configuration
+## Configuration
 
-- Set independent strong `SECRET_KEY` and `EVIDENCE_SIGNING_KEY` values. The dedicated evidence key signs roots; protect and back it up so stored kits remain verifiable.
-- Set `EVIDENCE_SIGNING_KEY_ID` to a stable identifier. On rotation, change the active ID/key
-  and retain retired ID-to-key mappings in `EVIDENCE_VERIFICATION_KEYS`; each snapshot stores
-  its own key ID and `HMAC-SHA256` algorithm. Missing or unknown historical keys fail closed.
-- Configure `APPROVAL_ALLOWED_ROLES` with dedicated operational roles. Evidence approval reads
-  those roles only from admin-controlled Supabase `app_metadata.approval_role` (or
-  `app_metadata.roles`), never from user-editable metadata or the generic `authenticated` role.
-- Keep `DEMO_DATA_ENABLED=false`.
-- Configure live weather, NOAA, rail/AIS, and maritime feeds as available. Missing required evidence fails closed.
-- Apply Alembic migrations before starting the upgraded service.
+- Use separate strong `SECRET_KEY` and `EVIDENCE_SIGNING_KEY` values.
+- Give the evidence key a stable `EVIDENCE_SIGNING_KEY_ID`; preserve retired verification keys for historical reconstruction.
+- Protect signing keys server-side. Never expose them to Vite/Android or commit them.
+- Keep seeded/simulated data clearly labelled; it is judge-demo material, never real operational evidence.
+- `REAL_DATA_ONLY` is not treated as a magic truth flag. Reviewability is decided role by role from source identity, authority, authenticity, context, time, schema, lineage, and availability.
+- Missing external providers remain explicit `UNAVAILABLE`; no adapter substitutes demo data in online mode.
 
-EvidenceGate remains decision support. It is not signalling, interlocking, Kavach/ATP, certified dispatch control, customs authority, or a substitute for qualified railway engineering review.
+See [the v7 research/system-design plan](RESEARCH_PIVOT_V7.md) for the generic assurance-case model, comparative baselines, official real-data sources, six phases, and acceptance gates.

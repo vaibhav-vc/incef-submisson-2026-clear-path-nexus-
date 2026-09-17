@@ -11,7 +11,9 @@
     "build:online": "tsc -b && vite build --mode online",
     "build:judge": "tsc -b && vite build --mode offline-judge",
     "typecheck": "tsc -b",
-    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs && vitest run",
+    "test:legacy": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:unit": "vitest run",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -41,6 +43,7 @@
     "tailwindcss": "4.3.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.61.0",
-    "vite": "8.0.16"
+    "vite": "8.0.16",
+    "vitest": "5.0.1"
   }
 }

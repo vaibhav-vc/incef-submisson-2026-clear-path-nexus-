@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 from pydantic import ValidationError
 
+from app.core.config import settings
 from app.ml_pipeline import (
     CANDIDATE_PARAMETERS,
     FEATURES,
@@ -196,6 +197,7 @@ async def test_candidate_prediction_is_advisory_and_uses_deterministic_fallback(
         "artifact_checksum": "a" * 64,
     }
     monkeypatch.setattr(service, "predict_raw", lambda _features: (1.0, None))
+    monkeypatch.setattr(settings, "ENABLE_ML_INFERENCE", True)
     row = simulated_rows(1)[0]
     payload = DelayFeatureInput(**{name: row[name] for name in FEATURES})
     db = FakeDb()

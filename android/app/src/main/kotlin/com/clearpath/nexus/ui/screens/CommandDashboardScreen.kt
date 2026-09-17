@@ -312,9 +312,6 @@ fun CommandDashboardScreen(
                     onSolarChange = viewModel::onSolarChange,
                     onPortChange = viewModel::onPortChange,
                     onSimulate = viewModel::simulateThreat,
-                    journeyDispatching = state.journeyDispatching,
-                    journeyDispatchedAt = state.journeyDispatchedAt,
-                    onDispatchJourney = viewModel::dispatchCurrentJourney,
                     modifier = Modifier.fillMaxSize(),
                 )
 

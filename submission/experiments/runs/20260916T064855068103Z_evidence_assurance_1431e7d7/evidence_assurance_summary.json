@@ -1,0 +1,411 @@
+{
+  "experiment": "Randomized paired evidence-admissibility benchmark",
+  "experiment_version": "EVIDENCE_ASSURANCE_BENCHMARK_V1",
+  "executed_at_utc": "2026-09-16T06:48:55.110330+00:00",
+  "deterministic_seed": 20260915,
+  "total_cases": 2400,
+  "unique_case_fingerprints": 2400,
+  "case_classes": {
+    "CLEAN_TEST_FIXTURE": 481,
+    "CONTROLLED_TEST_MUTATION": 1919
+  },
+  "fault_distribution": {
+    "broken_lineage": 101,
+    "empty_payload": 100,
+    "excluded_ancestor": 93,
+    "expired_import": 110,
+    "future_timestamp": 115,
+    "incomplete_payload": 97,
+    "lineage_cycle": 88,
+    "malformed_payload": 115,
+    "missing_direct_role": 103,
+    "missing_lineage": 97,
+    "none": 481,
+    "payload_tamper_after_seal": 92,
+    "role_conflict": 101,
+    "root_signature_tamper_after_seal": 113,
+    "snapshot_score_conflict": 94,
+    "source_type_impersonation": 91,
+    "stale_live_observation": 95,
+    "unavailable_record": 103,
+    "unknown_source": 112,
+    "wrong_context": 99
+  },
+  "classifiers": {
+    "b0_latest_value": {
+      "confusion_matrix": {
+        "tp": 481,
+        "tn": 203,
+        "fp": 1716,
+        "fn": 0
+      },
+      "false_admission_rate": 0.894216,
+      "false_admission_rate_wilson_95": [
+        0.879659,
+        0.907198
+      ],
+      "false_hold_rate": 0.0,
+      "false_hold_rate_wilson_95": [
+        0.0,
+        0.007923
+      ],
+      "balanced_accuracy": 0.552892,
+      "matthews_correlation_coefficient": 0.152184,
+      "latency_ms": {
+        "median": 0.0395,
+        "p95": 0.0601,
+        "p99": 0.1365
+      }
+    },
+    "b1_checksum_timestamp": {
+      "confusion_matrix": {
+        "tp": 481,
+        "tn": 815,
+        "fp": 1104,
+        "fn": 0
+      },
+      "false_admission_rate": 0.5753,
+      "false_admission_rate_wilson_95": [
+        0.553055,
+        0.597243
+      ],
+      "false_hold_rate": 0.0,
+      "false_hold_rate_wilson_95": [
+        0.0,
+        0.007923
+      ],
+      "balanced_accuracy": 0.71235,
+      "matthews_correlation_coefficient": 0.359004,
+      "latency_ms": {
+        "median": 0.3331,
+        "p95": 0.5294,
+        "p99": 1.4198
+      }
+    },
+    "full_evidence_gate": {
+      "confusion_matrix": {
+        "tp": 481,
+        "tn": 1919,
+        "fp": 0,
+        "fn": 0
+      },
+      "false_admission_rate": 0.0,
+      "false_admission_rate_wilson_95": [
+        0.0,
+        0.001998
+      ],
+      "false_hold_rate": 0.0,
+      "false_hold_rate_wilson_95": [
+        0.0,
+        0.007923
+      ],
+      "balanced_accuracy": 1.0,
+      "matthews_correlation_coefficient": 1.0,
+      "latency_ms": {
+        "median": 4.0482,
+        "p95": 8.3924,
+        "p99": 14.5894
+      }
+    }
+  },
+  "paired_exact_mcnemar": {
+    "b0_vs_full": {
+      "left_only_correct": 0,
+      "right_only_correct": 1716,
+      "discordant_pairs": 1716,
+      "two_sided_exact_p": 0.0,
+      "log10_p": -516.266443,
+      "holm_adjusted_p": 0.0
+    },
+    "b1_vs_full": {
+      "left_only_correct": 0,
+      "right_only_correct": 1104,
+      "discordant_pairs": 1104,
+      "two_sided_exact_p": 0.0,
+      "log10_p": -332.036085,
+      "holm_adjusted_p": 0.0
+    },
+    "b0_vs_b1": {
+      "left_only_correct": 0,
+      "right_only_correct": 612,
+      "discordant_pairs": 612,
+      "two_sided_exact_p": 0.0,
+      "log10_p": -183.929327,
+      "holm_adjusted_p": 0.0
+    }
+  },
+  "per_fault": {
+    "none": {
+      "cases": 481,
+      "admitted": {
+        "b0_latest_value": 481,
+        "b1_checksum_timestamp": 481,
+        "full_evidence_gate": 481
+      },
+      "full_gate_reason_codes": {
+        "ALL_REQUIRED_EVIDENCE_TRUSTWORTHY": 481
+      }
+    },
+    "source_type_impersonation": {
+      "cases": 91,
+      "admitted": {
+        "b0_latest_value": 91,
+        "b1_checksum_timestamp": 91,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_ROLE_SOURCE_NOT_ALLOWED": 91,
+        "OPERATOR_EVIDENCE_UNVERIFIED": 91
+      }
+    },
+    "expired_import": {
+      "cases": 110,
+      "admitted": {
+        "b0_latest_value": 110,
+        "b1_checksum_timestamp": 0,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_STALE": 110
+      }
+    },
+    "role_conflict": {
+      "cases": 101,
+      "admitted": {
+        "b0_latest_value": 101,
+        "b1_checksum_timestamp": 101,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_ROLE_CONFLICT": 101
+      }
+    },
+    "future_timestamp": {
+      "cases": 115,
+      "admitted": {
+        "b0_latest_value": 115,
+        "b1_checksum_timestamp": 0,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_FRESHNESS_UNKNOWN": 115,
+        "EVIDENCE_TIMESTAMP_IN_FUTURE": 115
+      }
+    },
+    "malformed_payload": {
+      "cases": 115,
+      "admitted": {
+        "b0_latest_value": 115,
+        "b1_checksum_timestamp": 115,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_PAYLOAD_SCHEMA_INVALID": 115,
+        "EVIDENCE_SNAPSHOT_CONFLICT": 115
+      }
+    },
+    "incomplete_payload": {
+      "cases": 97,
+      "admitted": {
+        "b0_latest_value": 97,
+        "b1_checksum_timestamp": 0,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_PAYLOAD_INCOMPLETE": 97
+      }
+    },
+    "root_signature_tamper_after_seal": {
+      "cases": 113,
+      "admitted": {
+        "b0_latest_value": 113,
+        "b1_checksum_timestamp": 113,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_ROOT_INVALID": 113
+      }
+    },
+    "broken_lineage": {
+      "cases": 101,
+      "admitted": {
+        "b0_latest_value": 101,
+        "b1_checksum_timestamp": 101,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_LINEAGE_INVALID": 101
+      }
+    },
+    "missing_direct_role": {
+      "cases": 103,
+      "admitted": {
+        "b0_latest_value": 0,
+        "b1_checksum_timestamp": 0,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "REQUIRED_ROLE_MISSING": 103
+      }
+    },
+    "payload_tamper_after_seal": {
+      "cases": 92,
+      "admitted": {
+        "b0_latest_value": 92,
+        "b1_checksum_timestamp": 0,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "CHECKSUM_INVALID": 92,
+        "EVIDENCE_ROOT_INVALID": 92,
+        "EVIDENCE_SNAPSHOT_CONFLICT": 92,
+        "RECORD_ENVELOPE_INVALID": 92
+      }
+    },
+    "lineage_cycle": {
+      "cases": 88,
+      "admitted": {
+        "b0_latest_value": 88,
+        "b1_checksum_timestamp": 88,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_LINEAGE_INVALID": 88
+      }
+    },
+    "unavailable_record": {
+      "cases": 103,
+      "admitted": {
+        "b0_latest_value": 103,
+        "b1_checksum_timestamp": 0,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_LINEAGE_INCOMPLETE": 103,
+        "EVIDENCE_UNAVAILABLE": 103
+      }
+    },
+    "missing_lineage": {
+      "cases": 97,
+      "admitted": {
+        "b0_latest_value": 97,
+        "b1_checksum_timestamp": 97,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_LINEAGE_INCOMPLETE": 97
+      }
+    },
+    "snapshot_score_conflict": {
+      "cases": 94,
+      "admitted": {
+        "b0_latest_value": 94,
+        "b1_checksum_timestamp": 94,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_SNAPSHOT_CONFLICT": 94
+      }
+    },
+    "unknown_source": {
+      "cases": 112,
+      "admitted": {
+        "b0_latest_value": 112,
+        "b1_checksum_timestamp": 112,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_ROLE_SOURCE_NOT_ALLOWED": 112,
+        "EVIDENCE_SOURCE_ID_UNKNOWN": 112,
+        "EVIDENCE_SOURCE_POLICY_MISSING": 112
+      }
+    },
+    "stale_live_observation": {
+      "cases": 95,
+      "admitted": {
+        "b0_latest_value": 95,
+        "b1_checksum_timestamp": 0,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_STALE": 95
+      }
+    },
+    "empty_payload": {
+      "cases": 100,
+      "admitted": {
+        "b0_latest_value": 0,
+        "b1_checksum_timestamp": 0,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_PAYLOAD_EMPTY": 100,
+        "EVIDENCE_PAYLOAD_SCHEMA_INVALID": 100,
+        "EVIDENCE_SNAPSHOT_CONFLICT": 100
+      }
+    },
+    "wrong_context": {
+      "cases": 99,
+      "admitted": {
+        "b0_latest_value": 99,
+        "b1_checksum_timestamp": 99,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "EVIDENCE_CONTEXT_MISMATCH": 99
+      }
+    },
+    "excluded_ancestor": {
+      "cases": 93,
+      "admitted": {
+        "b0_latest_value": 93,
+        "b1_checksum_timestamp": 93,
+        "full_evidence_gate": 0
+      },
+      "full_gate_reason_codes": {
+        "REQUIRED_INPUT_EXCLUDED": 93
+      }
+    }
+  },
+  "evidence_gate_policy_errors": [],
+  "external_source_snapshot": {
+    "manifest_file_sha256": "b2d83222fe4bab87f393b8e93c8a29f87ac2f8279ebd9de6ca63f25604bbf49f",
+    "manifest_payload_sha256": "90e70476eb3376d01f9c91bc69133a4036b1fb718bab90c4d819b9992ee97a03",
+    "classification": {
+      "records": "REAL_PUBLISHER_BYTES",
+      "incident_labels": "NONE",
+      "operational_authority": "NONE",
+      "intended_use": "RESEARCH_REPRODUCIBILITY_ONLY"
+    },
+    "feeds": [
+      {
+        "source_key": "sncf_gtfs_static",
+        "sha256": "d7257ee83abf3d54be85b1cc7f2413527402c08e2dd32f9ec552d0e594f8d6d6",
+        "byte_length": 3861206
+      },
+      {
+        "source_key": "sncf_gtfs_rt_trip_updates",
+        "sha256": "9a4ede6bc5e5786d7a4e7e72c7a2b0a76e31fc6b18fe12a3a344ad8b231ce19c",
+        "byte_length": 1148585
+      },
+      {
+        "source_key": "sncf_gtfs_rt_service_alerts",
+        "sha256": "385c0b7f72b31293c4879269c73b34c5c1adc3082ff1db615c9c40b526f7cf47",
+        "byte_length": 1127536
+      }
+    ]
+  },
+  "csv_sha256": "e31ddedf718b6d76b1fabdd4766668a3ae811a0a32e10d4bf1e6116b868e520e",
+  "runtime": {
+    "python": "3.12.14",
+    "platform": "Windows-10-10.0.19045-SP0"
+  },
+  "limitations": [
+    "The benchmark tests software admissibility logic, not railway physics or field safety.",
+    "Controlled mutations are not real incidents, trains, failures, or accident records.",
+    "The clean route bundles are randomized test fixtures, not certified railway inputs.",
+    "An attached SNCF snapshot supplies real publisher bytes and provenance only; it does not make the route fixtures real.",
+    "SNCF passenger data is not Indian Railways operational data and cannot validate replacement of an existing railway system.",
+    "Latency is local-process timing and is not a production capacity or availability claim."
+  ]
+}

@@ -4,12 +4,8 @@ import { withTimeout } from '../lib/sessionLifecycle'
 import { APP_RUNTIME_MODE, LOCAL_DEMO_MODE } from '../lib/runtimeMode'
 
 export type ActiveTab =
-  | 'command' | 'predictive' | 'dustRadar' | 'history'
-  | 'dispatch' | 'schedule' | 'weather' | 'loadProfiles' | 'liveTraffic'
-  | 'sourceTrust' | 'compliance'
-  | 'liveOps'
-  | 'integrated'
-  | 'speedAdvisory'
+  | 'command' | 'history' | 'dispatch' | 'schedule' | 'loadProfiles'
+  | 'assurance' | 'sourceTrust' | 'compliance'
 
 interface HeaderNavbarProps {
   activeTab: ActiveTab
@@ -17,12 +13,10 @@ interface HeaderNavbarProps {
 }
 
 const tabs: Array<[ActiveTab, string]> = [
-  ['integrated', '🧭 Nexus v6'], ['liveOps', '🟢 LiveOps'], ['command', '📍 Operations'], ['schedule', '🗓 Scheduler'], ['dispatch', '🚦 Dispatch'],
-  ['predictive', '⚡ Predictive ETA'], ['dustRadar', '🌪️ Dust Radar'],
-  ['speedAdvisory', '🛡️ Speed Risk'],
-  ['history', '📜 Audit'], ['weather', '🌦️ Telemetry'], ['liveTraffic', '🛰️ Live Traffic'],
-  ['loadProfiles', '📦 Loads'],
-  ['sourceTrust', '🔎 Sources'], ['compliance', '🛡️ Compliance'],
+  ['assurance', '🛡 Evidence Assurance'], ['sourceTrust', '🔎 Sources'], ['command', '📁 Route Case Builder'],
+  ['history', '▦ Evidence Matrix'], ['dispatch', '↺ Reconstruction'],
+  ['schedule', '🗓 Timetable Study'], ['loadProfiles', '🚃 Consist Evidence'],
+  ['compliance', '✓ Document Checklist'],
 ]
 
 export default function HeaderNavbar({ activeTab, setActiveTab }: HeaderNavbarProps) {
@@ -74,7 +68,7 @@ export default function HeaderNavbar({ activeTab, setActiveTab }: HeaderNavbarPr
         )}
         {!LOCAL_DEMO_MODE && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-cyan-400/25 bg-cyan-400/5 px-3 py-1.5 text-[11px] text-cyan-100" role="status">
-            <span><strong>Online operator mode</strong> · Supabase-authenticated access · configured EvidenceGate API</span>
+            <span><strong>Online research mode</strong> · Supabase-authenticated access · configured EvidenceGate API</span>
             <span className="font-mono uppercase tracking-wide">{APP_RUNTIME_MODE}</span>
           </div>
         )}
@@ -82,8 +76,8 @@ export default function HeaderNavbar({ activeTab, setActiveTab }: HeaderNavbarPr
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-xl">🚆</div>
             <div>
-              <h1 className="text-lg font-bold">ClearPath Nexus <span className="text-[10px] text-amber-400">v6.0</span></h1>
-              <p className="text-[11px] text-slate-400">Explainable Freight Operations Decision Support</p>
+              <h1 className="text-lg font-bold">EvidenceGate <span className="text-[10px] text-amber-400">v7 research</span></h1>
+              <p className="text-[11px] text-slate-400">Provenance-aware railway evidence assurance</p>
             </div>
           </div>
           <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-3 py-1.5">

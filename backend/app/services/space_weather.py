@@ -400,12 +400,7 @@ class SpaceWeatherService:
         score = 100.0
 
         if weather_data.get("status") == "unavailable":
-            alerts.append("Weather provider unavailable — verify conditions before dispatch")
-            if kp_data.get("status") == "unavailable":
-                alerts.append("NOAA space-weather feed unavailable — telemetry risk is unknown")
-            return None, alerts
-        if kp_data.get("status") == "unavailable":
-            alerts.append("NOAA space-weather feed unavailable — telemetry risk is unknown")
+            alerts.append("Weather provider unavailable — corridor conditions are unknown")
             return None, alerts
 
         try:
@@ -424,16 +419,10 @@ class SpaceWeatherService:
             score -= 25
             alerts.append("Reduced visibility — dust/fog risk")
 
-        kp = kp_data.get("kp_index")
-        if kp is None:
-            alerts.append("NOAA Kp-index missing — telemetry risk is unknown")
-            return None, alerts
-        if kp >= 7:
-            score -= 35
-            alerts.append(f"CRITICAL: Geomagnetic Kp-index {kp} — signaling telemetry risk")
-        elif kp >= 5:
-            score -= 10
-            alerts.append(f"Elevated Kp-index {kp}")
+        # Kp remains visible on the supplementary telemetry screen, but no
+        # evidence currently calibrates it as a freight route-risk penalty.
+        # It therefore cannot change or withhold the weather score.
+        _ = kp_data
 
         return max(0.0, min(100.0, score)), alerts
 

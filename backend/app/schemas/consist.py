@@ -63,11 +63,15 @@ class CarriageLoadCreate(BaseModel):
 
 class TrainConsistCreate(BaseModel):
     manifest_checksum: str = Field(..., pattern=r"^[A-Fa-f0-9]{64}$")
+    expected_carriage_count: int = Field(..., ge=1, le=4096)
     source_type: RealSourceType
     source_reference: str = Field(..., min_length=3, max_length=500)
     observed_at: datetime
     fetched_at: datetime
-    verification_state: Literal["VERIFIED", "UNVERIFIED"] = "UNVERIFIED"
+    # Public API submissions are declarations, not authenticated connector
+    # output. Trusted importers may persist VERIFIED rows through an internal
+    # ingestion path after validating issuer identity and source bytes.
+    verification_state: Literal["UNVERIFIED"] = "UNVERIFIED"
     metadata: dict = Field(default_factory=dict)
     carriages: list[CarriageLoadCreate] = Field(..., min_length=1, max_length=4096)
 
@@ -82,6 +86,11 @@ class TrainConsistCreate(BaseModel):
             raise ValueError("carriage positions must be unique")
         if sorted(positions) != list(range(1, len(positions) + 1)):
             raise ValueError("carriage positions must be contiguous starting at 1")
+        if len(self.carriages) != self.expected_carriage_count:
+            raise ValueError(
+                "carriage manifest is incomplete: expected_carriage_count must "
+                "equal the number of carriage rows"
+            )
         if not isinstance(self.metadata, dict):
             raise ValueError("metadata must be an object")
         return self
@@ -103,6 +112,8 @@ class TrainConsistResponse(BaseModel):
     source_type: str
     source_reference: str
     manifest_checksum: str
+    expected_carriage_count: int
+    manifest_complete: bool
     observed_at: datetime
     fetched_at: datetime
     verification_state: str
@@ -130,6 +141,7 @@ class OccupationWindowCreate(BaseModel):
     source_type: RealSourceType
     source_reference: str = Field(..., min_length=3, max_length=500)
     source_checksum: str = Field(..., pattern=r"^[A-Fa-f0-9]{64}$")
+    verification_state: Literal["UNVERIFIED"] = "UNVERIFIED"
     observed_at: datetime
     fetched_at: datetime
 
@@ -162,6 +174,7 @@ class OccupationWindowBatch(BaseModel):
 class OccupationWindowResponse(OccupationWindowCreate):
     id: UUID
     schedule_id: UUID
+    verification_state: str
 
     model_config = {"from_attributes": True}
 
@@ -174,6 +187,7 @@ class TrackSectionPolicyCreate(BaseModel):
     source_type: CurrentSourceType
     source_reference: str = Field(..., min_length=3, max_length=500)
     source_checksum: str = Field(..., pattern=r"^[A-Fa-f0-9]{64}$")
+    verification_state: Literal["UNVERIFIED"] = "UNVERIFIED"
     observed_at: datetime
     fetched_at: datetime
 
@@ -190,6 +204,7 @@ class TrackSectionPolicyCreate(BaseModel):
 
 class TrackSectionPolicyResponse(TrackSectionPolicyCreate):
     id: UUID
+    verification_state: str
 
     model_config = {"from_attributes": True}
 

@@ -4,7 +4,7 @@ import Simulator from './Simulator'
 import ScoreGauge from './ScoreGauge'
 import MetricBar from './MetricBar'
 import LoadProfilePanel from './LoadProfilePanel'
-import { approveRoute, dispatchJourney, fetchRouteEvidenceKit, fetchStations, simulateThreat } from '../services/api'
+import { approveRoute, fetchRouteEvidenceKit, fetchStations, simulateThreat } from '../services/api'
 import { suggestRouteThroughWaypoints } from '../services/routePlanner'
 import { evidenceKitBlockReason, type LocationMode, type OperatorLoadingWindow, type RouteSuggestResponse, type Station } from '../types/route'
 import type { LoadProfile } from '../types/loadProfile'
@@ -35,8 +35,6 @@ export default function CommandDashboard() {
   const [approving, setApproving] = useState(false)
   const [evidenceDecision, setEvidenceDecision] = useState<string>('UNAVAILABLE')
   const [evidenceFailure, setEvidenceFailure] = useState<string | null>('Evidence has not been evaluated.')
-  const [dispatching, setDispatching] = useState(false)
-  const [dispatchComplete, setDispatchComplete] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
 
@@ -98,8 +96,6 @@ export default function CommandDashboard() {
     setEvidenceFailure('Route inputs changed. Run a new evaluation.')
     setRouteApproved(false)
     setApproving(false)
-    setDispatching(false)
-    setDispatchComplete(false)
     setSimScore(undefined)
     setSimAlerts([])
     setSimUnavailable(undefined)
@@ -232,7 +228,6 @@ export default function CommandDashboard() {
     setError(null)
     setEvidenceDecision('UNAVAILABLE')
     setEvidenceFailure('Evidence verification is in progress.')
-    setDispatchComplete(false)
     try {
       const data = await suggestRouteThroughWaypoints({
         cargo: {
@@ -336,25 +331,6 @@ export default function CommandDashboard() {
     }
   }, [refreshEvidenceState, result])
 
-  const handleDispatch = useCallback(async () => {
-    if (!result) return
-    const routeIds = result.route_ids?.length ? result.route_ids : [result.route_id]
-    setDispatching(true)
-    setError(null)
-    try {
-      const current = await refreshEvidenceState(routeIds)
-      if (current.failure) {
-        throw new Error(`Dispatch blocked for route ${current.blockedRouteId}: ${current.failure}`)
-      }
-      await dispatchJourney(routeIds)
-      setDispatchComplete(true)
-    } catch (dispatchError) {
-      setError(dispatchError instanceof Error ? dispatchError.message : 'Dispatch failed closed.')
-    } finally {
-      setDispatching(false)
-    }
-  }, [refreshEvidenceState, result])
-
   const captureBrowserGps = useCallback(() => {
     if (!navigator.geolocation) {
       setError('Geolocation not supported in this browser.')
@@ -408,11 +384,11 @@ export default function CommandDashboard() {
   return (
     <div className="h-full overflow-hidden flex flex-col bg-[#0F2D59]">
       <header className="px-6 py-2 bg-gradient-to-r from-blue-950 via-blue-900 to-indigo-950 border-b border-blue-800/60 flex items-center justify-between shrink-0">
-        <p className="text-xs text-blue-300 font-mono">Load profiles · live track routing</p>
+        <p className="text-xs text-blue-300 font-mono">Legacy v6 recommendation adapter · produces research cases only</p>
         <div className="flex items-center gap-3">
           {routeApproved ? (
             <span className="hidden sm:flex items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-950/40 px-3 py-1">
-              <span className="text-[10px] font-mono uppercase text-emerald-300">Route approved</span>
+              <span className="text-[10px] font-mono uppercase text-emerald-300">Review attested</span>
             </span>
           ) : null}
           <span className="hidden sm:flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-950/40 px-3 py-1">
@@ -420,7 +396,7 @@ export default function CommandDashboard() {
             <span className="text-[10px] font-mono uppercase text-emerald-300">Client-side maps</span>
           </span>
           <span className="px-3 py-1 bg-blue-600 text-white text-xs font-mono rounded-full shadow-lg shadow-blue-900/50">
-            v6.0
+            EvidenceGate v2
           </span>
         </div>
       </header>
@@ -433,7 +409,7 @@ export default function CommandDashboard() {
 
           <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
             <span className="inline-block h-2 w-2 rounded-full bg-blue-400" />
-            Position & Routing
+            External decision test case
           </h2>
 
           {loadProfile ? (
@@ -447,7 +423,7 @@ export default function CommandDashboard() {
             </div>
           ) : (
             <p className="rounded-lg border border-dashed border-red-500/40 p-3 text-center text-xs font-mono text-red-300">
-              Create or select a load profile above to enable routing.
+              Create or select a consist/load profile to build a test case.
             </p>
           )}
 
@@ -692,20 +668,20 @@ export default function CommandDashboard() {
 
         <div className="flex w-14 shrink-0 flex-col items-center justify-center gap-3 border-r border-slate-700/50 bg-slate-950/80 px-2 py-4">
           <span className="text-[8px] font-mono font-bold uppercase tracking-widest text-slate-500 [writing-mode:vertical-rl] rotate-180">
-            Dispatch
+            Review
           </span>
           <button
             type="button"
             onClick={() => void handleApprove()}
             disabled={approving || routeApproved || !result || result.status !== 'APPROVED' || evidenceDecision !== 'READY' || evidenceFailure !== null}
-            title={evidenceFailure ?? 'Every route leg will be checked again for fresh HOT evidence.'}
+            title={evidenceFailure ?? 'Attest that this exact signed evidence root was reviewed.'}
             className={`rounded-lg px-2 py-4 text-[10px] font-mono font-bold uppercase leading-tight transition [writing-mode:vertical-rl] rotate-180 ${
               routeApproved
                 ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40'
                 : 'border border-emerald-600/50 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-950/50 disabled:opacity-40'
             }`}
           >
-            {approving ? 'Checking & approving…' : routeApproved ? 'Approved' : evidenceFailure ? 'Evidence blocked' : 'Approve Route'}
+            {approving ? 'Checking evidence…' : routeApproved ? 'Review attested' : evidenceFailure ? 'Evidence blocked' : 'Attest Review'}
           </button>
         </div>
 
@@ -804,18 +780,11 @@ export default function CommandDashboard() {
             unavailable={simUnavailable}
           />
 
-          {routeApproved && !dispatchComplete && (
-            <button
-              type="button"
-              disabled={dispatching || evidenceFailure !== null}
-              onClick={() => void handleDispatch()}
-              title={evidenceFailure ?? 'Every route leg will be checked again for fresh HOT evidence.'}
-              className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold rounded-lg shadow-lg w-full transition"
-            >
-              {dispatching ? 'Rechecking evidence & dispatching…' : evidenceFailure ? 'Dispatch blocked by evidence' : 'Finalize and Dispatch Route'}
-            </button>
-          )}
-          {dispatchComplete ? <p className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">All verified route legs dispatched.</p> : null}
+          {routeApproved ? (
+            <p className="rounded-lg border border-cyan-700 bg-cyan-950/30 p-3 text-sm text-cyan-200">
+              Evidence review attested for this exact signed root. Download the deterministic bundle above for independent reconstruction. This research application does not dispatch trains.
+            </p>
+          ) : null}
         </aside>
       </div>
     </div>

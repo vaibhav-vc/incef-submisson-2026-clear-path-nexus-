@@ -120,7 +120,7 @@ fun UserPanel(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "AI-Powered Railway Intelligence Command Center",
+                text = "Provenance-Aware Railway Evidence Assurance",
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
                 color = TextLight,
@@ -258,7 +258,7 @@ fun UserPanel(
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "ClearPath Nexus is a state-of-the-art railway intelligence command interface. Powered by advanced predictive routing heuristics and real-time environmental telemetry, the application evaluates segment hazards, weather profiles, solar geomagnetic storms, and destination constraints to provide optimal routing safety indices.",
+                    text = "EvidenceGate is a non-vital research interface that evaluates whether stored inputs are attributable, current, context-matched, complete, and reproducible. It does not issue movement authority, dispatch trains, control signals, or provide driver speed instructions.",
                     color = TextMuted,
                     fontSize = 12.sp,
                     lineHeight = 18.sp

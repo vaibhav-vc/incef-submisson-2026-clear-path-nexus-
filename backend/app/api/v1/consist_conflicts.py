@@ -117,6 +117,7 @@ async def replace_train_consist(
         source_type=payload.source_type,
         source_reference=payload.source_reference.strip(),
         manifest_checksum=payload.manifest_checksum.lower(),
+        expected_carriage_count=payload.expected_carriage_count,
         observed_at=payload.observed_at.astimezone(timezone.utc),
         fetched_at=payload.fetched_at.astimezone(timezone.utc),
         verification_state=payload.verification_state,
@@ -141,6 +142,7 @@ async def replace_train_consist(
             source_type=item.source_type,
             source_reference=item.source_reference.strip(),
             source_checksum=item.source_checksum.lower(),
+            verification_state=item.verification_state,
             observed_at=item.observed_at.astimezone(timezone.utc),
         )
         for item in payload.carriages
@@ -246,6 +248,7 @@ async def upsert_track_section_policy(
         "source_type": payload.source_type,
         "source_reference": payload.source_reference.strip(),
         "source_checksum": payload.source_checksum.lower(),
+        "verification_state": payload.verification_state,
         "observed_at": payload.observed_at.astimezone(timezone.utc),
         "fetched_at": payload.fetched_at.astimezone(timezone.utc),
     }
@@ -298,6 +301,8 @@ async def assess_schedule_conflicts(
     candidate.conflict_status = assessment.status
     candidate.conflict_reason = assessment.explanation
     if candidate.schedule_status not in {"DISPATCHED", "CANCELLED"}:
-        candidate.schedule_status = "READY" if assessment.status == "CLEAR" else "PLANNED"
+        # Conflict research is non-vital and cannot promote a timetable row to
+        # an operationally ready state.
+        candidate.schedule_status = "PLANNED"
     await db.commit()
     return NetworkConflictResponse.model_validate(assessment.as_dict())

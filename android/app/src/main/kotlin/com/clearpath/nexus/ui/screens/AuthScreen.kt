@@ -77,7 +77,7 @@ fun AuthScreen(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Railway Intelligence Command Center",
+                text = "Railway Evidence Assurance Research",
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
                 color = TextLight,

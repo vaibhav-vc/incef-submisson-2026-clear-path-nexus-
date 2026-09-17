@@ -118,7 +118,10 @@ class Settings(BaseSettings):
     ENABLE_LIVE_AIS: bool = False
     ENABLE_LIVE_GPS: bool = True
     ENABLE_EVENT_ENGINE: bool = True
-    ENABLE_ML_INFERENCE: bool = True
+    # The checked-in candidate was trained on simulated rows and lost to the
+    # deterministic baseline. Keep runtime inference opt-in until a real,
+    # out-of-time evaluation passes the promotion policy.
+    ENABLE_ML_INFERENCE: bool = False
     LIVE_INGEST_INTERVAL_SECONDS: int = 600
     LIVE_OBSERVATION_CACHE_SECONDS: int = 900
     LIVE_OBSERVATION_RETENTION_DAYS: int = 30

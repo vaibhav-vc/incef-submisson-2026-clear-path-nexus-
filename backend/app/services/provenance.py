@@ -566,11 +566,12 @@ async def capture_route_decision(
         raw_state="OPERATOR_INPUT",
         value=cargo,
         request_id=request_id,
+        observed_at=now,
         used=True,
         metadata={"decision_use": "hard_constraints"},
     )
     engineering_segments = []
-    trusted_engineering_types = {"OPERATOR_INPUT", "IMPORTED_DOCUMENT"}
+    trusted_engineering_types = {"IMPORTED_DOCUMENT"}
     for segment in segments:
         geometry = []
         if getattr(segment, "geom_path", None) is not None:
@@ -648,6 +649,14 @@ async def capture_route_decision(
     engineering_verified = bool(engineering_segments) and all(
         item["verified"] for item in engineering_segments
     )
+    engineering_observed_at = min(
+        (
+            item["certified_at"]
+            for item in engineering_segments
+            if item["verified"] and item["certified_at"] is not None
+        ),
+        default=None,
+    )
     if not engineering_verified:
         warnings.extend(
             [
@@ -684,10 +693,16 @@ async def capture_route_decision(
         raw_state="VERIFIED_ENGINEERING_IMPORT" if engineering_verified else "SEEDED_BASELINE",
         value=engineering_value,
         request_id=request_id,
+        observed_at=engineering_observed_at,
         used=True,
         metadata={
             "decision_use": "hard_constraints",
             "verified": engineering_verified,
+            # Existing CSV imports are internally checksummed but carry no
+            # independently verifiable issuer signature.  They cannot become
+            # authoritative merely because the issuer name is allowlisted.
+            "signature_verified": False,
+            "issuer_authentication": "NONE",
             "references": [
                 item["source_reference"]
                 for item in engineering_segments
@@ -810,8 +825,8 @@ async def capture_route_decision(
     )
     if weather_unavailable:
         warnings.append(
-            "Weather or NOAA space-weather evidence unavailable; the weather factor was excluded "
-            "and RRI weights were renormalized."
+            "Weather evidence unavailable; the weather factor was excluded and RRI weights "
+            "were renormalized."
         )
 
     kp_unavailable = kp_data.get("status") == "unavailable"
@@ -843,7 +858,9 @@ async def capture_route_decision(
         LineageEdge(
             parent_record_id=kp_record.id,
             child_record_id=weather_score_record.id,
-            relationship="INPUT_TO",
+            # Planetary Kp is retained as supplementary telemetry. It is not
+            # a required railway weather input or an operational speed limit.
+            relationship="REFERENCES",
         )
     )
 
@@ -934,6 +951,7 @@ async def capture_route_decision(
             "segment_factors": [float(s.congestion_factor) for s in segments],
         },
         request_id=request_id,
+        observed_at=engineering_observed_at,
         used=True,
         metadata={"decision_use": "included"},
     )
@@ -1027,17 +1045,11 @@ async def capture_route_decision(
         user_id=user_id,
         route_id=route_id,
         snapshot_id=snapshot_id,
-        source_key=(
-            "operator_input"
-            if engineering_source_type is CanonicalSourceType.OPERATOR_INPUT
-            else "imported_engineering"
-            if engineering_verified
-            else "route_baseline"
-        ),
+        source_key="clearpath_derived",
         entity_type="HISTORICAL_DELAY_SCORE",
         entity_key=f"{key}:historical",
-        source_type=engineering_source_type,
-        raw_state="VERIFIED_ENGINEERING_IMPORT" if engineering_verified else "SEEDED_BASELINE",
+        source_type=CanonicalSourceType.DERIVED,
+        raw_state="DERIVED",
         value={
             "score": historical_score,
             "segment_delay_hours": [float(s.historical_delay_hours) for s in segments],
@@ -1052,6 +1064,13 @@ async def capture_route_decision(
         metadata={"decision_use": "included"},
     )
     records.append(historical_record)
+    edges.append(
+        LineageEdge(
+            parent_record_id=engineering_record.id,
+            child_record_id=historical_record.id,
+            relationship="DERIVED_FROM",
+        )
+    )
 
     rri_record = _record(
         user_id=user_id,

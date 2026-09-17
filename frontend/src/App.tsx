@@ -7,19 +7,13 @@ const CommandDashboard = lazy(() => import('./components/DashboardTab'))
 const RouteHistoryPanel = lazy(() => import('./components/RouteHistoryPanel'))
 const RouteHistory = lazy(() => import('./components/RouteHistory'))
 const ScheduleBoard = lazy(() => import('./components/ScheduleBoard'))
-const WeatherIntelligenceView = lazy(() => import('./components/WeatherIntelligenceView'))
-const PredictiveDelayPanel = lazy(() => import('./components/PredictiveDelayPanel'))
-const DustStormRadarPanel = lazy(() => import('./components/DustStormRadarPanel'))
-const LiveCorridorTrafficPanel = lazy(() => import('./components/LiveCorridorTrafficPanel'))
 const LoadProfilePanel = lazy(() => import('./components/LoadProfilePanel'))
 const SourceTrustCenter = lazy(() => import('./components/SourceTrustCenter'))
 const ComplianceGuard = lazy(() => import('./components/ComplianceGuard'))
-const LiveOps = lazy(() => import('./components/LiveOps'))
-const IntegratedOperations = lazy(() => import('./components/IntegratedOperations'))
-const SpeedRiskAdvisoryPanel = lazy(() => import('./components/SpeedRiskAdvisoryPanel'))
+const AssuranceWorkspace = lazy(() => import('./components/AssuranceWorkspace'))
 
 function OperationsApp() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('command')
+  const [activeTab, setActiveTab] = useState<ActiveTab>('assurance')
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null)
 
   // The command console manages its own full-height layout, so it renders
@@ -36,20 +30,14 @@ function OperationsApp() {
             : 'flex-1 min-h-0 overflow-y-auto max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6'
         }
       >
-        <Suspense fallback={<div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-sm text-slate-400">Loading operations module…</div>}>
+        <Suspense fallback={<div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-sm text-slate-400">Loading evidence-assurance module…</div>}>
         {activeTab === 'command' && <CommandDashboard />}
-        {activeTab === 'predictive' && <PredictiveDelayPanel />}
-        {activeTab === 'dustRadar' && <DustStormRadarPanel />}
         {activeTab === 'history' && <RouteHistoryPanel />}
         {activeTab === 'dispatch' && <RouteHistory onBack={() => setActiveTab('command')} onSchedule={() => setActiveTab('schedule')} />}
         {activeTab === 'schedule' && <ScheduleBoard onBack={() => setActiveTab('command')} onHistory={() => setActiveTab('dispatch')} />}
-        {activeTab === 'weather' && <WeatherIntelligenceView />}
-        {activeTab === 'liveTraffic' && <LiveCorridorTrafficPanel />}
+        {activeTab === 'assurance' && <AssuranceWorkspace />}
         {activeTab === 'sourceTrust' && <SourceTrustCenter />}
         {activeTab === 'compliance' && <ComplianceGuard />}
-        {activeTab === 'liveOps' && <LiveOps />}
-        {activeTab === 'integrated' && <IntegratedOperations />}
-        {activeTab === 'speedAdvisory' && <SpeedRiskAdvisoryPanel />}
         {activeTab === 'loadProfiles' && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
             <h2 className="text-xl font-bold text-slate-100">📦 Cargo Load Profiles</h2>
@@ -65,8 +53,8 @@ function OperationsApp() {
       </main>
       <footer className="bg-slate-950 border-t border-slate-900 py-4 px-6 text-center text-xs text-slate-500">
         {LOCAL_DEMO_MODE
-          ? 'ClearPath Nexus v6.0 • Offline judge demonstration • Local seeded evidence • Not operational authority'
-          : 'ClearPath Nexus v6.0 • Online operator mode • Supabase-secured EvidenceGate decision support'}
+          ? 'EvidenceGate v7 research • Offline judge demonstration • Staged evidence • No operational authority'
+          : 'EvidenceGate v7 research • Authenticated evidence assurance • No movement authority'}
       </footer>
     </div>
   )
