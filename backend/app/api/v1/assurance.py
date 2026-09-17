@@ -413,6 +413,11 @@ async def add_case_evidence(
         },
         created_at=now,
     )
+    # Seal the PostgreSQL representation: Numeric fields may be quantized and
+    # returned as Decimal, which differs from the incoming Python float form.
+    db.add(record)
+    await db.flush()
+    await db.refresh(record)
     record.integrity_checksum = stable_checksum(record_integrity_payload(record))
     link = CaseEvidenceLink(
         id=uuid4(),
@@ -423,7 +428,6 @@ async def add_case_evidence(
         linked_by=user.id,
         created_at=now,
     )
-    db.add(record)
     db.add(link)
     db.add_all(
         [

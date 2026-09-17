@@ -1,4 +1,6 @@
 from types import SimpleNamespace
+from decimal import Decimal
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -7,10 +9,10 @@ from fastapi import HTTPException
 
 from app.api.v1 import assurance as api
 from app.core.security import CurrentUser
-from app.schemas.assurance import AssuranceVerifyRequest, ReviewReceiptCreate
+from app.schemas.assurance import AssuranceEvidenceCreate, AssuranceVerifyRequest, ReviewReceiptCreate
 from app.services.assurance import seal_snapshot, source_integrity_payload
 from app.services.assurance_integrity import lineage_payload
-from app.services.provenance import stable_checksum
+from app.services.provenance import record_integrity_payload, stable_checksum
 from app.tests.test_assurance_v7 import _record, _sealed_snapshot, _source
 
 
@@ -126,3 +128,30 @@ async def test_read_acl_limits_visibility_to_owner_or_assigned_reviewer():
     assert caught.value.status_code == 404
     query = str(db.scalar.call_args.args[0])
     assert "assigned_reviewer_id" in query and "user_id" in query
+
+
+@pytest.mark.asyncio
+async def test_public_capture_seals_database_numeric_representation(monkeypatch):
+    case, _, _ = _sealed_snapshot()
+    source = _source()
+    source.key = "operator_input"
+    monkeypatch.setattr(api, "_owned_case", AsyncMock(return_value=case))
+    db = SimpleNamespace(scalar=AsyncMock(return_value=source), flush=AsyncMock(), commit=AsyncMock(), added=[])
+    db.add = db.added.append
+    db.add_all = db.added.extend
+
+    async def refresh(record):
+        record.completeness = Decimal("1.0000")
+        record.confidence = Decimal("0.9500")
+    db.refresh = AsyncMock(side_effect=refresh)
+    now = datetime.now(timezone.utc)
+    payload = AssuranceEvidenceCreate(
+        source_id=source.id, evidence_role="OBSERVATION", entity_type=case.subject_type,
+        entity_key=case.subject_key, canonical_source_type="OPERATOR_INPUT", observed_at=now,
+        fetched_at=now, freshness_state="FRESH", availability_state="AVAILABLE",
+        confidence=0.95, completeness=1, value_summary={"classification": "CONTROLLED_TEST_FIXTURE"},
+    )
+    response = await api.add_case_evidence(case.id, payload, db, _user("owner-a", "operator"))
+    record = db.added[0]
+    assert db.refresh.await_count == 1
+    assert response.integrity_checksum == stable_checksum(record_integrity_payload(record))
