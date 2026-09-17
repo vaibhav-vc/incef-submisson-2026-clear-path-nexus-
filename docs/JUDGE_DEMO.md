@@ -129,7 +129,7 @@ values, and creates a new empty local database. It does not remove unrelated Doc
 ## What this edition proves
 
 - The complete application can start from a clean checkout with its database migrations.
-- A pinned, real SNCF publisher capture is mounted read-only and every feed is checked against its SHA-256 and byte count before the launcher reports success.
+- A pinned, real SNCF publisher capture is mounted read-only. The manifest bytes are checked against the Compose-pinned SHA-256, then every feed is checked against the manifest's SHA-256 and byte count before the launcher reports success. This detects changed local bytes; it is not a publisher digital signature.
 - Synthetic corridor seeding is disabled and the real-data-only launch guard is active. The station list starts empty.
 - Live-provider failures cannot be concealed by substituting generated data.
 - Missing evidence produces `HOLD` or `UNAVAILABLE`; physical failures produce `HARD_BLOCKED`.

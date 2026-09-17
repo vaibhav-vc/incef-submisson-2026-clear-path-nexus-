@@ -26,14 +26,20 @@ def _canonical_digest(value: dict[str, Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def inspect_recorded_source(directory: Path) -> dict[str, Any]:
+def inspect_recorded_source(directory: Path, expected_manifest_sha256: str) -> dict[str, Any]:
     """Check recorded bytes and return a bounded, explicit research-only view."""
+    if len(expected_manifest_sha256) != 64 or any(
+        character not in "0123456789abcdef" for character in expected_manifest_sha256
+    ):
+        raise ValueError("A pinned recorded source manifest digest is required")
     root = directory.resolve(strict=True)
     manifest_file = root / "source_manifest.json"
     if not manifest_file.is_file() or manifest_file.stat().st_size > MAX_MANIFEST_BYTES:
         raise ValueError("Recorded source manifest is missing or exceeds its size limit")
+    manifest_bytes = manifest_file.read_bytes()
+    manifest_pin_valid = hashlib.sha256(manifest_bytes).hexdigest() == expected_manifest_sha256
     manifest = json.loads(
-        manifest_file.read_text(encoding="utf-8"),
+        manifest_bytes.decode("utf-8"),
         object_pairs_hook=_unique_pairs,
         parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)),
     )
@@ -44,7 +50,7 @@ def inspect_recorded_source(directory: Path) -> dict[str, Any]:
         raise ValueError("Unsupported recorded source manifest")
     stored_digest = manifest.get("manifest_payload_sha256")
     payload = {key: value for key, value in manifest.items() if key != "manifest_payload_sha256"}
-    manifest_checksum_valid = stored_digest == _canonical_digest(payload)
+    manifest_checksum_valid = manifest_pin_valid and stored_digest == _canonical_digest(payload)
     feeds = manifest.get("feeds")
     if not isinstance(feeds, list) or not 1 <= len(feeds) <= 16:
         raise ValueError("Recorded source feed list is invalid")
@@ -120,6 +126,7 @@ def inspect_recorded_source(directory: Path) -> dict[str, Any]:
         "evidence_classification": classification,
         "limitations": manifest.get("limitations"),
         "manifest_checksum_valid": manifest_checksum_valid,
+        "manifest_pin_valid": manifest_pin_valid,
         "content_checksums_valid": manifest_checksum_valid
         and all(feed["checksum_valid"] for feed in checked_feeds),
         "feeds": checked_feeds,

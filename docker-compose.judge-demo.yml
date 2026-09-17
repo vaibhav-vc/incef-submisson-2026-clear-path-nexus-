@@ -53,6 +53,7 @@ services:
       DEMO_DATA_ENABLED: "false"
       REAL_DATA_ONLY: "true"
       RECORDED_SOURCE_SNAPSHOT_DIR: /opt/recorded-source
+      RECORDED_SOURCE_MANIFEST_SHA256: b2d83222fe4bab87f393b8e93c8a29f87ac2f8279ebd9de6ca63f25604bbf49f
       SUPABASE_URL: ""
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"

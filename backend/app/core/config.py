@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # Read-only research snapshot presented in the local judge edition.
     # It is never promoted to an operational evidence connector.
     RECORDED_SOURCE_SNAPSHOT_DIR: str = ""
+    RECORDED_SOURCE_MANIFEST_SHA256: str = ""
 
     # Supabase owns user registration, sign-in, refresh, and password policy.
     # The API only verifies the access tokens it issues.
