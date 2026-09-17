@@ -13,11 +13,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from submission.verify_assurance_bundle import verify_bundle  # noqa: E402
 
 
-def request(path, payload=None, *, expected=200):
+def request(path, payload=None, *, expected=200, timeout=20):
     raw = json.dumps(payload).encode() if payload is not None else None
     req = Request("http://127.0.0.1:8080" + path, data=raw, headers={"Content-Type": "application/json"})
     try:
-        with urlopen(req, timeout=20) as response:
+        with urlopen(req, timeout=timeout) as response:
             assert response.status == expected, (path, response.status)
             return json.load(response)
     except HTTPError as error:
@@ -34,6 +34,13 @@ def main():
     assert recorded["content_checksums_valid"] is True
     assert recorded["evidence_classification"]["operational_authority"] == "NONE"
     assert len(recorded["feeds"]) == 3
+    for feed in recorded["feeds"]:
+        preview = request(f'/api/v1/research/recorded-source/{feed["source_key"]}/preview', timeout=60)
+        assert preview["source_type"] == "REPLAYED_SNAPSHOT"
+        assert preview["checksum_sha256"] == feed["sha256"]
+        assert datetime.fromisoformat(preview["fetched_at"]) == datetime.fromisoformat(feed["response_completed_at_utc"])
+        assert preview["tables"]
+        assert all(len(table["rows"]) <= 10 for table in preview["tables"])
     assert request("/api/v1/planner/stations") == []
     sources = request("/api/v1/provenance/sources")["items"]
     source = next(item for item in sources if item["key"] == "operator_input")

@@ -10,6 +10,10 @@ This prevents new seed writes; it does not remove historical rows or establish t
 
 Verification: 353 backend tests passed using `--basetemp .pytest-tmp-real-policy-1`; targeted seed/model tests passed (8), and Ruff passed for the changed Python files. The first full run encountered five fixture setup errors from Windows access denial on the system pytest temporary directory; the project-local rerun completed without those errors. One existing Starlette deprecation warning remains.
 
+The recorded source view now offers a bounded decoded preview using the repository's existing timetable parsers. It preserves the capture timestamp and classifies every result as `REPLAYED_SNAPSHOT`; a preview request does not refresh that timestamp. The actual captured static feed parses to 521,778 records (including calendar rows), with 330,490 stop times. The recorded realtime payloads contain 1,675 trip-update entities and 527 alert entities. These are publisher records, not experimental incidents or a field safety result. A cache stores at most three bounded previews, and current file integrity is checked before cache access. The decoder separately compares the exact bytes it reads with the pinned feed checksum, covering a change between inspection and decoding.
+
+Decoded-preview verification: 365 backend tests passed, including actual-file decoding, bounded result size, timestamp preservation, cache corruption and a change between inspection and decoding. The frontend's 22 tests, typecheck, lint and offline build passed. The judge CI smoke now requests all three decoded feeds over HTTP and checks their original checksums and capture times.
+
 ## Audit 1 — code and trust boundaries
 
 The independent review reproduced required operator assertions becoming REVIEWABLE, optional invalid ancestors being ignored, evidence reuse without subject binding, self-attestation, and missing lineage verification. These findings caused implementation changes before release:

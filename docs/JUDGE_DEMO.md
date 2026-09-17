@@ -141,7 +141,7 @@ values, and creates a new empty local database. It does not remove unrelated Doc
 - `AUTH_DISABLED=true` is allowed only because the backend runs in development mode.
 - Live weather, rail, AIS, GPS, event-engine, and ML-inference integrations are disabled.
 - The recorded SNCF passenger feed was captured on 16 September 2026. It is French historical research data, not Indian Railways operational evidence, and is never called live at replay time.
-- The source panel shows publisher, licence, capture time and feed checksums. It does not import those bytes into operational route or assurance decisions.
+- The source panel shows publisher, licence, capture time and feed checksums. Select **Inspect captured records** to decode the actual stops, trips, stop times, trip updates or alerts. Each table shows at most ten publisher rows and retains the original capture time and `REPLAYED_SNAPSHOT` classification. The first static-feed decode can take several seconds; later reads reuse a bounded preview after checking the captured bytes again. It does not import those bytes into operational route or assurance decisions.
 - Without an authorized Indian timetable and engineering source, the offline edition cannot demonstrate a verified Indian corridor or a safe speed/dispatch recommendation.
 - A high score cannot bypass a physical hard block or insufficient evidence.
 - Anyone who can reach the LAN URL can use the demo; there is no judge-demo user account.
