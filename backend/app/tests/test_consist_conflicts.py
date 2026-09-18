@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -9,6 +10,52 @@ from app.services.conflict_engine import assess_network_conflicts, canonical_man
 
 
 NOW = datetime(2026, 9, 14, 8, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize("field", ["tare_weight_tons", "cargo_weight_tons", "gross_weight_tons", "length_m", "width_m", "height_m", "brake_percentage"])
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), float("-inf")])
+def test_carriage_rejects_nonfinite_measurements(field, value):
+    with pytest.raises(ValueError):
+        CarriageLoadCreate(**{**_carriage().model_dump(), field: value})
+
+
+@pytest.mark.parametrize("field", ["carriage_identifier", "carriage_type", "source_reference"])
+def test_carriage_rejects_blank_identity_and_source(field):
+    with pytest.raises(ValueError):
+        CarriageLoadCreate(**{**_carriage().model_dump(), field: "   "})
+
+
+def _manifest(carriages):
+    return TrainConsistCreate(
+        manifest_checksum="a" * 64, expected_carriage_count=len(carriages),
+        source_type="AUTHORIZED_FEED", source_reference="https://railway.example.test/manifest/1",
+        observed_at=NOW, fetched_at=NOW, carriages=carriages,
+    )
+
+
+def test_manifest_rejects_duplicate_physical_carriage():
+    duplicate = {**_carriage(position=2).model_dump(), "carriage_identifier": " W1 "}
+    with pytest.raises(ValueError, match="identifiers must be unique"):
+        _manifest([_carriage(), CarriageLoadCreate(**duplicate)])
+
+
+@pytest.mark.asyncio
+async def test_consist_endpoint_constructs_and_saves_carriages(monkeypatch):
+    from app.api.v1 import consist_conflicts as api
+
+    schedule = SimpleNamespace(id=uuid4(), schedule_status="PLANNED", consist=None)
+    monkeypatch.setattr(api, "_owned_schedule", AsyncMock(return_value=schedule))
+    # Keep real ORM construction; only database I/O and response reload are mocked.
+    db = SimpleNamespace(add=Mock(), commit=AsyncMock(), scalar=AsyncMock(return_value=object()))
+    monkeypatch.setattr(api, "_consist_response", lambda value: value)
+    payload = _manifest([_carriage()])
+    payload.manifest_checksum = canonical_manifest_checksum(payload)
+    await api.replace_train_consist(schedule.id, payload, db, SimpleNamespace(id="owner"))
+    persisted = db.add.call_args.args[0]
+    assert persisted.verification_state == "UNVERIFIED"
+    assert len(persisted.carriages) == 1
+    assert persisted.carriages[0].carriage_identifier == "W1"
+    db.commit.assert_awaited_once()
 
 
 def _carriage(*, position: int = 1, source_type: str = "AUTHORIZED_FEED") -> CarriageLoadCreate:

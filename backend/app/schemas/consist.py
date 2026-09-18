@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 RealSourceType = Literal[
@@ -33,6 +33,8 @@ def _require_aware(value: datetime, field_name: str) -> datetime:
 
 
 class CarriageLoadCreate(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, str_strip_whitespace=True)
+
     position_in_train: int = Field(..., ge=1, le=4096)
     carriage_identifier: str = Field(..., min_length=1, max_length=80)
     carriage_type: str = Field(..., min_length=1, max_length=80)
@@ -62,6 +64,8 @@ class CarriageLoadCreate(BaseModel):
 
 
 class TrainConsistCreate(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, str_strip_whitespace=True)
+
     manifest_checksum: str = Field(..., pattern=r"^[A-Fa-f0-9]{64}$")
     expected_carriage_count: int = Field(..., ge=1, le=4096)
     source_type: RealSourceType
@@ -82,6 +86,9 @@ class TrainConsistCreate(BaseModel):
         if self.fetched_at < self.observed_at:
             raise ValueError("fetched_at cannot be before observed_at")
         positions = [item.position_in_train for item in self.carriages]
+        identifiers = [item.carriage_identifier for item in self.carriages]
+        if len(set(identifiers)) != len(identifiers):
+            raise ValueError("carriage identifiers must be unique")
         if len(set(positions)) != len(positions):
             raise ValueError("carriage positions must be unique")
         if sorted(positions) != list(range(1, len(positions) + 1)):
@@ -131,6 +138,8 @@ class TrainConsistResponse(BaseModel):
 
 
 class OccupationWindowCreate(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, str_strip_whitespace=True)
+
     segment_id: UUID
     sequence_in_route: int = Field(..., ge=0, le=4096)
     entry_time: datetime
@@ -180,6 +189,8 @@ class OccupationWindowResponse(OccupationWindowCreate):
 
 
 class TrackSectionPolicyCreate(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, str_strip_whitespace=True)
+
     segment_id: UUID
     single_track: bool
     minimum_headway_seconds: float | None = Field(default=None, ge=0)

@@ -3,5 +3,12 @@ __pycache__/
 **/__pycache__/
 .pytest_cache/
 .env
+.env.*
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
 *.py[cod]
 artifacts/datasets/

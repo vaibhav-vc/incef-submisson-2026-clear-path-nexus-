@@ -142,7 +142,6 @@ async def replace_train_consist(
             source_type=item.source_type,
             source_reference=item.source_reference.strip(),
             source_checksum=item.source_checksum.lower(),
-            verification_state=item.verification_state,
             observed_at=item.observed_at.astimezone(timezone.utc),
         )
         for item in payload.carriages

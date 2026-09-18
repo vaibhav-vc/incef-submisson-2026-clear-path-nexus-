@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 import logging
-import re
 from time import perf_counter
 from uuid import uuid4
 
@@ -20,17 +19,13 @@ from app.core.observability import (
 
 logger = logging.getLogger(__name__)
 
-UUID_PATH_RE = re.compile(
-    r"/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}(?=/|$)"
-)
-
-
 def normalized_metrics_path(request: Request) -> str:
     route = request.scope.get("route")
     template = getattr(route, "path", None)
     if isinstance(template, str):
         return template
-    return UUID_PATH_RE.sub("/{id}", request.url.path)
+    # Unmatched URLs are attacker-controlled: never retain them as metric labels.
+    return "__unmatched__"
 
 
 @asynccontextmanager

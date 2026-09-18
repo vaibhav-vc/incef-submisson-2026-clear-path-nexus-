@@ -83,7 +83,7 @@ def test_metrics_registry_export():
     assert "nexus_clearance_blocks_total 1" in text
 
 
-def test_metrics_paths_use_templates_and_normalize_unmatched_uuids():
+def test_metrics_paths_use_templates_and_collapse_unmatched_paths():
     matched = SimpleNamespace(
         scope={"route": SimpleNamespace(path="/api/v1/provenance/records/{record_id}")},
         url=SimpleNamespace(path="/ignored"),
@@ -96,4 +96,21 @@ def test_metrics_paths_use_templates_and_normalize_unmatched_uuids():
             path="/api/v1/provenance/records/550e8400-e29b-41d4-a716-446655440000"
         ),
     )
-    assert normalized_metrics_path(unmatched) == "/api/v1/provenance/records/{id}"
+    assert normalized_metrics_path(unmatched) == "__unmatched__"
+
+
+def test_attacker_controlled_paths_and_methods_do_not_grow_metrics():
+    registry = MetricsRegistry()
+    for index in range(100):
+        request = SimpleNamespace(scope={}, url=SimpleNamespace(path=f'/missing-{index}"'))
+        registry.record_request(f"CUSTOM{index}", normalized_metrics_path(request), 404, 0.001)
+    assert len(registry._request_counts) == 1
+    assert len(registry._request_duration_sum) == 1
+    assert len(registry._request_duration_count) == 1
+    assert 'method="OTHER",path="__unmatched__",status="404"} 100' in registry.export_prometheus_text()
+
+
+def test_prometheus_labels_escape_quotes_newlines_and_backslashes():
+    registry = MetricsRegistry()
+    registry.record_request("GET", '/quoted"\\\n', 200, 0.001)
+    assert 'path="/quoted\\"\\\\\\n"' in registry.export_prometheus_text()

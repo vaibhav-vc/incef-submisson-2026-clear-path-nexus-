@@ -67,6 +67,8 @@ class MetricsRegistry:
     def record_request(
         self, method: str, path_group: str, status_code: int, duration_sec: float
     ) -> None:
+        if method not in {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT"}:
+            method = "OTHER"
         key = (method, path_group, status_code)
         self._request_counts[key] = self._request_counts.get(key, 0) + 1
 
@@ -96,6 +98,7 @@ class MetricsRegistry:
             "# TYPE nexus_http_requests_total counter",
         ]
         for (method, path_group, code), count in self._request_counts.items():
+            path_group = _escape_label(path_group)
             lines.append(
                 f'nexus_http_requests_total{{method="{method}",path="{path_group}",status="{code}"}} {count}'
             )
@@ -108,6 +111,7 @@ class MetricsRegistry:
         )
         for (method, path_group), sum_val in self._request_duration_sum.items():
             count_val = self._request_duration_count.get((method, path_group), 1)
+            path_group = _escape_label(path_group)
             lines.append(
                 f'nexus_http_request_duration_seconds_sum{{method="{method}",path="{path_group}"}} {sum_val:.4f}'
             )
@@ -129,7 +133,7 @@ class MetricsRegistry:
         )
         for provider_name, status_dict in provider_status.snapshot().items():
             val = 1 if status_dict.get("status") == "available" else 0
-            lines.append(f'nexus_provider_available{{provider="{provider_name}"}} {val}')
+            lines.append(f'nexus_provider_available{{provider="{_escape_label(provider_name)}"}} {val}')
 
         lines.extend(
             [
@@ -147,11 +151,15 @@ class MetricsRegistry:
                 f"nexus_ml_prediction_latency_seconds_sum {self._prediction_latency_sum:.6f}",
                 "# HELP nexus_ml_active_model_info Active model version.",
                 "# TYPE nexus_ml_active_model_info gauge",
-                f'nexus_ml_active_model_info{{version="{self._active_model_version}"}} 1',
+                f'nexus_ml_active_model_info{{version="{_escape_label(self._active_model_version)}"}} 1',
             ]
         )
 
         return "\n".join(lines) + "\n"
+
+
+def _escape_label(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
 
 
 provider_status = ProviderStatusRegistry()
