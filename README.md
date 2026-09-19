@@ -294,6 +294,16 @@ Unchanged from the original decision: track maintenance forecasting, rail wear p
 
 ## Documentation
 
+- [ISEF 2027 research-plan workbook](submission/ISEF_2027_RESEARCH_PLAN_WORKBOOK.md)
+  — student-completion prompts and a prospective confirmatory protocol; explicitly
+  not a student-authored plan.
+- [ISEF 2027 research notebook scaffold](submission/ISEF_2027_RESEARCH_NOTEBOOK_SCAFFOLD.md)
+  — blank contemporaneous-entry template plus clearly labelled repository-derived
+  history; no invented observations or approvals.
+- [ISEF 2027 source-verification register](submission/ISEF_2027_SOURCE_VERIFICATION_REGISTER.md)
+  — original-source discovery and claim mapping; students must verify and create
+  their own citations under the current rules.
+
 | Topic | Doc |
 | --- | --- |
 | Product scope and truthfulness constraints | [PRODUCT_TRUTH.md](docs/PRODUCT_TRUTH.md) |
