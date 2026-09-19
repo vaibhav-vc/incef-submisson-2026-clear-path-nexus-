@@ -1,7 +1,7 @@
 {
   "experiment": "Randomized paired evidence-admissibility benchmark",
   "experiment_version": "EVIDENCE_ASSURANCE_BENCHMARK_V2",
-  "executed_at_utc": "2026-09-19T03:59:21.178084+00:00",
+  "executed_at_utc": "2026-09-19T04:07:56.139898+00:00",
   "deterministic_seed": 20260919,
   "fault_plan": {
     "origin": "INTERNAL_SEEDED_GENERATOR",
@@ -62,9 +62,9 @@
       "balanced_accuracy": 0.556244,
       "matthews_correlation_coefficient": 0.154328,
       "latency_ms": {
-        "median": 0.0375,
-        "p95": 0.0605,
-        "p99": 0.1281
+        "median": 0.0356,
+        "p95": 0.0506,
+        "p99": 0.0809
       }
     },
     "b1_checksum_timestamp": {
@@ -87,9 +87,9 @@
       "balanced_accuracy": 0.704592,
       "matthews_correlation_coefficient": 0.342983,
       "latency_ms": {
-        "median": 0.3236,
-        "p95": 0.5271,
-        "p99": 1.0488
+        "median": 0.313,
+        "p95": 0.4173,
+        "p99": 0.8752
       }
     },
     "b2_role_quorum": {
@@ -112,9 +112,9 @@
       "balanced_accuracy": 0.5,
       "matthews_correlation_coefficient": 0.0,
       "latency_ms": {
-        "median": 0.0171,
-        "p95": 0.0274,
-        "p99": 0.0442
+        "median": 0.0163,
+        "p95": 0.0212,
+        "p99": 0.0398
       }
     },
     "b3_conservative_complete": {
@@ -137,9 +137,9 @@
       "balanced_accuracy": 0.754128,
       "matthews_correlation_coefficient": 0.407365,
       "latency_ms": {
-        "median": 0.3208,
-        "p95": 0.513,
-        "p99": 0.9918
+        "median": 0.311,
+        "p95": 0.4109,
+        "p99": 0.9201
       }
     },
     "b4_legacy_score": {
@@ -162,9 +162,9 @@
       "balanced_accuracy": 0.498609,
       "matthews_correlation_coefficient": -0.024047,
       "latency_ms": {
-        "median": 0.0086,
-        "p95": 0.0148,
-        "p99": 0.0248
+        "median": 0.008,
+        "p95": 0.0128,
+        "p99": 0.0209
       }
     },
     "full_evidence_gate": {
@@ -187,9 +187,9 @@
       "balanced_accuracy": 1.0,
       "matthews_correlation_coefficient": 1.0,
       "latency_ms": {
-        "median": 3.9123,
-        "p95": 5.8037,
-        "p99": 12.139
+        "median": 3.6212,
+        "p95": 4.7569,
+        "p99": 5.6643
       }
     }
   },
@@ -556,7 +556,7 @@
       }
     ]
   },
-  "csv_sha256": "24291527a6cea9f3e4574e10f9d7e9c690ee1f3285519cb340692ae13bd6ecc2",
+  "csv_sha256": "95d62852283860700aa3ea52195992daa71c1f9cec5425220423d1c98f071e99",
   "runtime": {
     "python": "3.12.14",
     "platform": "Windows-10-10.0.19045-SP0"

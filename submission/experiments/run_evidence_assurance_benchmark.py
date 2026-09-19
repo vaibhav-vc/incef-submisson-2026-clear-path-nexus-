@@ -1127,7 +1127,12 @@ def write_json_exclusive(path: Path, value: Any) -> None:
 
 def write_csv_exclusive(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("x", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=CSV_FIELDS, extrasaction="raise")
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=CSV_FIELDS,
+            extrasaction="raise",
+            lineterminator="\n",
+        )
         writer.writeheader()
         writer.writerows(rows)
         handle.flush()

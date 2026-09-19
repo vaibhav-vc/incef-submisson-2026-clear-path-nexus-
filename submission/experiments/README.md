@@ -103,7 +103,7 @@ These are software-policy results only. Even the passing run does not establish
 field safety, real-world incident detection, or suitability for operational
 railway control.
 
-`20260919T035921127893Z_evidence_assurance_bd4c3c1e` is the current checked-in
+`20260919T040756096976Z_evidence_assurance_40fe5fe4` is the current checked-in
 Version 2 replication, using internal seed `20260919` rather than an externally
 authored plan. It contains 462 clean fixtures and 1,938 controlled mutations.
 The full gate produced `TP=462`, `TN=1,938`, `FP=0`, `FN=0`; the strongest
@@ -119,7 +119,7 @@ recorded source files without network access:
 
 ```powershell
 python ..\submission\verify_evidence_assurance_run.py `
-  ..\submission\experiments\runs\20260919T035921127893Z_evidence_assurance_bd4c3c1e\evidence_assurance_run_manifest.json `
+  ..\submission\experiments\runs\20260919T040756096976Z_evidence_assurance_40fe5fe4\evidence_assurance_run_manifest.json `
   ..\submission\experiments\runs\20260916T064806641708Z_sncf_snapshot_2dc07b37\source_manifest.json
 ```
 

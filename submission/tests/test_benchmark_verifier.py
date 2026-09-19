@@ -13,7 +13,7 @@ VERIFIER = runpy.run_path(
 )
 RUN_DIR = (
     REPO_ROOT
-    / "submission/experiments/runs/20260919T035921127893Z_evidence_assurance_bd4c3c1e"
+    / "submission/experiments/runs/20260919T040756096976Z_evidence_assurance_40fe5fe4"
 )
 SOURCE_DIR = (
     REPO_ROOT / "submission/experiments/runs/20260916T064806641708Z_sncf_snapshot_2dc07b37"
