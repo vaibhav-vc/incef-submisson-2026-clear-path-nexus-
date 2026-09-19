@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
@@ -222,6 +224,50 @@ def test_position_input_cannot_claim_a_verified_rail_feed() -> None:
             source_type="RAIL_FEED",
             observed_at=datetime.now(timezone.utc),
         )
+
+
+@pytest.mark.asyncio
+async def test_real_data_only_rejects_simulated_position_without_writes(monkeypatch):
+    from fastapi import HTTPException
+    from app.api.v1 import live_ops
+
+    monkeypatch.setattr(live_ops.settings, "REAL_DATA_ONLY", True)
+    shipment = SimpleNamespace(id=uuid4(), tracking_enabled=True)
+    db = SimpleNamespace(scalar=AsyncMock(return_value=shipment), add=Mock(), commit=AsyncMock())
+    payload = ShipmentPositionCreate(
+        latitude=21, longitude=79, source_type="SIMULATED",
+        observed_at=datetime.now(timezone.utc),
+    )
+    with pytest.raises(HTTPException) as error:
+        await live_ops.add_position(shipment.id, payload, db, SimpleNamespace(id="owner"))
+    assert error.value.status_code == 422
+    assert "real-data-only" in error.value.detail
+    db.add.assert_not_called()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("real_only,source_type", [(True, "GPS_DEVICE"), (False, "SIMULATED")])
+async def test_position_policy_preserves_unverified_real_and_labeled_simulation(monkeypatch, real_only, source_type):
+    from app.api.v1 import live_ops
+
+    monkeypatch.setattr(live_ops.settings, "REAL_DATA_ONLY", real_only)
+    shipment = SimpleNamespace(id=uuid4(), route_id=None, tracking_enabled=True)
+    db = SimpleNamespace(
+        scalar=AsyncMock(return_value=shipment), add=Mock(), flush=AsyncMock(),
+        commit=AsyncMock(), refresh=AsyncMock(),
+    )
+    payload = ShipmentPositionCreate(
+        latitude=21, longitude=79, source_type=source_type,
+        observed_at=datetime.now(timezone.utc),
+    )
+    result = await live_ops.add_position(shipment.id, payload, db, SimpleNamespace(id="owner"))
+    provenance = db.add.call_args_list[0].args[0]
+    assert provenance.used_in_decision is False
+    assert provenance.metadata_json["provider_claim_verified"] is False
+    assert provenance.canonical_source_type == ("SIMULATED" if source_type == "SIMULATED" else "OPERATOR_INPUT")
+    assert result["source_type"] == source_type
+    db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

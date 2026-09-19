@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
 from app.core.security import CurrentUser, get_current_user
 from app.models.live_ops import (
@@ -277,6 +278,8 @@ async def add_position(
         raise HTTPException(404, "Shipment not found")
     if not shipment.tracking_enabled:
         raise HTTPException(409, "Tracking is not enabled for this shipment")
+    if settings.REAL_DATA_ONLY and payload.source_type == "SIMULATED":
+        raise HTTPException(422, "Simulated positions are prohibited in real-data-only mode")
     observed = (
         payload.observed_at
         if payload.observed_at.tzinfo

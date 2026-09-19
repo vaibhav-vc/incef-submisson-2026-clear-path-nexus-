@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.schemas.bounded_json import bounded_json_object
+
 
 AssuranceState = Literal["REVIEWABLE", "HOLD", "UNAVAILABLE"]
 CaseStatus = Literal["OPEN", "ASSESSED", "REVIEWED", "ARCHIVED"]
@@ -30,12 +32,16 @@ class AssuranceCaseCreate(BaseModel):
     policy_key: str = Field(default="GENERIC_PROVENANCE_V1", max_length=80)
     assigned_reviewer_id: str | None = Field(default=None, max_length=64)
 
+    _bounded_context = field_validator("context", mode="before")(bounded_json_object)
+
     @field_validator("required_roles")
     @classmethod
     def normalize_roles(cls, value: list[str]) -> list[str]:
         roles = [item.strip().upper() for item in value if item.strip()]
         if not roles:
             raise ValueError("at least one non-empty evidence role is required")
+        if any(len(role) > 80 for role in roles):
+            raise ValueError("each normalized evidence role must be at most 80 characters")
         if len(set(roles)) != len(roles):
             raise ValueError("required_roles must be unique")
         return roles
@@ -93,9 +99,15 @@ class AssuranceEvidenceCreate(BaseModel):
     formula_reference: str | None = Field(default=None, max_length=120)
     parent_record_ids: list[UUID] = Field(default_factory=list, max_length=128)
 
+    _bounded_payloads = field_validator("value_summary", "metadata", mode="before")(
+        bounded_json_object
+    )
+
     @model_validator(mode="after")
     def validate_evidence(self) -> "AssuranceEvidenceCreate":
         self.evidence_role = self.evidence_role.strip().upper()
+        if len(self.evidence_role) > 80:
+            raise ValueError("normalized evidence_role must be at most 80 characters")
         _aware(self.observed_at, "observed_at")
         _aware(self.fetched_at, "fetched_at")
         if self.valid_until is not None:
@@ -122,6 +134,8 @@ class AssuranceEvidenceLinkCreate(BaseModel):
         normalized = value.strip().upper()
         if not normalized:
             raise ValueError("evidence_role cannot be empty")
+        if len(normalized) > 80:
+            raise ValueError("normalized evidence_role must be at most 80 characters")
         return normalized
 
 

@@ -35,7 +35,7 @@ deprecation warning. Backend Ruff checks and Git whitespace checks pass.
   script/connect resource policy still needs the actual deployment origins.
   Deployed headers have not been verified.
 
-## Open findings and limits
+## Findings recorded on 18 September (see follow-up below)
 
 1. Assurance arbitrary JSON fields accept nonfinite numbers and lack explicit
    byte/depth/node limits; required-role strings lack a per-item length limit.
@@ -61,3 +61,41 @@ of authentication bypass held in this bounded review. No exhaustive security,
 secret-history, live-provider or real railway validation claim is made.
 
 All example malicious inputs were local test fixtures, not real operational data.
+
+## 19 September follow-up
+
+The following repairs address findings 1–3 above; their remaining limitations
+are explicit rather than treated as a complete production-security sign-off.
+
+- Assurance `context`, `value_summary` and `metadata` now reject nonfinite
+  numbers, cycles, non-JSON values and invalid Unicode. Each object is limited
+  to 65,536 compact UTF-8 JSON bytes, 16 levels below the root and 4,096 nodes
+  including keys. These are resource limits, not railway engineering thresholds.
+  Normalized role names are limited to 80 characters, including Unicode uppercase
+  expansion. Accepted evidence content is preserved, not replaced with defaults.
+- Validation errors return HTTP 422 without echoing submitted `input` or exception
+  `ctx`; responses contain at most 64 errors with `type`, `loc` and `msg`. Existing
+  frontend error presentation uses `msg` and does not require removed fields.
+- Timetable HTTP downloads enforce the smaller of the existing global and configured
+  feed-byte limits while streaming. Oversized Content-Length is rejected before body
+  reads; missing or inaccurate lengths cannot bypass actual byte accounting. Responses
+  close on overflow, timeout and HTTP failure. Authentication error mapping is retained.
+- Downloads request `Accept-Encoding: identity` and reject other HTTP content encodings
+  with `UNSUPPORTED_ENCODING` before reading/decompressing the body. This prevents
+  automatic HTTP decompression from allocating an oversized decoded chunk. Providers
+  that insist on HTTP gzip must be reconfigured; there is no buffering fallback.
+  A GTFS ZIP archive is application content and remains supported by the existing parser.
+- Real-data-only mode now rejects SIMULATED shipment positions with HTTP 422 before
+  any write. Owner/tracking checks still run first. Real user submissions remain
+  unverified operator declarations; disabling real-data-only mode retains explicitly
+  labeled simulation behavior, never trusted provider provenance.
+
+Still outstanding: pre-parse HTTP body limits, ingestion concurrency limits, the
+compliance-override policy decision, full online CSP/deployed checks, and consist/
+occupation-window invalidation and concurrency review. No remote attacks or oversized
+external-provider requests were made. Local mocks verify download failure behavior;
+they do not prove compatibility with every live provider.
+
+Verification: the full backend suite passed 438 tests, with one existing Starlette
+deprecation warning; backend Ruff and Git whitespace checks passed. Test fixtures
+use short parameter IDs so large adversarial values do not become Windows paths.

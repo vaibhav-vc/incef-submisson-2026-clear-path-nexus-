@@ -843,10 +843,41 @@ async def _download_configured(provider_key: str) -> tuple[bytes, str, dict[str,
         params["api-key"] = settings.INDIA_RAILWAYS_TIMETABLE_API_KEY
     try:
         async with httpx.AsyncClient(timeout=settings.PROVIDER_TIMEOUT_SECONDS) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            payload = response.content
-            headers = {key.casefold(): value for key, value in response.headers.items()}
+            async with client.stream("GET", url, params=params, headers={"Accept-Encoding": "identity"}) as response:
+                response.raise_for_status()
+                headers = {key.casefold(): value for key, value in response.headers.items()}
+                max_bytes = min(MAX_FEED_BYTES, settings.TIMETABLE_MAX_FEED_BYTES)
+                # Avoid unbounded HTTP decompression before byte accounting.
+                # GTFS ZIP files remain supported as application payloads; this
+                # restriction is only on the HTTP Content-Encoding layer.
+                if headers.get("content-encoding", "identity").strip().casefold() not in {"", "identity"}:
+                    raise TimetableIngestionError(
+                        "timetable provider must honor Accept-Encoding: identity",
+                        code="UNSUPPORTED_ENCODING",
+                    )
+                length = headers.get("content-length", "").strip()
+                normalized_length = length.lstrip("0") or "0"
+                # Length is only an early rejection hint, never proof of safety:
+                # it can be missing, inaccurate, or describe compressed bytes.
+                if length.isascii() and length.isdecimal() and (
+                    len(normalized_length) > len(str(max_bytes))
+                    or int(normalized_length) > max_bytes
+                ):
+                    raise TimetableIngestionError(
+                        f"timetable feed exceeds the {max_bytes} byte safety limit",
+                        code="FEED_TOO_LARGE",
+                    )
+                buffer = bytearray()
+                # No automatic decoding: reject excess bytes before retention
+                # and close the response rather than draining a failed feed.
+                async for chunk in response.aiter_raw():
+                    if len(chunk) > max_bytes - len(buffer):
+                        raise TimetableIngestionError(
+                            f"timetable feed exceeds the {max_bytes} byte safety limit",
+                            code="FEED_TOO_LARGE",
+                        )
+                    buffer.extend(chunk)
+                payload = bytes(buffer)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code in {401, 403}:
             raise TimetableIngestionError("timetable provider requires valid authorization", code="AUTH_REQUIRED") from exc
