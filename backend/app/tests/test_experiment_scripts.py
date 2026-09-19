@@ -7,6 +7,7 @@ import runpy
 import tempfile
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,6 +22,10 @@ RECORDER = runpy.run_path(
 BENCHMARK = runpy.run_path(
     str(REPO_ROOT / "submission/experiments/run_evidence_assurance_benchmark.py"),
     run_name="evidence_benchmark_test",
+)
+FAULT_PLAN_SEALER = runpy.run_path(
+    str(REPO_ROOT / "submission/experiments/seal_fault_plan.py"),
+    run_name="fault_plan_sealer_test",
 )
 
 
@@ -106,3 +111,116 @@ def test_every_controlled_mutation_fails_closed_in_backend_gate(monkeypatch) -> 
         BENCHMARK["seal_and_optionally_tamper"](bundle, fault)
         admitted, reasons = BENCHMARK["full_evidence_gate"](bundle)
         assert admitted is False, (fault, reasons)
+
+
+def test_all_predeclared_baselines_accept_a_clean_fixture(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "EVIDENCE_SIGNING_KEY_ID", "benchmark-test-key")
+    monkeypatch.setattr(settings, "EVIDENCE_SIGNING_KEY", "b" * 64)
+    monkeypatch.setattr(settings, "EVIDENCE_VERIFICATION_KEYS", {})
+    bundle = BENCHMARK["build_clean_bundle"](random.Random(55), 0)
+    BENCHMARK["seal_and_optionally_tamper"](bundle, "none")
+    for classifier in BENCHMARK["CLASSIFIER_NAMES"]:
+        function = BENCHMARK[classifier]
+        result = function(bundle)
+        admitted = result[0] if isinstance(result, tuple) else result
+        assert admitted is True, classifier
+
+
+def test_declared_fault_plan_is_sealed_bounded_and_not_self_certifying() -> None:
+    with tempfile.TemporaryDirectory(prefix="experiment-test-", dir=REPO_ROOT / "backend") as temp:
+        path = Path(temp) / "fault-plan.json"
+        plan = {
+            "schema_version": BENCHMARK["FAULT_PLAN_SCHEMA_VERSION"],
+            "protocol_id": "held-out-fixture-v1",
+            "author_role": "external-reviewer-fixture",
+            "declared_independence": True,
+            "faults": ["none", "wrong_context", "lineage_cycle"],
+        }
+        plan["plan_payload_sha256"] = BENCHMARK["canonical_sha256"](plan)
+        path.write_text(json.dumps(plan), encoding="utf-8")
+
+        faults, metadata, file_digest = BENCHMARK["load_declared_fault_plan"](path)
+        assert faults == plan["faults"]
+        assert metadata["origin"] == "SEALED_DECLARED_PLAN"
+        assert metadata["declared_independence"] is True
+        assert len(file_digest) == 64
+
+        plan["faults"][1] = "none"
+        path.write_text(json.dumps(plan), encoding="utf-8")
+        with pytest.raises(ValueError, match="digest mismatch"):
+            BENCHMARK["load_declared_fault_plan"](path)
+
+
+def test_declared_fault_plan_requires_both_outcome_classes() -> None:
+    for faults in (["none", "none"], ["wrong_context", "lineage_cycle"]):
+        with tempfile.TemporaryDirectory(prefix="experiment-test-", dir=REPO_ROOT / "backend") as temp:
+            path = Path(temp) / "fault-plan.json"
+            plan = {
+                "schema_version": BENCHMARK["FAULT_PLAN_SCHEMA_VERSION"],
+                "protocol_id": "invalid-fixture-v1",
+                "author_role": "test-fixture",
+                "faults": faults,
+            }
+            plan["plan_payload_sha256"] = BENCHMARK["canonical_sha256"](plan)
+            path.write_text(json.dumps(plan), encoding="utf-8")
+            with pytest.raises(ValueError, match="clean and mutated"):
+                BENCHMARK["load_declared_fault_plan"](path)
+
+
+def test_fault_plan_sealer_never_overwrites_and_round_trips() -> None:
+    with tempfile.TemporaryDirectory(prefix="experiment-test-", dir=REPO_ROOT / "backend") as temp:
+        root = Path(temp)
+        source = root / "draft.json"
+        destination = root / "sealed.json"
+        draft = {
+            "schema_version": BENCHMARK["FAULT_PLAN_SCHEMA_VERSION"],
+            "protocol_id": "reviewer-held-out-v1",
+            "author_role": "declared reviewer role",
+            "declared_independence": False,
+            "faults": ["none", "wrong_context"],
+        }
+        source.write_text(json.dumps(draft), encoding="utf-8")
+        FAULT_PLAN_SEALER["seal_plan"](source, destination)
+        faults, metadata, _ = BENCHMARK["load_declared_fault_plan"](destination)
+        assert faults == draft["faults"]
+        assert metadata["declared_independence"] is False
+        with pytest.raises(FileExistsError):
+            FAULT_PLAN_SEALER["seal_plan"](source, destination)
+
+
+def test_declared_plan_is_preserved_inside_run_artifacts() -> None:
+    source_manifest = (
+        REPO_ROOT
+        / "submission/experiments/runs/20260916T064806641708Z_sncf_snapshot_2dc07b37"
+        / "source_manifest.json"
+    )
+    with tempfile.TemporaryDirectory(prefix="experiment-test-", dir=REPO_ROOT / "backend") as temp:
+        root = Path(temp)
+        draft_path = root / "draft.json"
+        sealed_path = root / "sealed.json"
+        draft = {
+            "schema_version": BENCHMARK["FAULT_PLAN_SCHEMA_VERSION"],
+            "protocol_id": "preservation-fixture-v1",
+            "author_role": "test fixture",
+            "declared_independence": False,
+            "faults": ["none", "wrong_context"],
+        }
+        draft_path.write_text(json.dumps(draft), encoding="utf-8")
+        FAULT_PLAN_SEALER["seal_plan"](draft_path, sealed_path)
+        manifest_path, status = BENCHMARK["run_benchmark"](
+            SimpleNamespace(
+                source_manifest=source_manifest,
+                seed=123,
+                fault_plan=sealed_path,
+                cases=None,
+                role_quorum_minimum=4,
+                legacy_score_threshold=60.0,
+                output_dir=root / "run",
+            )
+        )
+        assert status == 0
+        run_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert (manifest_path.parent / "fault_plan.json").read_bytes() == sealed_path.read_bytes()
+        assert set(run_manifest["output_files"]) == {
+            "evidence_assurance_cases.csv", "evidence_assurance_summary.json", "fault_plan.json",
+        }

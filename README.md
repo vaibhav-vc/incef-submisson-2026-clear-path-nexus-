@@ -8,7 +8,10 @@ The current six-phase architecture, real-data/API registry, carriage-level evide
 
 ## Readiness and downloads
 
-Read [international evaluation, Indian Railway references and AI-assistance disclosure](docs/INTERNATIONAL_AND_INDIAN_ALIGNMENT.md) before preparing competition materials. The generated engineering notes are not a student-authored submission.
+Read the [ISEF 2027 research protocol](docs/ISEF_2027_RESEARCH_PROTOCOL.md) and
+[international evaluation, Indian Railway references and AI-assistance disclosure](docs/INTERNATIONAL_AND_INDIAN_ALIGNMENT.md)
+before preparing competition materials. The generated engineering notes are not a
+student-authored submission.
 
 For a government technical discussion, start with [the evaluation pack and acceptance matrix](docs/GOVERNMENT_TECHNICAL_EVALUATION.md). It maps the full replacement objective to implemented capabilities, required field evidence and the proposed authorized evaluation procedure.
 

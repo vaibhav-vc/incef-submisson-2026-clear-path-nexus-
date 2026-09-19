@@ -55,12 +55,14 @@ from app.services.provenance import (  # noqa: E402
 )
 
 
-EXPERIMENT_VERSION = "EVIDENCE_ASSURANCE_BENCHMARK_V1"
-RUN_SCHEMA_VERSION = "clearpath.experiment-run.v1"
+EXPERIMENT_VERSION = "EVIDENCE_ASSURANCE_BENCHMARK_V2"
+RUN_SCHEMA_VERSION = "clearpath.experiment-run.v2"
 SOURCE_SCHEMA_VERSION = "clearpath.external-source-snapshot.v1"
+FAULT_PLAN_SCHEMA_VERSION = "clearpath.fault-plan.v1"
 DEFAULT_SEED = 20260915
 DEFAULT_CASES = 2400
 MAX_MANIFEST_BYTES = 2 * 1024 * 1024
+MAX_FAULT_PLAN_BYTES = 2 * 1024 * 1024
 MAX_REFERENCED_SOURCE_BYTES = 200 * 1024 * 1024
 CHUNK_BYTES = 128 * 1024
 EXPECTED_SOURCE_KEYS = {
@@ -92,6 +94,9 @@ MUTATIONS = (
 CLASSIFIER_NAMES = (
     "b0_latest_value",
     "b1_checksum_timestamp",
+    "b2_role_quorum",
+    "b3_conservative_complete",
+    "b4_legacy_score",
     "full_evidence_gate",
 )
 CSV_FIELDS = (
@@ -104,6 +109,12 @@ CSV_FIELDS = (
     "b0_latest_value_latency_ms",
     "b1_checksum_timestamp",
     "b1_checksum_timestamp_latency_ms",
+    "b2_role_quorum",
+    "b2_role_quorum_latency_ms",
+    "b3_conservative_complete",
+    "b3_conservative_complete_latency_ms",
+    "b4_legacy_score",
+    "b4_legacy_score_latency_ms",
     "full_evidence_gate",
     "full_evidence_gate_latency_ms",
     "full_reason_codes",
@@ -796,6 +807,56 @@ def b1_checksum_timestamp(bundle: EvidenceBundle) -> bool:
     return True
 
 
+def b2_role_quorum(bundle: EvidenceBundle, minimum_roles: int = 4) -> bool:
+    """Source-agnostic baseline: approved clearance plus four of five role values."""
+
+    populated = {
+        record.decision_input_role
+        for record in bundle.records
+        if record.decision_input_role in REQUIRED_DECISION_ROLES and bool(record.value_summary)
+    }
+    clearances = [
+        record
+        for record in bundle.records
+        if record.decision_input_role == "CLEARANCE_DECISION"
+    ]
+    return (
+        len(populated) >= minimum_roles
+        and bool(clearances)
+        and max(clearances, key=lambda item: (item.fetched_at, str(item.id)))
+        .value_summary.get("status") == "APPROVED"
+    )
+
+
+def b3_conservative_complete(bundle: EvidenceBundle) -> bool:
+    """Conservative baseline without authority, context or lineage semantics."""
+
+    by_role = {
+        role: [record for record in bundle.records if record.decision_input_role == role]
+        for role in REQUIRED_DECISION_ROLES
+    }
+    return (
+        b1_checksum_timestamp(bundle)
+        and all(len(records) == 1 for records in by_role.values())
+        and all(record.used_in_decision and not record.excluded_reason for record in bundle.records)
+    )
+
+
+def b4_legacy_score(bundle: EvidenceBundle, threshold: float = 60.0) -> bool:
+    """Legacy numerical-score comparator with no provenance semantics."""
+
+    clearances = [
+        record
+        for record in bundle.records
+        if record.decision_input_role == "CLEARANCE_DECISION"
+    ]
+    return (
+        bool(clearances)
+        and any(record.value_summary.get("status") == "APPROVED" for record in clearances)
+        and float(bundle.snapshot.reliability_score or 0) >= threshold
+    )
+
+
 def full_evidence_gate(bundle: EvidenceBundle) -> tuple[bool, tuple[str, ...]]:
     assessment = assess_decision_evidence(
         bundle.snapshot,
@@ -853,6 +914,43 @@ def make_fault_plan(case_count: int, rng: random.Random) -> list[str]:
         plan.append("none" if rng.random() < 0.2 else rng.choice(MUTATIONS))
     rng.shuffle(plan)
     return plan[:case_count]
+
+
+def load_declared_fault_plan(path: Path) -> tuple[list[str], dict[str, Any], str]:
+    """Load a sealed challenge plan without claiming its author is independent."""
+
+    resolved = path.resolve(strict=True)
+    plan = _load_json_object(resolved, maximum_bytes=MAX_FAULT_PLAN_BYTES)
+    declared_digest = plan.get("plan_payload_sha256")
+    payload = dict(plan)
+    payload.pop("plan_payload_sha256", None)
+    if plan.get("schema_version") != FAULT_PLAN_SCHEMA_VERSION:
+        raise ValueError("Unsupported fault-plan schema_version")
+    if not _valid_digest(declared_digest) or canonical_sha256(payload) != declared_digest:
+        raise ValueError("Fault-plan payload digest mismatch")
+    protocol_id = plan.get("protocol_id")
+    author_role = plan.get("author_role")
+    if not isinstance(protocol_id, str) or not (3 <= len(protocol_id) <= 120):
+        raise ValueError("Fault plan requires a 3..120 character protocol_id")
+    if not isinstance(author_role, str) or not (3 <= len(author_role) <= 120):
+        raise ValueError("Fault plan requires a declared author_role")
+    faults = plan.get("faults")
+    supported = {"none", *MUTATIONS}
+    if not isinstance(faults, list) or not (2 <= len(faults) <= 100_000):
+        raise ValueError("Fault plan must contain 2..100000 cases")
+    if any(not isinstance(fault, str) or fault not in supported for fault in faults):
+        raise ValueError("Fault plan contains an unsupported mutation")
+    if "none" not in faults or not any(fault != "none" for fault in faults):
+        raise ValueError("Fault plan must contain clean and mutated cases")
+    metadata = {
+        "origin": "SEALED_DECLARED_PLAN",
+        "protocol_id": protocol_id,
+        "author_role": author_role,
+        "declared_independence": bool(plan.get("declared_independence", False)),
+        "plan_payload_sha256": declared_digest,
+    }
+    file_digest, _ = sha256_file(resolved, maximum_bytes=MAX_FAULT_PLAN_BYTES)
+    return list(faults), metadata, file_digest
 
 
 def confusion(rows: Iterable[dict[str, Any]], classifier: str) -> dict[str, int]:
@@ -1036,6 +1134,17 @@ def write_csv_exclusive(path: Path, rows: list[dict[str, Any]]) -> None:
         os.fsync(handle.fileno())
 
 
+def copy_bytes_exclusive(source: Path, destination: Path, maximum_bytes: int) -> str:
+    raw = source.read_bytes()
+    if not raw or len(raw) > maximum_bytes:
+        raise ValueError(f"{source.name} must be within 1..{maximum_bytes} bytes")
+    with destination.open("xb") as handle:
+        handle.write(raw)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return hashlib.sha256(raw).hexdigest()
+
+
 def run_benchmark(args: argparse.Namespace) -> tuple[Path, int]:
     source_snapshot = verify_source_manifest(args.source_manifest)
 
@@ -1048,7 +1157,17 @@ def run_benchmark(args: argparse.Namespace) -> tuple[Path, int]:
     settings.EVIDENCE_VERIFICATION_KEYS = {}
 
     rng = random.Random(args.seed)
-    plan = make_fault_plan(args.cases, rng)
+    if args.fault_plan is None:
+        case_count = args.cases if args.cases is not None else DEFAULT_CASES
+        plan = make_fault_plan(case_count, rng)
+        plan_metadata = {
+            "origin": "INTERNAL_SEEDED_GENERATOR",
+            "seed": args.seed,
+            "declared_independence": False,
+        }
+        plan_file_sha256 = None
+    else:
+        plan, plan_metadata, plan_file_sha256 = load_declared_fault_plan(args.fault_plan)
     rows: list[dict[str, Any]] = []
     fingerprints: set[str] = set()
     policy_errors: list[dict[str, Any]] = []
@@ -1063,8 +1182,22 @@ def run_benchmark(args: argparse.Namespace) -> tuple[Path, int]:
         fingerprints.add(fingerprint)
         expected = fault == "none"
 
-        b0_result, b0_latency = timed(lambda: b0_latest_value(bundle))
-        b1_result, b1_latency = timed(lambda: b1_checksum_timestamp(bundle))
+        baseline_results: dict[str, tuple[bool, float]] = {}
+        for classifier, function in (
+            ("b0_latest_value", b0_latest_value),
+            ("b1_checksum_timestamp", b1_checksum_timestamp),
+            (
+                "b2_role_quorum",
+                lambda bundle: b2_role_quorum(bundle, args.role_quorum_minimum),
+            ),
+            ("b3_conservative_complete", b3_conservative_complete),
+            (
+                "b4_legacy_score",
+                lambda bundle: b4_legacy_score(bundle, args.legacy_score_threshold),
+            ),
+        ):
+            result, latency = timed(lambda function=function: function(bundle))
+            baseline_results[classifier] = (bool(result), latency)
         try:
             full_result, full_latency = timed(lambda: full_evidence_gate(bundle))
             full_admitted, reason_codes = full_result
@@ -1094,10 +1227,14 @@ def run_benchmark(args: argparse.Namespace) -> tuple[Path, int]:
                 ),
                 "fault_type": fault,
                 "expected_admissible": expected,
-                "b0_latest_value": bool(b0_result),
-                "b0_latest_value_latency_ms": round(b0_latency, 4),
-                "b1_checksum_timestamp": bool(b1_result),
-                "b1_checksum_timestamp_latency_ms": round(b1_latency, 4),
+                **{
+                    key: value
+                    for classifier, (result, latency) in baseline_results.items()
+                    for key, value in (
+                        (classifier, result),
+                        (f"{classifier}_latency_ms", round(latency, 4)),
+                    )
+                },
                 "full_evidence_gate": bool(full_admitted),
                 "full_evidence_gate_latency_ms": round(full_latency, 4),
                 "full_reason_codes": "|".join(reason_codes),
@@ -1109,10 +1246,22 @@ def run_benchmark(args: argparse.Namespace) -> tuple[Path, int]:
     csv_path = output_dir / "evidence_assurance_cases.csv"
     write_csv_exclusive(csv_path, rows)
     csv_digest, _ = sha256_file(csv_path)
+    preserved_plan_path: Path | None = None
+    if args.fault_plan is not None:
+        preserved_plan_path = output_dir / "fault_plan.json"
+        copied_digest = copy_bytes_exclusive(
+            args.fault_plan.resolve(strict=True),
+            preserved_plan_path,
+            MAX_FAULT_PLAN_BYTES,
+        )
+        if copied_digest != plan_file_sha256:
+            raise RuntimeError("Fault plan changed between verification and preservation")
     comparisons = {
-        "b0_vs_full": exact_mcnemar(rows, "b0_latest_value", "full_evidence_gate"),
-        "b1_vs_full": exact_mcnemar(rows, "b1_checksum_timestamp", "full_evidence_gate"),
-        "b0_vs_b1": exact_mcnemar(rows, "b0_latest_value", "b1_checksum_timestamp"),
+        f"{classifier}_vs_full": exact_mcnemar(
+            rows, classifier, "full_evidence_gate"
+        )
+        for classifier in CLASSIFIER_NAMES
+        if classifier != "full_evidence_gate"
     }
     adjusted = holm_adjust(comparisons)
     for name, value in adjusted.items():
@@ -1123,6 +1272,11 @@ def run_benchmark(args: argparse.Namespace) -> tuple[Path, int]:
         "experiment_version": EXPERIMENT_VERSION,
         "executed_at_utc": datetime.now(timezone.utc).isoformat(),
         "deterministic_seed": args.seed,
+        "fault_plan": {**plan_metadata, "file_sha256": plan_file_sha256},
+        "experimental_parameters": {
+            "role_quorum_minimum": args.role_quorum_minimum,
+            "legacy_score_threshold": args.legacy_score_threshold,
+        },
         "total_cases": len(rows),
         "unique_case_fingerprints": len(fingerprints),
         "case_classes": dict(sorted(Counter(row["data_class"] for row in rows).items())),
@@ -1158,15 +1312,24 @@ def run_benchmark(args: argparse.Namespace) -> tuple[Path, int]:
     write_json_exclusive(summary_path, summary)
     summary_digest, _ = sha256_file(summary_path)
 
+    output_files = {
+        csv_path.name: csv_digest,
+        summary_path.name: summary_digest,
+    }
+    if preserved_plan_path is not None and plan_file_sha256 is not None:
+        output_files[preserved_plan_path.name] = plan_file_sha256
+
     run_manifest: dict[str, Any] = {
         "schema_version": RUN_SCHEMA_VERSION,
         "experiment_version": EXPERIMENT_VERSION,
         "seed": args.seed,
-        "case_count": args.cases,
-        "output_files": {
-            csv_path.name: csv_digest,
-            summary_path.name: summary_digest,
+        "case_count": len(rows),
+        "fault_plan": {**plan_metadata, "file_sha256": plan_file_sha256},
+        "experimental_parameters": {
+            "role_quorum_minimum": args.role_quorum_minimum,
+            "legacy_score_threshold": args.legacy_score_threshold,
         },
+        "output_files": output_files,
         "source_snapshot_manifest_sha256": source_snapshot.file_sha256,
         "controlled_mutations": list(MUTATIONS),
         "classification_rule": (
@@ -1183,9 +1346,16 @@ def run_benchmark(args: argparse.Namespace) -> tuple[Path, int]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cases", type=int, default=DEFAULT_CASES)
+    parser.add_argument("--cases", type=int)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument("--role-quorum-minimum", type=int, default=4)
+    parser.add_argument("--legacy-score-threshold", type=float, default=60.0)
     parser.add_argument("--source-manifest", type=Path, required=True)
+    parser.add_argument(
+        "--fault-plan",
+        type=Path,
+        help="Sealed declared challenge plan; when supplied it determines the case count",
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -1197,10 +1367,17 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.cases < 2:
+    if args.cases is not None and args.fault_plan is not None:
+        parser.error("--cases and --fault-plan are mutually exclusive")
+    requested_cases = args.cases if args.cases is not None else DEFAULT_CASES
+    if requested_cases < 2:
         parser.error("--cases must be at least 2 so both outcome classes can be measured")
-    if args.cases > 100_000:
+    if requested_cases > 100_000:
         parser.error("--cases may not exceed 100000")
+    if not 1 <= args.role_quorum_minimum <= len(REQUIRED_DECISION_ROLES):
+        parser.error("--role-quorum-minimum must be within the number of required roles")
+    if not math.isfinite(args.legacy_score_threshold) or not 0 <= args.legacy_score_threshold <= 100:
+        parser.error("--legacy-score-threshold must be finite and within 0..100")
     try:
         manifest, status = run_benchmark(args)
     except (OSError, RuntimeError, ValueError) as exc:

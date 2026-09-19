@@ -1,6 +1,6 @@
 # International evaluation and Indian Railway alignment
 
-Checked 17 September 2026. Internal engineering guidance, not a student-authored research plan, abstract, poster or submission bibliography.
+Checked 19 September 2026. Internal engineering guidance, not a student-authored research plan, abstract, poster or submission bibliography.
 
 ## Competition benchmark
 
@@ -8,7 +8,7 @@ The [official INSEF 2026–27 page](https://www.insef.org/insef/) gives a 30 Sep
 
 The [ISEF engineering rubric](https://www.societyforscience.org/isef/grand-award/criteria/) allocates 10 points to the problem, 15 to design/methodology, 20 to construction/testing, 20 to creativity/impact and 35 to presentation (10 poster, 25 interview). For this repository, the corresponding evidence is a precise problem, alternatives and baselines, repeatable trials, a defensible contribution, and the students' understanding of their own work. These are target criteria, not a predicted score.
 
-The contribution under investigation is the exact binding of a recommendation to evidence authority, subject/context, time, dependencies and independent review, followed by reproducible reconstruction. Its originality is not established by the repository's feature count or test count. Independent prior-art comparison, held-out cases, externally designed faults, ablation studies and a relevant Indian data evaluation remain necessary research work. They must be designed and understood by the students with their sponsor.
+The contribution under investigation is the exact binding of a recommendation to evidence authority, subject/context, time, dependencies and independent review, followed by reproducible reconstruction. Its originality is not established by the repository's feature count or test count. Version 2 now supports a sealed reviewer-authored held-out fault plan and five explicit baselines; that is experimental infrastructure, not proof that a reviewer was independent. Independent prior-art comparison, multiple externally designed replications, feature ablation studies and a relevant Indian data evaluation remain necessary research work. They must be designed and understood by the students with their sponsor. See the [ISEF 2027 research protocol](ISEF_2027_RESEARCH_PROTOCOL.md).
 
 ## Indian Railway applicability
 
@@ -30,4 +30,4 @@ Known assistance in this change set: Codex and sub-agents generated and revised 
 
 ## Release evidence
 
-Runtime code commit `7dfc91bd063e26f73084301bf0b2cce8f1619adb` passed all five jobs in [GitHub CI run 35176284755](https://github.com/vaibhav-vc/incef-submisson-2026-clear-path-nexus-/actions/runs/35176284755): backend, frontend, deployment, judge-demo and Android. The judge job includes actual HTTP/PostgreSQL assurance persistence, export and offline checksum reconstruction. The backend suite contains 346 passing tests. These are software results, not competition qualification or railway approval.
+Runtime code commit `17c77de8372e80c98435b8267fd34faad08d9e78` passed all five jobs in [GitHub CI run 35419491504](https://github.com/vaibhav-vc/incef-submisson-2026-clear-path-nexus-/actions/runs/35419491504): backend, frontend, deployment, judge-demo and Android. The judge job includes actual HTTP/PostgreSQL assurance persistence, export and offline checksum reconstruction. That commit had 438 passing backend tests. The subsequent Version 2 research-harness change passed 443 local backend tests and 33 submission tests before push; its own CI result must be checked separately. These are software results, not competition qualification or railway approval.
