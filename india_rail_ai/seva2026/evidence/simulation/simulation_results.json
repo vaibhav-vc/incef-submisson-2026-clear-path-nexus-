@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-10-07T20:13:08+00:00",
+  "generated_at": "2026-10-07T20:13:37+00:00",
   "what": "Randomised software-in-the-loop simulation of the RailGuard twins with invariant checks",
   "seed": 2026,
   "workers": 3,
   "platform": "CPython 3.13.16 on x86_64",
   "code_checksum": "52f194c00c9a6c06662c40decc9e7a85c238b437b0a2dac9d08d2cc346028e1b",
   "target_episodes": 160000,
-  "completed_episodes": 69250,
-  "operations_checked": 807884,
+  "completed_episodes": 70000,
+  "operations_checked": 816735,
   "simulated_5s_steps": 0,
-  "wall_seconds": 2433.3,
+  "wall_seconds": 2461.8,
   "twins": {
     "demo": {
       "episodes": 0,
@@ -20,21 +20,21 @@
       "first_failures": []
     },
     "national": {
-      "episodes": 69250,
+      "episodes": 70000,
       "violations_total": 0,
       "violations_by_invariant": {},
-      "cpu_ms_per_episode": 105.1,
+      "cpu_ms_per_episode": 105.257,
       "stats": {
-        "approve_ok": 132471,
-        "approve_refused": 56465,
+        "approve_ok": 133913,
+        "approve_refused": 57092,
         "no_run": 21,
-        "ops": 807884,
-        "recommend_HOLD": 22503,
-        "recommend_NO_FEASIBLE_PLAN": 10642,
-        "recommend_PLANNING_ONLY": 142002,
-        "recommend_REVIEW": 1913,
-        "recommend_REVIEWABLE": 11877,
-        "replays": 3799
+        "ops": 816735,
+        "recommend_HOLD": 22744,
+        "recommend_NO_FEASIBLE_PLAN": 10754,
+        "recommend_PLANNING_ONLY": 143584,
+        "recommend_REVIEW": 1924,
+        "recommend_REVIEWABLE": 12000,
+        "replays": 3839
       },
       "first_failures": []
     }
