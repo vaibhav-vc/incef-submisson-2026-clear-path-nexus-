@@ -1,0 +1,306 @@
+"""Authorised live-feed gateway: ready for RTIS / NTES / COA data once access is granted.
+
+No live Indian Railways feed is connected (access is controlled by the Ministry
+of Railways / CRIS). This gateway is the integration point, built and tested now
+so that only credentials and the field mapping of the authorised interface remain:
+
+* Envelope: {source, key_id, sent_at, nonce, sequence, events[], signature}.
+  `signature` = HMAC-SHA256 (hex) of the canonical JSON of every other field
+  (sorted keys, no whitespace, UTF-8), with the per-source key in
+  RAILGUARD_FEED_KEYS="RTIS:k1:<hex secret>,NTES:k1:<hex secret>".
+* Rejected before any event is read: unknown source or key, bad signature,
+  `sent_at` outside +/-MAX_SKEW_S of the server clock, a nonce already seen,
+  a sequence number not above the last one, more than MAX_EVENTS events.
+* Events:
+  POSITION {train_number, start_date, lat, lon, speed_kmph, observed_at} - a GNSS
+    fix (e.g. RTIS), map-matched onto the train's *planned* route within
+    MATCH_KM; anything else is a route deviation, never silently accepted.
+  STATION {train_number, start_date, station_code, event ARR|DEP|PASS, observed_at}
+    - a station event (e.g. NTES/COA). Lateness of AUTO_DISRUPTION_MIN or more is
+    recorded as a disruption for the controller to decide on; the feed never
+    approves anything.
+* Every batch is written to the audit chain (counts and a SHA-256 of the body).
+
+Times are Indian Standard Time; `start_date` is the train's journey start date.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import math
+import os
+import re
+import secrets
+import time
+from collections import OrderedDict
+from datetime import date, datetime, timedelta, timezone
+from typing import Any
+
+IST = timezone(timedelta(hours=5, minutes=30))
+MAX_SKEW_S = 120
+MAX_EVENTS = 250
+MATCH_KM = 3.0  # GNSS fix to straight-line section geometry (station coordinates); curves need slack
+AUTO_DISRUPTION_MIN = 5.0
+MIN_SECRET_BYTES = 32
+NONCES_KEPT = 100_000
+TRAIN = re.compile(r"^[0-9A-Z][0-9A-Z-]{0,15}$")
+STATION = re.compile(r"^[A-Z0-9]{1,8}$")
+SOURCE = re.compile(r"^[A-Z][A-Z0-9_]{1,15}$")
+
+
+class FeedRejected(ValueError):
+    """The whole envelope is refused (authentication, freshness, replay or shape)."""
+
+
+def load_keys(spec: str | None = None) -> dict[tuple[str, str], bytes]:
+    spec = os.environ.get("RAILGUARD_FEED_KEYS", "") if spec is None else spec
+    keys = {}
+    for item in filter(None, (part.strip() for part in spec.split(","))):
+        source, key_id, secret = item.split(":", 2)
+        raw = bytes.fromhex(secret)
+        if len(raw) < MIN_SECRET_BYTES:
+            raise ValueError(f"feed key {source}:{key_id} is shorter than {MIN_SECRET_BYTES} bytes")
+        keys[(source, key_id)] = raw
+    return keys
+
+
+def canonical(envelope: dict[str, Any]) -> bytes:
+    body = {k: v for k, v in envelope.items() if k != "signature"}
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def sign(envelope: dict[str, Any], secret: bytes) -> str:
+    return hmac.new(secret, canonical(envelope), hashlib.sha256).hexdigest()
+
+
+def _when(value: Any) -> datetime:
+    if not isinstance(value, str) or len(value) > 40:
+        raise ValueError("timestamp must be an ISO 8601 string")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("timestamp must carry a time zone")
+    return parsed
+
+
+class FeedGateway:
+    def __init__(
+        self,
+        twin: Any,
+        keys: dict[tuple[str, str], bytes] | None = None,
+        service_date: date | None = None,
+        clock: Any = time.time,
+        auto_disruption_min: float = AUTO_DISRUPTION_MIN,
+        follow_clock: bool | None = None,
+    ):
+        self.twin = twin
+        # Live operation: the twin clock follows Indian Standard Time (RAILGUARD_LIVE_CLOCK=1).
+        self.follow_clock = os.environ.get("RAILGUARD_LIVE_CLOCK") == "1" if follow_clock is None else follow_clock
+        self.keys = load_keys() if keys is None else keys
+        self.clock = clock
+        # Day 0 of the twin: the date its timetable window starts (IST).
+        self.service_date = service_date or datetime.fromtimestamp(clock(), IST).date()
+        self.auto_disruption_min = auto_disruption_min
+        self.nonces: OrderedDict[str, None] = OrderedDict()
+        self.last_sequence: dict[str, int] = {}
+
+    # ---- envelope ----------------------------------------------------------------------------------
+    def receive(self, envelope: dict[str, Any]) -> dict[str, Any]:
+        if not self.keys:
+            raise FeedRejected("no feed keys configured: live feed disabled")
+        if not isinstance(envelope, dict):
+            raise FeedRejected("envelope must be a JSON object")
+        source, key_id = envelope.get("source"), envelope.get("key_id")
+        if not isinstance(source, str) or not SOURCE.match(source) or not isinstance(key_id, str):
+            raise FeedRejected("invalid source or key id")
+        secret = self.keys.get((source, key_id))
+        signature = envelope.get("signature")
+        if secret is None or not isinstance(signature, str):
+            raise FeedRejected("unknown source/key or missing signature")
+        if not hmac.compare_digest(signature, sign(envelope, secret)):
+            raise FeedRejected("bad signature")
+        try:
+            sent = _when(envelope.get("sent_at"))
+        except ValueError as exc:
+            raise FeedRejected(f"sent_at: {exc}") from exc
+        if abs(sent.timestamp() - self.clock()) > MAX_SKEW_S:
+            raise FeedRejected("sent_at outside the accepted clock window (stale or replayed)")
+        nonce, sequence = envelope.get("nonce"), envelope.get("sequence")
+        if not isinstance(nonce, str) or not 16 <= len(nonce) <= 64:
+            raise FeedRejected("nonce must be 16-64 characters")
+        if f"{source}:{nonce}" in self.nonces:
+            raise FeedRejected("replayed nonce")
+        if type(sequence) is not int or sequence <= self.last_sequence.get(source, -1):
+            raise FeedRejected("sequence number not increasing")
+        events = envelope.get("events")
+        if not isinstance(events, list) or not 1 <= len(events) <= MAX_EVENTS:
+            raise FeedRejected(f"events must be a list of 1-{MAX_EVENTS}")
+        # Authenticated and fresh: remember it before acting, so a crash mid-batch cannot enable a replay.
+        self.nonces[f"{source}:{nonce}"] = None
+        while len(self.nonces) > NONCES_KEPT:
+            self.nonces.popitem(last=False)
+        self.last_sequence[source] = sequence
+
+        twin = self.twin
+        with twin.lock:
+            if self.follow_clock:
+                wall = self._minutes(datetime.fromtimestamp(self.clock(), IST))
+                if wall > twin.now:
+                    twin.tick(wall - twin.now)
+            results = [self._event(source, event) for event in events]
+            accepted = sum(1 for r in results if r["accepted"])
+            twin.audit.record(
+                int(twin.now * 60),
+                "FEED_BATCH",
+                f"feed:{source}",
+                {
+                    "key_id": key_id,
+                    "sequence": sequence,
+                    "events": len(events),
+                    "accepted": accepted,
+                    "body_sha256": hashlib.sha256(canonical(envelope)).hexdigest(),
+                },
+            )
+        return {"source": source, "sequence": sequence, "accepted": accepted, "rejected": len(events) - accepted,
+                "results": results}  # fmt: skip
+
+    # ---- events --------------------------------------------------------------------------------------
+    def _event(self, source: str, event: Any) -> dict[str, Any]:
+        try:
+            if not isinstance(event, dict):
+                raise ValueError("event must be an object")
+            kind = event.get("type")
+            key = self._run_key(event.get("train_number"), event.get("start_date"))
+            minute = self._minutes(_when(event.get("observed_at")))
+            if minute > self.twin.now + 2:
+                raise ValueError("observed in the future of the twin clock")
+            if minute < self.twin.now - 3:
+                raise ValueError("observation older than the 3-minute position policy")
+            if kind == "POSITION":
+                return self._position(source, key, event)
+            if kind == "STATION":
+                return self._station(source, key, event, minute)
+            raise ValueError("type must be POSITION or STATION")
+        except (ValueError, TypeError, KeyError) as exc:
+            return {"accepted": False, "reason": str(exc)[:200]}
+
+    def _run_key(self, number: Any, start: Any) -> str:
+        if not isinstance(number, str) or not TRAIN.match(number):
+            raise ValueError("invalid train_number")
+        if not isinstance(start, str):
+            raise ValueError("start_date required")
+        day = (date.fromisoformat(start) - self.service_date).days
+        key = f"{number}@{day}"
+        if key not in self.twin.runs:
+            raise ValueError(f"no timetabled run {key}")
+        return key
+
+    def _minutes(self, when: datetime) -> float:
+        midnight = datetime.combine(self.service_date, datetime.min.time(), IST)
+        return (when - midnight).total_seconds() / 60
+
+    def _position(self, source: str, key: str, event: dict[str, Any]) -> dict[str, Any]:
+        lat, lon = float(event["lat"]), float(event["lon"])
+        if not (6.0 <= lat <= 37.5 and 68.0 <= lon <= 97.5) or math.isnan(lat + lon):
+            raise ValueError("position outside India")
+        speed = float(event.get("speed_kmph", 0.0))
+        if not 0 <= speed <= 250:
+            raise ValueError("speed outside 0-250 km/h")
+        twin = self.twin
+        plan = twin.plan_of(key)
+        here = twin.position(key)["index"]
+        best = None
+        for i in range(max(here - 3, 0), min(here + 8, len(plan.sections))):
+            (ax, ay), (bx, by) = twin.net.nodes[plan.frm[i]], twin.net.nodes[plan.to[i]]
+            kx = 111.32 * math.cos(math.radians(lat))
+            px, py, dx, dy = (lon - ax) * kx, (lat - ay) * 110.57, (bx - ax) * kx, (by - ay) * 110.57
+            frac = min(max((px * dx + py * dy) / max(dx * dx + dy * dy, 1e-9), 0.0), 1.0)
+            dist = math.hypot(px - frac * dx, py - frac * dy)
+            if best is None or dist < best[0]:
+                best = (dist, i, frac)
+        if best is None or best[0] > MATCH_KM:
+            result = twin.ingest_position(key, "UNMATCHED", 0.0, source=f"FEED_{source}")
+            off = best[0] if best else math.inf
+            return {**result, "run": key, "reason": f"fix {off:.1f} km from the planned route"}
+        _dist, i, frac = best
+        sid = plan.sections[i]
+        result = twin.ingest_position(key, sid, round(frac * twin.section(sid).length_km, 3), source=f"FEED_{source}")
+        return {**result, "run": key, "section_id": sid, "match_km": round(best[0], 2)}
+
+    def _station(self, source: str, key: str, event: dict[str, Any], minute: float) -> dict[str, Any]:
+        station, what = event.get("station_code"), event.get("event")
+        if not isinstance(station, str) or not STATION.match(station) or what not in ("ARR", "DEP", "PASS"):
+            raise ValueError("invalid station_code or event")
+        twin = self.twin
+        plan = twin.plan_of(key)
+        here = twin.position(key)["index"]
+        window = range(max(here - 2, 0), len(plan.sections))
+        if what == "DEP":
+            i = next((i for i in window if plan.frm[i] == station), None)
+            planned, offset = (plan.enter[i], 0.0) if i is not None else (None, 0.0)
+        else:
+            i = next((i for i in window if plan.to[i] == station), None)
+            planned = plan.exit[i] if i is not None else None
+            offset = twin.section(plan.sections[i]).length_km if i is not None else 0.0
+        if i is None:
+            raise ValueError(f"{station} is not ahead on the planned route of {key}")
+        late = minute - planned
+        recorded = None
+        if late >= self.auto_disruption_min and key not in twin.pending:
+            # Departure lateness counts in full; arrival lateness carries to the next departure less a 2-min dwell.
+            j = i if what == "DEP" else i + 1
+            delay = late if what == "DEP" else late - 2.0
+            if j < len(plan.sections) and delay >= 1:
+                twin.disrupt(key, plan.frm[j], min(delay, 720), actor=f"feed:{source}", at_index=j)
+                recorded = {"station": plan.frm[j], "delay_min": round(delay, 1)}
+        result = twin.ingest_position(key, twin.plan_of(key).sections[i], round(offset, 3), source=f"FEED_{source}")
+        out = {**result, "run": key, "late_min": round(late, 1)}
+        if recorded:
+            out["disruption_recorded"] = recorded
+        return out
+
+
+class FeedSimulator:
+    """Produces correctly signed envelopes from the twin's own projection (plus optional noise and faults)."""
+
+    def __init__(self, gateway: FeedGateway, source: str, key_id: str, secret: bytes, seed: int = 0):
+        import random
+
+        self.gateway, self.source, self.key_id, self.secret = gateway, source, key_id, secret
+        self.rng = random.Random(seed)  # nosec B311 - GPS noise for tests only; nonces use `secrets`
+        self.sequence = 0
+
+    def envelope(self, events: list[dict[str, Any]], *, sent_at: datetime | None = None) -> dict[str, Any]:
+        self.sequence += 1
+        sent = sent_at or datetime.fromtimestamp(self.gateway.clock(), IST)
+        env = {
+            "source": self.source,
+            "key_id": self.key_id,
+            "sent_at": sent.isoformat(),
+            "nonce": secrets.token_hex(16),
+            "sequence": self.sequence,
+            "events": events,
+        }
+        env["signature"] = sign(env, self.secret)
+        return env
+
+    def position_event(self, key: str, noise_km: float = 0.2) -> dict[str, Any] | None:
+        twin, gw = self.gateway.twin, self.gateway
+        lonlat = twin.lonlat(key)
+        if lonlat is None:
+            return None
+        lon, lat = lonlat
+        lat += self.rng.gauss(0, noise_km / 110.57)
+        lon += self.rng.gauss(0, noise_km / (111.32 * math.cos(math.radians(lat))))
+        number, day = key.split("@")
+        midnight = datetime.combine(gw.service_date, datetime.min.time(), IST)
+        return {
+            "type": "POSITION",
+            "train_number": number,
+            "start_date": (gw.service_date + timedelta(days=int(day))).isoformat(),
+            "lat": round(lat, 6),
+            "lon": round(lon, 6),
+            "speed_kmph": round(twin.position(key).get("speed_kmph", 0.0), 1),
+            "observed_at": (midnight + timedelta(minutes=twin.now)).isoformat(),
+        }

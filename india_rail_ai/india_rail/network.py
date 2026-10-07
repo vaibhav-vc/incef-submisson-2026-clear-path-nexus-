@@ -26,7 +26,7 @@ DEFAULT_PRIORITY = {
     "Hyd": 4,
     "MEMU": 4,
     "DEMU": 4,
-    "Pass": 4,
+    "Pass": 4,  # nosec B105 - "Pass" is the passenger train type, not a password
     "Toy": 5,
 }
 UNKNOWN_PRIORITY = 3
@@ -127,20 +127,19 @@ class RailNetwork:
     def busiest_sections(self, limit: int = 20, zone: str | None = None) -> list[dict[str, Any]]:
         """Sections ranked by scheduled daily trains (both directions)."""
 
-        zone_clause = "WHERE t.zone = ?" if zone else ""
-        params: tuple = (zone, limit) if zone else (limit,)
+        # One constant statement: the optional zone filter is a bound parameter too (no SQL is assembled).
         return self._rows(
-            f"""
+            """
             SELECT min(s.from_code, s.to_code) AS station_a, max(s.from_code, s.to_code) AS station_b,
                    count(DISTINCT s.train_number) AS trains_per_day,
                    round(avg(s.runtime_min), 1) AS mean_runtime_min,
                    round(avg(s.crow_km), 2) AS straight_line_km
             FROM sections s JOIN trains t ON t.number = s.train_number
-            {zone_clause}
+            WHERE ? IS NULL OR t.zone = ?
             GROUP BY station_a, station_b
             ORDER BY trains_per_day DESC LIMIT ?
             """,
-            params,
+            (zone, zone, limit),
         )
 
     @cached_property

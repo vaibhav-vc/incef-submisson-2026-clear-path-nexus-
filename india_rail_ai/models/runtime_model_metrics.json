@@ -1,5 +1,5 @@
 {
-  "created_at_utc": "2026-10-07T14:09:25+00:00",
+  "created_at_utc": "2026-10-07T19:44:54+00:00",
   "target": "scheduled section run time (minutes) from the public timetable",
   "rows_total": 388938,
   "rows_used": 383192,
@@ -8,16 +8,16 @@
   "cv": "5-fold GroupKFold by train pair (every scored train unseen in training); section priors re-encoded inside each fold",
   "scores": {
     "gradient_boosting_existing_train": {
-      "mae_min": 1.856,
+      "mae_min": 1.387,
       "median_ae_min": 1.0,
-      "mape_sections_10min_plus": 23.31,
-      "within_2_min_pct": 76.63
+      "mape_sections_10min_plus": 16.49,
+      "within_2_min_pct": 88.02
     },
     "gradient_boosting_new_path": {
-      "mae_min": 1.873,
+      "mae_min": 1.68,
       "median_ae_min": 1.0,
-      "mape_sections_10min_plus": 23.6,
-      "within_2_min_pct": 76.5
+      "mape_sections_10min_plus": 21.28,
+      "within_2_min_pct": 83.74
     },
     "baseline_section_median": {
       "mae_min": 1.953,
@@ -33,15 +33,15 @@
     }
   },
   "score_notes": {
-    "existing_train": "Uses the train's other scheduled sections (leave-one-section-out pace).",
-    "new_path": "Train pace withheld, as when planning a path that is not yet timetabled."
+    "existing_train": "Uses the train's other scheduled sections (leave-one-section-out pace and the pace on the two sections either side).",
+    "new_path": "Train pace and neighbouring-section context withheld, as for a path not yet timetabled."
   },
   "interval_p10_p90": {
     "target_coverage_pct": 80.0,
-    "raw_quantile_coverage_pct": 80.01,
-    "conformal_coverage_pct": 80.12,
-    "conformal_mean_width_min": 5.352,
-    "deployed_margin_min": 0.0
+    "raw_quantile_coverage_pct": 78.43,
+    "conformal_coverage_pct": 79.99,
+    "conformal_mean_width_min": 3.855,
+    "deployed_margin_min": 0.032
   },
   "features": [
     "train_type",
@@ -61,7 +61,16 @@
     "edge_prior_n",
     "type_speed_kmph",
     "train_pace",
-    "pace_residual"
+    "pace_residual",
+    "edge_type_prior_min",
+    "edge_dir_prior_min",
+    "edge_q25_min",
+    "edge_q75_min",
+    "edge_min_min",
+    "local_pace",
+    "local_residual",
+    "prev_runtime_min",
+    "next_runtime_min"
   ],
   "limitations": [
     "Learns planned (timetabled) run times, not observed running or delays.",

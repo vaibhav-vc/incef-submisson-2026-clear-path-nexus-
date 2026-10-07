@@ -1,0 +1,44 @@
+:root {
+  --bg: #0f1419; --panel: #161d24; --line: #26313b; --text: #e6edf3; --muted: #8b98a5;
+  --ok: #3fb950; --caution: #d29922; --warn: #f0883e; --crit: #f85149; --info: #58a6ff;
+  --a: #58a6ff; --b: #d2a8ff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+header h1 { font-size: 17px; margin: 0; }
+header .sub { color: var(--muted); font-size: 12px; }
+.grow { flex: 1; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--line); }
+.s-REVIEWABLE, .s-NORMAL, .s-FRESH, .s-OK { background: #12361f; color: var(--ok); }
+.s-HOLD, .s-REVIEW, .s-CAUTION, .s-AGING, .s-NO_FEASIBLE_PLAN, .s-ACKNOWLEDGED { background: #3a2c0c; color: var(--caution); }
+.s-WARNING { background: #3d2412; color: var(--warn); }
+.s-UNAVAILABLE, .s-CRITICAL, .s-STALE, .s-MISSING, .s-BAD { background: #3c1618; color: var(--crit); }
+.s-INFO, .s-OPEN { background: #10283f; color: var(--info); }
+main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 12px; padding: 12px 16px; }
+@media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
+button, select, input { font: inherit; color: var(--text); background: #212b35; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; }
+button { cursor: pointer; }
+button:hover { border-color: var(--info); }
+button:disabled { opacity: .35; cursor: not-allowed; }
+button.primary { background: #1f6f3a; border-color: #2ea043; }
+button.danger { background: #5a1d1d; border-color: #8e2b2b; }
+button.active { border-color: var(--info); background: #10283f; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+svg { width: 100%; height: auto; background: #0b1015; border-radius: 6px; }
+.card { border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin: 8px 0; }
+.card.top { border-color: #2ea043; }
+.bars { display: grid; grid-template-columns: 90px 1fr 48px; gap: 2px 6px; font-size: 12px; margin-top: 6px; }
+.bar { height: 8px; background: #21262d; border-radius: 4px; align-self: center; overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--info); }
+.muted { color: var(--muted); font-size: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+td, th { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.slider { display: grid; grid-template-columns: 80px 1fr 36px; gap: 6px; align-items: center; font-size: 12px; }
+footer { padding: 10px 16px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
+.err { color: var(--crit); font-size: 12px; min-height: 16px; }
+
+.link-a { color: var(--a); }
+.link-b { color: var(--b); }

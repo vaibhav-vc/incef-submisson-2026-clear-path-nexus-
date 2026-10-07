@@ -131,8 +131,10 @@ def download_sources(*, allow_unpinned: bool = False, raw_dir: Path = RAW_DIR) -
     for source in SOURCES.values():
         target = raw_dir / f"{source.key}.json"
         if not target.exists():
+            if not source.url.startswith("https://"):
+                raise ValueError(f"{source.key}: only https sources are downloaded")
             partial = target.with_suffix(".part")
-            with urllib.request.urlopen(source.url, timeout=300) as response, partial.open("wb") as out:
+            with urllib.request.urlopen(source.url, timeout=300) as response, partial.open("wb") as out:  # nosec B310
                 total = 0
                 while chunk := response.read(1 << 20):
                     total += len(chunk)

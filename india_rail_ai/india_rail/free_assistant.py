@@ -23,6 +23,16 @@ from india_rail.services import Services
 from india_rail.tools import SYSTEM_PROMPT, RailTools, json_schema_tools
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
+
+
+def _http_url(url: str) -> str:
+    """Only http(s) endpoints: an OLLAMA_URL of file:// or another scheme must never be opened."""
+
+    if not url.startswith(("http://", "https://")):
+        raise ValueError(f"Ollama URL must be http(s), got {url.split(':', 1)[0]}:")
+    return url.rstrip("/")
+
+
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
 MAX_TOOL_ROUNDS = 8
 
@@ -265,14 +275,14 @@ class OllamaAssistant:
     def __init__(self, services: Services, model: str = OLLAMA_MODEL, url: str = OLLAMA_URL, timeout: float = 300):
         self.tools = RailTools(services)
         self.model = model
-        self.url = url.rstrip("/")
+        self.url = _http_url(url)
         self.timeout = timeout
         self.messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     @staticmethod
     def available(url: str = OLLAMA_URL, timeout: float = 1.0) -> bool:
         try:
-            with urllib.request.urlopen(f"{url.rstrip('/')}/api/tags", timeout=timeout) as response:
+            with urllib.request.urlopen(f"{_http_url(url)}/api/tags", timeout=timeout) as response:  # nosec B310
                 return response.status == 200
         except (urllib.error.URLError, OSError, ValueError):
             return False
@@ -284,7 +294,7 @@ class OllamaAssistant:
         request = urllib.request.Request(
             f"{self.url}/api/chat", data=body, headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
+        with urllib.request.urlopen(request, timeout=self.timeout) as response:  # nosec B310 - http(s) checked
             return json.load(response)
 
     def ask(self, question: str) -> str:

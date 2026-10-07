@@ -9,6 +9,11 @@ import sys
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["official"]:
+        from india_rail.official import main as official_main
+
+        return official_main(argv[1:])
     parser = argparse.ArgumentParser(prog="india_rail", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -36,6 +41,8 @@ def main(argv: list[str] | None = None) -> int:
         choices=["auto", "offline", "ollama", "claude"],
         help="auto/offline/ollama are free; claude uses the paid Anthropic API with your own key",
     )
+
+    sub.add_parser("official", help="register/ingest official Government of India railway data (--help for options)")
 
     serve = sub.add_parser("serve", help="run the HTTP API")
     serve.add_argument("--host", default="127.0.0.1")

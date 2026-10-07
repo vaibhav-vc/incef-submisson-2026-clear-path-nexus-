@@ -58,18 +58,18 @@ The timetable is a **community snapshot from about 2016** with **no running-days
   - Gradient-boosted trees learn the *difference* from the section's typical run time. Trees group each input into at most 255 bins, so they can't reproduce an exact typical value; learning only the correction avoids that.
   - P10 and P90 quantile models give the interval, checked with split-conformal calibration (CQR).
 
-| Model (cross-validated) | Mean abs. error | Error on sections ≥10 min | Within 2 min |
+- **Features chosen by measured training rounds** (`python -m india_rail.training`, log in `models/training_log.json`): section priors by train type and direction, the spread of run times on the section, the train's pace on the two sections either side (leave-one-out), a type-specific starting point, and whole-minute rounding. Before any round, 15% of train groups were locked away as a final test and scored once at the end.
+
+| Model (5-fold grouped CV, all data) | Mean abs. error | Error on sections ≥10 min | Within 2 min |
 |---|---|---|---|
 | Speed by train type (baseline) | 2.57 min | 31.3% | 64.0% |
-| Median of other trains on the same section (baseline) | 1.95 min | 24.9% | **80.4%** |
-| Gradient boosting, new path | 1.87 min | 23.6% | 76.5% |
-| **Gradient boosting, existing train** | **1.86 min** | **23.3%** | 76.6% |
+| Median of other trains on the same section (baseline) | 1.95 min | 24.9% | 80.4% |
+| Gradient boosting, new path (no train context) | 1.68 min | 21.3% | 83.7% |
+| **Gradient boosting, existing train** | **1.39 min** | **16.5%** | **88.0%** |
 
-- The P10–P90 interval covers **80.1%** of held-out sections against an 80% target, with a mean width of 5.4 minutes.
-- **Honest read:**
-  - Gradient boosting is 5% better than the strongest baseline on mean error and 28% better than speed-by-type.
-  - The section median still gets more predictions within 2 minutes. It returns exact whole-minute values that many trains share, while the model trades those exact hits for fewer large misses.
-  - The model learns **planned** run times. Delay prediction needs NTES-style actual running data, and no open source exists for that.
+- Locked test set (58,110 sections of 767 trains never used in any round): **1.378 min vs 1.957** for the section median (−30%), 88.1% vs 80.1% within 2 minutes.
+- The P10–P90 interval covers **80.0%** of held-out sections against an 80% target, with a mean width of 3.9 minutes (was 5.4).
+- **Honest read:** timetables are whole minutes with operator-chosen allowances, so zero error is not reachable from public data. The model learns **planned** run times; delay prediction needs NTES-style actual running data, which the live-feed gateway is built to receive.
 - Full metrics are in [`models/runtime_model_metrics.json`](models/runtime_model_metrics.json).
 
 ## Disruption planner
@@ -113,19 +113,40 @@ None of them can change anything; plans are proposals.
 - The HTTP API refuses `provider: "claude"` unless the server sets `INDIA_RAIL_ALLOW_PAID_ASSISTANT=1`, so nobody can run up charges on a shared server.
 - The tests run the offline assistant on a miniature network and the Ollama and Claude tool loops against mocked servers.
 
+## Nexus RailGuard (SEVA 2026 build)
+
+`india_rail/railguard/` is a controller decision-support and driver-advisory layer with two digital twins:
+- **National twin:** every station (8,990; 7,679 with halts, 914 non-halt stations placed on their sections), 1,454 junctions, 8,738 sections and 7,580 timetabled train runs over two days. Track counts, speeds and lengths are inferred from the timetable and labelled as such. Console: `/control/national`.
+- **Tabletop twin:** two trains on ten sections, with the TwinTrack ESP32 node and six judge scenarios. Console: `/control`; driver screens: `/cab?train=A|B` or `/cab?run=<train>@<day>`.
+
+The parts:
+- **Planner:** CONTINUE, HOLD, PATH-THROUGH, PRIORITY (lower-priority trains re-pathed) and REROUTE options. It makes lower-priority trains yield to resolve conflicts, then ranks on seven visible factors.
+- **EvidenceGate:** stale or missing evidence fails closed. Projections without a live feed are PLANNING_ONLY rehearsals.
+- **Approval:** only a named controller can approve, and only the latest ranking for the current state.
+- **Cab:** each driver sees only the approved plan.
+- **Audit:** a hash chain (optional HMAC, persisted) records every decision, and each decision replays to the same ranking.
+- **Live-feed gateway** (`livefeed.py`): accepts signed RTIS/NTES/COA-style batches, protects against replays, map-matches positions, and turns late station events into disruptions for the controller. It is ready for authorised data.
+- **Simulation** (`simulate.py`): randomised operation sequences on both twins, with eight safety invariants checked after every operation. 5M+ operations ran with 0 violations; see [`seva2026/AUDIT_LOG.md`](seva2026/AUDIT_LOG.md).
+
+Security: role tokens, fail-closed production mode, strict request schemas, CSP, rate limits, and a signed feed. See [SECURITY.md](SECURITY.md). Compliance with the Railways Act / G&SR, RDSO and EN 50716, the IT Act, CERT-In, DPDP and the data licences is covered in [seva2026/COMPLIANCE_REGISTER.md](seva2026/COMPLIANCE_REGISTER.md). The full report is [seva2026/ClearPath_Nexus_RailGuard_Report.pdf](seva2026/ClearPath_Nexus_RailGuard_Report.pdf).
+
+Start with [seva2026/START_HERE.md](seva2026/START_HERE.md). The tabletop ESP32 node is in [hardware/twintrack_esp32](hardware/twintrack_esp32/README.md); it is written but not yet bench-tested.
+
 ## HTTP API
 
-Run `python -m india_rail serve`; the endpoint docs are at `/docs`.
+Run `python -m india_rail serve`; the endpoint docs are at `/docs` (disabled when `RAILGUARD_MODE=production`). With role tokens configured, send `Authorization: Bearer <token>`.
 
 - `GET /health`
 - `GET /trains/search?q=`, `/trains/{number}`, `/trains/{number}/slack`
 - `GET /stations/search?q=`, `/stations/{code}/board`
 - `GET /between?origin=&destination=`, `/sections/busiest`, `/path`
 - `POST /plan/disruption`, `POST /assistant/ask`
+- RailGuard: `/railguard/...` (tabletop) and `/railguard/national/...` (summary, network, positions, runs, plan, cab, disrupt, recommend, approve, tick, section, replay, `feed/batch`)
+- Official data: `python -m india_rail official --list | --file <csv>`
 
 ## Next steps towards real deployment
 
-1. **Authorised live data.** NTES running status and COA control charts through CRIS, plus running days and the current timetable (Trains at a Glance / ICMS).
+1. **Authorised live data.** NTES running status, RTIS positions and COA control charts through CRIS; the signed gateway is built and needs the interface specification and keys. Also running days and the current timetable (Trains at a Glance / ICMS); the official-data pipeline ingests the data.gov.in release.
 2. **Track data.** Load OSM or, better, the Indian Railways engineering register: line count, loops and block sections. This enables single-line conflicts and overtaking at loops.
 3. **Delay model.** Train on actual running data to predict delays, not just planned run times.
 4. **Optimiser.** Replace the greedy holds with an optimiser that minimises weighted delay, then trial it in shadow mode beside a real control office, comparing its proposals with the controllers' decisions.

@@ -15,6 +15,11 @@ Method
 * The strongest signal, the run time other trains are given on the same track
   section, is target-encoded *inside each cross-validation fold* from training
   trains only, so the score is never computed with the answer in the features.
+* Section priors are also kept per train type and per direction, with the
+  spread of run times on the section, and an existing train's pace on the two
+  sections either side of the one being predicted is used (leave-one-out).
+  Predictions are rounded to whole minutes, as timetables are. This
+  configuration won the measured training rounds in `india_rail.training`.
 * GroupKFold by train pair (a train and its return working share sections), so
   every evaluated train is unseen during training.
 * Two baselines: median speed by train type, and the training-fold median for
@@ -56,7 +61,20 @@ NUMERIC = [
     "edge_train_count",
 ]
 ENCODED = ["edge_prior_min", "edge_prior_min_per_km", "edge_prior_n", "type_speed_kmph", "train_pace", "pace_residual"]
-FEATURES = CATEGORICAL + NUMERIC + ENCODED
+EDGE_EXTRA = ["edge_type_prior_min", "edge_dir_prior_min", "edge_q25_min", "edge_q75_min", "edge_min_min"]
+CONTEXT = ["local_pace", "local_residual", "prev_runtime_min", "next_runtime_min"]
+BASE_FEATURES = CATEGORICAL + NUMERIC + ENCODED
+FEATURES = BASE_FEATURES + EDGE_EXTRA + CONTEXT
+# The configuration selected by the measured training rounds (python -m india_rail.training; see
+# models/training_log.json): section priors by train type and direction, local pace from neighbouring
+# sections, type-specific starting point, larger/slower boosting, predictions rounded to whole minutes.
+PRODUCTION = {
+    "learning_rate": 0.05,
+    "max_iter": 700,
+    "max_leaf_nodes": 127,
+    "min_samples_leaf": 30,
+    "l2_regularization": 1.0,
+}
 MIN_EDGE_SUPPORT = 2
 MIN_PACE_BASIS_MIN = 15
 PACE_MASK_RATE = 0.2
@@ -131,6 +149,51 @@ def encode_priors(train: pd.DataFrame, target: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def encode_extra(train: pd.DataFrame, target: pd.DataFrame) -> pd.DataFrame:
+    """Type- and direction-specific section priors and the spread of run times on the section."""
+
+    out = target.copy()
+    support = out["edge_prior_n"] >= MIN_EDGE_SUPPORT
+    by_type = train.groupby(["edge", "train_type"], observed=True)["runtime_min"].median()
+    keys = pd.MultiIndex.from_arrays([out["edge"], out["train_type"]])
+    out["edge_type_prior_min"] = by_type.reindex(keys).to_numpy()
+    by_dir = train.groupby(["edge", "from_code"])["runtime_min"].median()
+    out["edge_dir_prior_min"] = by_dir.reindex(pd.MultiIndex.from_arrays([out["edge"], out["from_code"]])).to_numpy()
+    q = train.groupby("edge")["runtime_min"].quantile([0.25, 0.75]).unstack()
+    out["edge_q25_min"] = out["edge"].map(q[0.25]).where(support)
+    out["edge_q75_min"] = out["edge"].map(q[0.75]).where(support)
+    out["edge_min_min"] = out["edge"].map(train.groupby("edge")["runtime_min"].min()).where(support)
+    return out
+
+
+def add_context(frame: pd.DataFrame) -> pd.DataFrame:
+    """Local pace: the train's run times on the two sections either side, relative to their priors.
+
+    Leave-one-out like `train_pace` (the row's own run time never enters). Rows whose train pace
+    was masked (new-path training) get no context either.
+    """
+
+    out = frame.sort_values(["train_number", "seq"]).copy()
+    by_train = out.groupby("train_number", sort=False)
+    has = out["edge_prior_min"].notna()
+    runtime = out["runtime_min"].where(has)
+    prior = out["edge_prior_min"].where(has)
+    num = pd.Series(0.0, index=out.index)
+    den = pd.Series(0.0, index=out.index)
+    for k in (-2, -1, 1, 2):
+        r = runtime.groupby(out["train_number"], sort=False).shift(k)
+        p = prior.groupby(out["train_number"], sort=False).shift(k)
+        ok = r.notna() & p.notna()
+        num += r.where(ok, 0.0)
+        den += p.where(ok, 0.0)
+    out["local_pace"] = (num / den.where(den >= 5)).where(out["train_pace"].notna())
+    out["local_residual"] = (out["local_pace"] - 1) * out["edge_prior_min"]
+    masked = out["train_pace"].isna()
+    out["prev_runtime_min"] = by_train["runtime_min"].shift(1).where(~masked)
+    out["next_runtime_min"] = by_train["runtime_min"].shift(-1).where(~masked)
+    return out.loc[frame.index]
+
+
 def add_train_pace(frame: pd.DataFrame, *, mask_rate: float = 0.0, seed: int = 0) -> pd.DataFrame:
     """How fast this train runs on its *other* sections relative to the section prior.
 
@@ -171,14 +234,28 @@ def base_estimate(frame: pd.DataFrame) -> np.ndarray:
     return base.to_numpy(dtype=float)
 
 
+def production_base(frame: pd.DataFrame) -> np.ndarray:
+    """Base for the production model: the section prior for this train type where it is supported."""
+
+    typed = frame["edge_type_prior_min"].where(frame["edge_prior_n"] >= MIN_EDGE_SUPPORT)
+    return typed.fillna(pd.Series(base_estimate(frame), index=frame.index)).to_numpy(dtype=float)
+
+
+def encode_for_prediction(reference: pd.DataFrame, frame: pd.DataFrame, *, use_train_pace: bool) -> pd.DataFrame:
+    encoded = encode_extra(reference, encode_priors(reference, frame))
+    if use_train_pace and "runtime_min" in encoded:
+        return add_context(add_train_pace(encoded))
+    encoded["train_pace"] = np.nan
+    encoded["pace_residual"] = np.nan
+    for column in CONTEXT:
+        encoded[column] = np.nan
+    return encoded
+
+
 def _model(loss: str, quantile: float | None = None) -> HistGradientBoostingRegressor:
     kwargs: dict[str, Any] = {
         "loss": loss,
-        "learning_rate": 0.08,
-        "max_iter": 400,
-        "max_leaf_nodes": 63,
-        "min_samples_leaf": 40,
-        "l2_regularization": 1.0,
+        **PRODUCTION,
         "categorical_features": "from_dtype",
         "random_state": 20261007,
     }
@@ -230,16 +307,11 @@ class TrainedRuntimeModel:
         if "train_number" in frame:
             # Training priors never include the row's own train; match that here.
             reference = reference[~reference["train_number"].isin(frame["train_number"].unique())]
-        encoded = encode_priors(reference, frame)
-        if use_train_pace and "runtime_min" in encoded:
-            encoded = add_train_pace(encoded)
-        else:
-            encoded["train_pace"] = np.nan
-            encoded["pace_residual"] = np.nan
+        encoded = encode_for_prediction(reference, frame, use_train_pace=use_train_pace)
         x = encoded[FEATURES]
-        base = base_estimate(encoded)
+        base = production_base(encoded)
         out = pd.DataFrame(index=frame.index)
-        out["p50"] = base + self.median.predict(x)
+        out["p50"] = np.round(base + self.median.predict(x))  # timetables are minute-resolution
         out["p10"] = np.minimum(base + self.p10.predict(x), out["p50"]) - self.interval_margin
         out["p90"] = np.maximum(base + self.p90.predict(x), out["p50"]) + self.interval_margin
         return out.clip(lower=0)
@@ -254,15 +326,15 @@ def _encode_training_rows(train: pd.DataFrame, seed: int) -> pd.DataFrame:
     """
 
     parts = [
-        encode_priors(train.iloc[a], train.iloc[b])
+        encode_extra(train.iloc[a], encode_priors(train.iloc[a], train.iloc[b]))
         for a, b in GroupKFold(n_splits=4).split(train, groups=train["group"])
     ]
     encoded = pd.concat(parts).loc[train.index]
-    return add_train_pace(encoded, mask_rate=PACE_MASK_RATE, seed=seed)
+    return add_context(add_train_pace(encoded, mask_rate=PACE_MASK_RATE, seed=seed))
 
 
 def _fit_three(encoded: pd.DataFrame, y: np.ndarray) -> dict[str, HistGradientBoostingRegressor]:
-    residual = y - base_estimate(encoded)
+    residual = y - production_base(encoded)
     models = {"p50": _model("absolute_error"), "p10": _model("quantile", 0.1), "p90": _model("quantile", 0.9)}
     for model in models.values():
         model.fit(encoded[FEATURES], residual)
@@ -282,13 +354,14 @@ def evaluate_and_train(con: sqlite3.Connection, *, folds: int = 5, save: bool = 
         train, test = data.iloc[train_idx], data.iloc[test_idx]
         fold_of[test_idx] = fold
         train_encoded = _encode_training_rows(train, seed=fold)
-        test_encoded = add_train_pace(encode_priors(train, test))
+        test_encoded = encode_for_prediction(train, test, use_train_pace=True)
         models = _fit_three(train_encoded, train["runtime_min"].to_numpy(dtype=float))
-        base = base_estimate(test_encoded)
+        base = production_base(test_encoded)
         for key, model in models.items():
             oof[key][test_idx] = base + model.predict(test_encoded[FEATURES])
-        new_path = test_encoded.assign(train_pace=np.nan, pace_residual=np.nan)
-        oof["new_path_p50"][test_idx] = base + models["p50"].predict(new_path[FEATURES])
+        oof["p50"][test_idx] = np.round(oof["p50"][test_idx])
+        new_path = encode_for_prediction(train, test, use_train_pace=False)
+        oof["new_path_p50"][test_idx] = np.round(production_base(new_path) + models["p50"].predict(new_path[FEATURES]))
         for key, pred in _baselines(train, test).items():
             oof[key][test_idx] = pred
 
@@ -321,8 +394,9 @@ def evaluate_and_train(con: sqlite3.Connection, *, folds: int = 5, save: bool = 
             "baseline_type_speed": _scores(y, oof["type_speed"]),
         },
         "score_notes": {
-            "existing_train": "Uses the train's other scheduled sections (leave-one-section-out pace).",
-            "new_path": "Train pace withheld, as when planning a path that is not yet timetabled.",
+            "existing_train": "Uses the train's other scheduled sections (leave-one-section-out pace and the "
+            "pace on the two sections either side).",
+            "new_path": "Train pace and neighbouring-section context withheld, as for a path not yet timetabled.",
         },
         "interval_p10_p90": {
             "target_coverage_pct": INTERVAL_TARGET * 100,
@@ -346,7 +420,7 @@ def evaluate_and_train(con: sqlite3.Connection, *, folds: int = 5, save: bool = 
             median=models["p50"],
             p10=models["p10"],
             p90=models["p90"],
-            reference=data[["train_number", "edge", "runtime_min", "crow_km", "train_type"]].copy(),
+            reference=data[["train_number", "edge", "from_code", "runtime_min", "crow_km", "train_type"]].copy(),
             metadata={k: metrics[k] for k in ("created_at_utc", "target", "rows_used", "features")},
             interval_margin=final_margin,
         )

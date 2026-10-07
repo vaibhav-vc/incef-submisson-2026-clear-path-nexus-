@@ -1,0 +1,73 @@
+{
+  "measured_at_utc": "2026-10-07T19:53:51+00:00",
+  "platform": "Linux x86_64, Python 3.13.16",
+  "scope": "Controlled software experiments on the TwinTrack demo network; not field measurements.",
+  "conflict_detection": {
+    "cases": 861,
+    "true_conflicts": 480,
+    "recall": 1.0,
+    "precision": 1.0,
+    "missed_conflicts": 0,
+    "false_alarms": 0,
+    "ground_truth": "analytic single-line occupation windows on S06 from section lengths and speed limits"
+  },
+  "executed_plans_healthy_network": {
+    "cases": 231,
+    "approvable_recommendations": 231,
+    "executed_single_line_overlaps": 0,
+    "min_observed_single_line_separation_min": 4.83,
+    "latency_ms": {
+      "median": 10.16,
+      "p95": 13.31,
+      "max": 16.66
+    },
+    "delay_vs_fastest_min": {
+      "mean": 2.369,
+      "max": 9.8
+    },
+    "infra_stress_reduction_vs_fastest_pct": {
+      "mean": 4.8,
+      "max": 12.01
+    }
+  },
+  "executed_plans_degraded_s02": {
+    "cases": 231,
+    "approvable_recommendations": 231,
+    "executed_single_line_overlaps": 0,
+    "min_observed_single_line_separation_min": 5.42,
+    "latency_ms": {
+      "median": 9.59,
+      "p95": 11.28,
+      "max": 15.25
+    },
+    "delay_vs_fastest_min": {
+      "mean": 3.375,
+      "max": 7.871
+    },
+    "infra_stress_reduction_vs_fastest_pct": {
+      "mean": 24.18,
+      "max": 31.09
+    }
+  },
+  "fail_closed": {
+    "fault_cases": 42,
+    "false_clear_count": 0,
+    "false_clears": []
+  },
+  "scenarios": {
+    "scenarios_passed": "6/6",
+    "by_scenario": {
+      "normal": true,
+      "delay_conflict": true,
+      "infrastructure_protection": true,
+      "threat_awareness": true,
+      "stale_position": true,
+      "audit_replay": true
+    },
+    "evidence_completeness_mean": 1.0,
+    "evidence_fresh_rate_mean": 0.9941,
+    "snapshots_replayed": 12,
+    "replay_success_rate": 1.0
+  },
+  "runtime_s": 17.9
+}

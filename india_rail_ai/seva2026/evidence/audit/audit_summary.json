@@ -1,0 +1,23 @@
+{
+  "tests_passed": 115,
+  "attack_tests": 32,
+  "bandit_findings": 0,
+  "bandit_reviewed_suppressions": 7,
+  "bandit_lines_scanned": 7818,
+  "pip_audit": "0 known vulnerabilities in 45 pinned packages",
+  "national_stats": {
+    "stations_total": 8990,
+    "stations": 7679,
+    "stations_without_halt_placed_on_sections": 914,
+    "stations_without_halt_not_placed": 397,
+    "sections_official_length": 0,
+    "sections": 8738,
+    "junctions": 1454,
+    "sections_inferred_multi_track": 5098,
+    "sections_assumed_single": 3640,
+    "stations_placed_from_neighbours": 187,
+    "train_numbers": 5187,
+    "runs_in_window": 7580,
+    "occupations": 843568
+  }
+}

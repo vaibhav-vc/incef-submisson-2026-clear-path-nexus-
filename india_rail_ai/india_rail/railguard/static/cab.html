@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Nexus Cab</title>
+<link rel="stylesheet" href="/railguard/static/cab.css">
+</head>
+<body>
+<div class="top">
+  <h1 id="title">Nexus Cab</h1>
+  <div><span class="fresh" id="fresh"></span><span class="switch"><a href="?train=A">A</a><a href="?train=B">B</a></span></div>
+</div>
+<div class="status" id="status"><div id="statusText">Connecting…</div><div class="headline" id="headline"></div></div>
+<div class="grid">
+  <div class="box"><div class="label">Speed now</div><div class="big" id="speed">--</div><div class="label">km/h (twin)</div></div>
+  <div class="box"><div class="label">Advisory target band (simulation)</div><div class="band" id="band">--</div>
+    <div class="label" id="schedule"></div></div>
+  <div class="box"><div class="label">Approved route</div><div class="strip" id="route"></div><div id="nextwp" class="label"></div></div>
+  <div class="box"><div class="label">Ahead</div><ul id="events"></ul></div>
+  <div class="box"><div class="label">Nearby-train awareness (twin estimate, not collision protection)</div><ul id="nearby"></ul></div>
+  <div class="box"><div class="label">Threat state</div><ul id="threats"></ul></div>
+</div>
+<footer id="footer">ADVISORY PROTOTYPE - AUTHORISED SIGNALS, RULES AND ATP REMAIN CONTROLLING</footer>
+<script src="/railguard/static/cab.js"></script>
+</body>
+</html>

@@ -1,0 +1,266 @@
+{
+  "normal": {
+    "name": "normal",
+    "title": "Normal operation: non-conflicting paths, everything traceable",
+    "steps": [
+      {
+        "t_min": 0.0,
+        "action": "recommend",
+        "observation": {
+          "state": "REVIEWABLE",
+          "top": "Train A: W->J1->J2->J3->E; Train B: E->J3->Y",
+          "action": "CONTINUE"
+        }
+      },
+      {
+        "t_min": 0.0,
+        "action": "approve",
+        "observation": "C1"
+      },
+      {
+        "t_min": 50.0,
+        "action": "run",
+        "observation": {
+          "A": true,
+          "B": true
+        }
+      }
+    ],
+    "checks": {
+      "evidence_reviewable": true,
+      "continue_on_timetable": true,
+      "no_warning_threats": true,
+      "both_trains_arrived": true,
+      "audit_chain_intact": true
+    },
+    "passed": true,
+    "snapshots": [
+      "SNAP-0001"
+    ]
+  },
+  "delay_conflict": {
+    "name": "delay_conflict",
+    "title": "Delay conflict: late freight would meet the express on single line S06",
+    "steps": [
+      {
+        "t_min": 0.0,
+        "action": "threats",
+        "observation": [
+          "CONVERGING_PATH"
+        ]
+      },
+      {
+        "t_min": 0.0,
+        "action": "recommend",
+        "observation": {
+          "state": "REVIEWABLE",
+          "top": "Train A: W->J1->L->J2->K->E (alternative route); Train B: E->J3->Y",
+          "why": {
+            "delay": 0.185,
+            "conflict": 0.0,
+            "infra": 0.12,
+            "energy": 0.196,
+            "threat": 0.0,
+            "evidence": 0.0,
+            "complexity": 0.25
+          }
+        }
+      },
+      {
+        "t_min": 49.5,
+        "action": "run",
+        "observation": {
+          "A": true,
+          "B": true
+        }
+      }
+    ],
+    "checks": {
+      "converging_path_detected": true,
+      "alternative_offered": true,
+      "conflict_free": true,
+      "never_opposing_on_single_line": true,
+      "both_trains_arrived": true
+    },
+    "passed": true,
+    "snapshots": [
+      "SNAP-0001"
+    ]
+  },
+  "infrastructure_protection": {
+    "name": "infrastructure_protection",
+    "title": "Infrastructure protection: degraded bridge section re-ranks",
+    "steps": [
+      {
+        "t_min": 0.0,
+        "action": "recommend_healthy",
+        "observation": "Train A: W->J1->J2->J3->E; Train B: E->J3->Y"
+      },
+      {
+        "t_min": 0.0,
+        "action": "degrade",
+        "observation": "S02 TrackSense condition 0.90 -> 0.30"
+      },
+      {
+        "t_min": 0.0,
+        "action": "recommend_degraded_balanced",
+        "observation": "Train A: W->J1->L->J2->K->E (alternative route); Train B: E->J3->Y"
+      },
+      {
+        "t_min": 0.0,
+        "action": "recommend_degraded_fastest",
+        "observation": "Train A: W->J1->J2->J3->E; Train B: E->J3->Y"
+      },
+      {
+        "t_min": 0.0,
+        "action": "trade_off",
+        "observation": {
+          "stress_reduction_pct": 23.8,
+          "delay_cost_min": 1.14
+        }
+      }
+    ],
+    "checks": {
+      "healthy_uses_fast_bridge": true,
+      "balanced_avoids_degraded_section": true,
+      "fastest_preset_keeps_bridge": true,
+      "stress_reduced": true
+    },
+    "passed": true,
+    "snapshots": [
+      "SNAP-0001",
+      "SNAP-0002",
+      "SNAP-0003"
+    ]
+  },
+  "threat_awareness": {
+    "name": "threat_awareness",
+    "title": "Threat awareness: obstacle report ahead of Train A",
+    "steps": [
+      {
+        "t_min": 6.0,
+        "action": "inject",
+        "observation": "TwinTrack obstacle sensor event on S05"
+      },
+      {
+        "t_min": 6.0,
+        "action": "cab_A",
+        "observation": {
+          "status": "HOLD-FOR-CONTROLLER",
+          "headline": "CONTROLLER REVIEW PENDING - Obstacle reported on S05 ahead - expect controller instructions"
+        }
+      },
+      {
+        "t_min": 6.0,
+        "action": "recommend_before_ack",
+        "observation": {
+          "state": "REVIEW",
+          "reason": "Critical threat open: OBSTACLE"
+        }
+      },
+      {
+        "t_min": 6.0,
+        "action": "recommend_after_ack",
+        "observation": "Train A: J1->L->J2->K->E (alternative route); Train B: E->J3->Y"
+      }
+    ],
+    "checks": {
+      "obstacle_threat_open": true,
+      "cab_requests_controller": true,
+      "critical_threat_blocks_approval": true,
+      "reroute_avoids_obstacle": true,
+      "both_trains_arrived": true
+    },
+    "passed": true,
+    "snapshots": [
+      "SNAP-0001",
+      "SNAP-0002",
+      "SNAP-0003"
+    ]
+  },
+  "stale_position": {
+    "name": "stale_position",
+    "title": "Stale position: Train A's feed freezes; the system fails closed",
+    "steps": [
+      {
+        "t_min": 10.75,
+        "action": "freeze",
+        "observation": "Train A position feed frozen for 45 s"
+      },
+      {
+        "t_min": 10.75,
+        "action": "cabs",
+        "observation": {
+          "A": "DATA UNAVAILABLE",
+          "B_nearby_confidence": "LOW"
+        }
+      },
+      {
+        "t_min": 10.75,
+        "action": "recommend",
+        "observation": {
+          "state": "HOLD",
+          "reason": "Mandatory evidence stale: position:A"
+        }
+      },
+      {
+        "t_min": 10.92,
+        "action": "recover",
+        "observation": "REVIEWABLE"
+      }
+    ],
+    "checks": {
+      "stale_threat": true,
+      "cab_a_data_unavailable": true,
+      "cab_a_no_speed_advice": true,
+      "nearby_awareness_low_confidence": true,
+      "recommendation_fails_closed": true,
+      "approval_refused": true,
+      "recovers_when_fresh": true
+    },
+    "passed": true,
+    "snapshots": [
+      "SNAP-0001",
+      "SNAP-0002",
+      "SNAP-0003"
+    ]
+  },
+  "audit_replay": {
+    "name": "audit_replay",
+    "title": "Audit replay: every decision reconstructs exactly",
+    "steps": [
+      {
+        "t_min": 49.5,
+        "action": "replay",
+        "observation": [
+          {
+            "snapshot_id": "SNAP-0001",
+            "integrity_ok": true,
+            "replay_matches": true
+          }
+        ]
+      },
+      {
+        "t_min": 49.5,
+        "action": "approvals",
+        "observation": [
+          {
+            "by": "controller-demo",
+            "snapshot": "SNAP-0001"
+          }
+        ]
+      }
+    ],
+    "checks": {
+      "all_snapshots_intact": true,
+      "all_replays_match": true,
+      "audit_chain_intact": true,
+      "tampering_detected": true,
+      "approval_names_controller_and_snapshot": true
+    },
+    "passed": true,
+    "snapshots": [
+      "SNAP-0001"
+    ]
+  }
+}

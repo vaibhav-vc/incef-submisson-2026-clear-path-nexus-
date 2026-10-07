@@ -1,0 +1,28 @@
+:root { --bg: #0b0f13; --panel: #141a20; --line: #26313b; --text: #f0f4f8; --muted: #8b98a5;
+        --ok: #3fb950; --caution: #d29922; --crit: #f85149; --unk: #6e7681; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.35 system-ui, -apple-system, Segoe UI, sans-serif;
+       min-height: 100vh; display: flex; flex-direction: column; }
+.top { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.top h1 { margin: 0; font-size: 20px; }
+.fresh { font-size: 13px; color: var(--muted); }
+.status { padding: 14px 16px; font-size: 22px; font-weight: 800; letter-spacing: .02em; }
+.st-NORMAL { background: #12361f; color: var(--ok); }
+.st-CAUTION { background: #3a2c0c; color: var(--caution); }
+.st-HOLD-FOR-CONTROLLER { background: #3c1618; color: #ffb4ad; }
+.st-DATA-UNAVAILABLE { background: #2a2f36; color: #c9d1d9; }
+.headline { font-size: 15px; font-weight: 500; margin-top: 2px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 16px; flex: 1; }
+@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.big { font-size: 46px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.band { font-size: 26px; font-weight: 700; color: var(--ok); font-variant-numeric: tabular-nums; }
+.strip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip { padding: 3px 8px; border-radius: 6px; background: #212b35; font-size: 14px; }
+.chip.now { background: #1f6feb; }
+ul { margin: 4px 0 0; padding-left: 18px; }
+li { margin: 2px 0; }
+.sev-CRITICAL { color: var(--crit); } .sev-WARNING { color: #f0883e; } .sev-CAUTION { color: var(--caution); } .sev-INFO { color: #58a6ff; }
+footer { padding: 12px 16px; background: #1b1205; color: #f2cc60; font-weight: 700; text-align: center; border-top: 2px solid #d29922; }
+.switch a { color: var(--muted); margin-left: 10px; }
