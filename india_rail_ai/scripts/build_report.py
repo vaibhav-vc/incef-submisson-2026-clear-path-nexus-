@@ -223,7 +223,11 @@ def git_head() -> str:
 
 # ---- judgements, stated as such --------------------------------------------------------------------
 SOFTWARE_READINESS = [
-    ("Decision core (twin, planner, gates, cab)", 100, "Built; 5M+-operation simulation clean; replayable"),
+    (
+        "Decision core (twin, planner, gates, cab)",
+        100,
+        "Built; 6.7M checked operations, last defect fixed, final code clean",
+    ),
     (
         "Verification (tests + simulation)",
         96,

@@ -24,7 +24,8 @@ Observe → Verify (EvidenceGate) → Twin → Detect (RailGuard) → Optimise �
 - TwinTrack photo, once the hardware is built
 
 ## 6. Validation (measured)
-- **6/6** judge scenarios pass (31 automated checks); **53** regression tests pass
+- **6/6** judge scenarios pass (31 automated checks); **134** automated tests pass
+- Randomised verification: **6.68M** checked operations; **0** violations on the final code
 - Conflict detection: **100% recall, 100% precision** on 861 synthetic delay cases
 - **0 false clears** in 42 injected fault cases
 - **0** single-line overlaps across 462 executed plans

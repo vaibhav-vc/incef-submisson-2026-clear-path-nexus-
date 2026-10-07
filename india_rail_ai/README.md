@@ -126,7 +126,7 @@ The parts:
 - **Cab:** each driver sees only the approved plan.
 - **Audit:** a hash chain (optional HMAC, persisted) records every decision, and each decision replays to the same ranking.
 - **Live-feed gateway** (`livefeed.py`): accepts signed RTIS/NTES/COA-style batches, protects against replays, map-matches positions, and turns late station events into disruptions for the controller. It is ready for authorised data.
-- **Simulation** (`simulate.py`): randomised operation sequences on both twins, with eight safety invariants checked after every operation. 5M+ operations ran with 0 violations; see [`seva2026/AUDIT_LOG.md`](seva2026/AUDIT_LOG.md).
+- **Simulation** (`simulate.py`): randomised operation sequences on both twins, with eight safety invariants checked after every operation. The main run checked 5,068,492 operations and found one last defect, now fixed. The final code passed 1,201,001 more operations with 0 violations. See [`seva2026/AUDIT_LOG.md`](seva2026/AUDIT_LOG.md).
 
 Security: role tokens, fail-closed production mode, strict request schemas, CSP, rate limits, and a signed feed. See [SECURITY.md](SECURITY.md). Compliance with the Railways Act / G&SR, RDSO and EN 50716, the IT Act, CERT-In, DPDP and the data licences is covered in [seva2026/COMPLIANCE_REGISTER.md](seva2026/COMPLIANCE_REGISTER.md). The full report is [seva2026/ClearPath_Nexus_RailGuard_Report.pdf](seva2026/ClearPath_Nexus_RailGuard_Report.pdf).
 

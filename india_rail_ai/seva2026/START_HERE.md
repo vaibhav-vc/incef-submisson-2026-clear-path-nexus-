@@ -69,7 +69,7 @@ All figures are controlled software experiments on the tabletop twin. None of th
 | Capability | Status | Where |
 |---|---|---|
 | National twin: all 8,990 stations (7,679 halts + 914 non-halt stations placed), 1,454 junctions, 8,738 sections, 7,580 train runs | WORKING ON OPEN DATA (attributes inferred and labelled) | `railguard/national.py`, `/control/national` |
-| Randomised simulation with 8 safety invariants after every operation | **5M+ operations, 0 violations** (13 defects found and fixed on the way) | `railguard/simulate.py`, `evidence/simulation/` |
+| Randomised simulation with 8 safety invariants after every operation | **5,068,492 operations in the main run**; 14 defects found and fixed in total, the last by this run; **final code: 1,201,001 operations, 0 violations** | `railguard/simulate.py`, `evidence/simulation/` |
 | Security: roles, fail-closed production, strict schemas, CSP, rate limits, signed feed | 115 tests incl. 32 attack tests; Bandit 0; pip-audit 0 | `SECURITY.md`, `evidence/audit/` |
 | Run-time ML after measured training rounds | 1.38 min vs 1.96 baseline on a locked test (−30%) | `models/training_log.json` |
 | Live-feed gateway (RTIS/NTES/COA-style, signed) | READY - needs CRIS specification and keys | `railguard/livefeed.py` |

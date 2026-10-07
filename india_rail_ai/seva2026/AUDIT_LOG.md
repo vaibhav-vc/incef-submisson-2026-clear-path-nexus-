@@ -4,7 +4,7 @@ Each pass examined the whole code base through one lens, fixed what it found, th
 lint (ruff 0.8.6, as pinned in CI) and, where behaviour could change, the simulation, before the next pass.
 Findings are listed with the evidence that caught them and the evidence that the fix holds.
 
-Final state after all five passes: **115 automated tests pass** (Python 3.11 and 3.13), **Bandit 0 findings**,
+Final state after all five passes: **134 automated tests pass** (Python 3.11 and 3.13), **Bandit 0 findings**,
 **pip-audit 0 known vulnerabilities**, **0 safety-invariant violations** in the randomised simulation
 (final-code run in `evidence/simulation/final_code_results.json`; the main run found two last defects, see pass 1), UI regression with **0 HTTP errors and 0 console errors** under
 a strict Content-Security-Policy.
@@ -35,8 +35,9 @@ finding below was reproduced from its episode id, fixed, and re-checked with the
 | 15 | Same run, 1 episode: a harness test case (not the system) read a last-fix time of 0 as "missing" and generated a plausible move it expected to be rejected | Harness fixed; the engine's acceptance was correct |
 
 The main run (160,000 episodes, 5,068,492 operations) therefore ended with 8 violations in the tabletop twin and
-0 in the national twin; all 8 episodes replay clean after fixes 14-15, and a verification run on the fixed code is
-recorded in `evidence/simulation/final_code_results.json`.
+0 in the national twin; all 8 episodes replay clean after fixes 14-15. Verification on the fixed, final code
+(`evidence/simulation/final_code_results.json`, code checksum 752bfcc1): 24,000 episodes, 1,201,001 operations,
+**0 violations**. All runs together: 6,680,927 checked operations.
 
 ## Pass 2 - Security (`tests/test_security.py`, `tests/test_attacks.py`, `tests/test_livefeed.py`)
 
