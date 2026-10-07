@@ -423,6 +423,47 @@ class NationalFeed(StrictRequest):
 
 
 @lru_cache(maxsize=1)
+def _shadow():
+    from india_rail.railguard.shadow import ShadowTrial
+
+    return ShadowTrial(national())
+
+
+class ShadowDecision(StrictRequest):
+    run: str = Field(pattern=RUN)
+    action: str = Field(pattern="^(CONTINUE|HOLD|PATH|PRIORITY|REROUTE)$")
+    at_min: float | None = Field(None, ge=0, le=10_000)
+    controller: str = Field(pattern=NAME)
+    hold_min: float | None = Field(None, ge=0, le=720)
+    station: str | None = Field(None, pattern=CODE)
+    note: str = Field("", max_length=200)
+
+
+@router.post("/national/shadow/actual", dependencies=CONTROL)
+def national_shadow_actual(request: ShadowDecision) -> dict[str, Any]:
+    """Shadow trial: log what the controller actually decided (nothing in the twin changes)."""
+
+    from india_rail.railguard.shadow import ActualDecision
+
+    trial = _shadow()
+    decision = ActualDecision(
+        request.run,
+        request.action,
+        trial.twin.now if request.at_min is None else request.at_min,
+        request.controller,
+        request.hold_min,
+        request.station,
+        request.note,
+    )
+    return _run(trial.record, decision)
+
+
+@router.get("/national/shadow/report", dependencies=VIEW)
+def national_shadow_report() -> dict[str, Any]:
+    return _shadow().report()
+
+
+@lru_cache(maxsize=1)
 def _gateway():
     from india_rail.railguard.livefeed import FeedGateway
 

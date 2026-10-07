@@ -77,7 +77,14 @@ All figures are controlled software experiments on the tabletop twin. None of th
 | Legal / safety / data compliance register | Engineering register; needs IR legal and safety review | `COMPLIANCE_REGISTER.md` |
 | Five audit passes | Done | `AUDIT_LOG.md` |
 
-Readiness (judgement, reasons in the report): software side about 90%; whole path to operational use about 32%. The rest is authorisation, certification and a field trial, which only Indian Railways and its authorities can complete.
+| All-train working schedules and completeness audit (5,208 trains) | WORKING: stop matrix, metrics, flags; running days honoured when official data supplies them | `india_rail/schedules.py`, `evidence/schedules/` |
+| Railway-readiness packs: hazard log, safety case, live-data interface contract, ASVS checklist, shadow-trial plan and tooling, operator guide | DRAFTS FOR IR REVIEW | `railway_readiness/` |
+
+Readiness (judgement, reasons in the report):
+- **Software side:** about 92%.
+- **Whole path to railway use:** about 52% done, 48% left.
+
+What is left is authorisation of live data, an independent security audit, safety acceptance and a field trial. Only Indian Railways and its authorities can complete those, and the project has prepared each one for review and sign-off.
 
 ## Pack contents
 

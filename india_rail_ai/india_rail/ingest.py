@@ -69,6 +69,22 @@ CREATE TABLE sections (
     crow_km REAL,
     PRIMARY KEY (train_number, seq)
 );
+CREATE TABLE train_details (
+    number TEXT PRIMARY KEY,
+    name TEXT,
+    type TEXT,
+    zone TEXT,
+    from_code TEXT,
+    to_code TEXT,
+    published_departure TEXT,
+    published_arrival TEXT,
+    published_duration_min INTEGER,
+    published_distance_km REAL,
+    classes TEXT,
+    return_train TEXT,
+    running_days TEXT,
+    has_schedule INTEGER NOT NULL
+);
 CREATE INDEX stops_station ON stops(station_code);
 CREATE INDEX sections_edge ON sections(from_code, to_code);
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -273,6 +289,11 @@ def build_database(paths: dict[str, Path], db_path: Path = DB_PATH) -> QualityRe
         )
 
     con.executemany("INSERT INTO trains VALUES (?,?,?,?,?,?,?,?,?,?)", train_rows)
+    scheduled = {row[0] for row in train_rows}
+    con.executemany(
+        "INSERT INTO train_details VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [_details(number, props, number in scheduled) for number, props in sorted(train_props.items())],
+    )
     con.executemany("INSERT INTO stops VALUES (?,?,?,?,?,?,?)", stop_rows)
     con.executemany("INSERT INTO sections VALUES (?,?,?,?,?,?,?,?)", section_rows)
     report.stops_written = len(stop_rows)
@@ -293,6 +314,34 @@ def build_database(paths: dict[str, Path], db_path: Path = DB_PATH) -> QualityRe
     con.commit()
     con.close()
     return report
+
+
+CLASS_FIELDS = (("first_ac", "1A"), ("second_ac", "2A"), ("third_ac", "3A"), ("sleeper", "SL"),
+                ("chair_car", "CC"), ("first_class", "FC"))  # fmt: skip
+
+
+def _details(number: str, props: dict, has_schedule: bool) -> tuple:
+    """Everything the published train record says, kept for every train (with or without a timetable)."""
+
+    hours, minutes = props.get("duration_h"), props.get("duration_m")
+    duration = (hours or 0) * 60 + (minutes or 0) if hours is not None or minutes is not None else None
+    classes = [code for field, code in CLASS_FIELDS if props.get(field)]
+    return (
+        number,
+        props.get("name"),
+        props.get("type") or "",
+        props.get("zone"),
+        props.get("from_station_code"),
+        props.get("to_station_code"),
+        props.get("departure"),
+        props.get("arrival"),
+        duration,
+        props.get("distance"),
+        ",".join(classes) or (props.get("classes") or None),
+        props.get("return_train") or None,
+        None,  # running days are not in the open data; official.py fills them when a source provides them
+        int(has_schedule),
+    )
 
 
 def connect(db_path: Path = DB_PATH) -> sqlite3.Connection:

@@ -223,27 +223,49 @@ def git_head() -> str:
 
 # ---- judgements, stated as such --------------------------------------------------------------------
 SOFTWARE_READINESS = [
-    ("Decision core (twin, planner, gates, cab)", 100, "Built, 5M+-operation simulation clean, replayable"),
-    ("Security engineering", 95, "Controls + 32 attack tests + SAST/SCA clean; external audit is a certification step"),
-    ("Verification (tests + simulation)", 95, "Unit/API/attack tests and randomised V&V; formal V&V plan needs IR"),
+    ("Decision core (twin, planner, gates, cab)", 100, "Built; 5M+-operation simulation clean; replayable"),
+    (
+        "Verification (tests + simulation)",
+        96,
+        "Unit, API and attack tests; 8 invariants; regression on final code; formal V&V plan needs IR",
+    ),
+    (
+        "Security engineering",
+        95,
+        "Controls, 32 attack tests, SAST/SCA clean, ASVS L2 self-assessment; external audit pending",
+    ),
+    (
+        "Docs, compliance, readiness packs",
+        95,
+        "Register, hazard log, safety case, interface contract, trial plan, guide",
+    ),
     (
         "Whole-network coverage",
-        92,
-        "All 8,990 stations; 914 non-halt stations placed; 397 not placeable from open data",
+        93,
+        "All 8,990 stations; 914 non-halt placed; 105 stations with suspect coordinates named",
     ),
-    ("Live-data integration", 85, "Signed gateway + map matching ready; field mapping to the real CRIS spec remains"),
+    ("Live-data integration", 90, "Signed gateway, contract with test vector, IST clock; CRIS field mapping remains"),
+    (
+        "All-train schedules and data completeness",
+        85,
+        "Every train audited; working schedules for 5,187; running days not in open data",
+    ),
     ("Machine learning", 85, "Best model on public data; retraining on actual running data needs live feeds"),
-    ("Official data", 80, "Pipeline, provenance and tests ready; data.gov.in refuses this build network"),
-    ("Docs, compliance register, runbooks", 90, "Register, security policy, runbooks; legal review pending"),
+    ("Official data", 85, "Pipeline incl. running days, provenance, tests; data.gov.in refuses this build network"),
 ]
+# (stage, weight %, done %, what this project has done, what only the railway can do)
 DEPLOYMENT_PATH = [
-    ("Software built and verified (this repository)", 35, 90),
-    ("Live-data access and CRIS integration", 15, 0),
-    ("CERT-In / STQC security audit, hosting approval", 10, 0),
-    ("Safety case, hazard log, independent assessment, RDSO acceptance", 15, 0),
-    ("Shadow-mode field trial on one division (6-12 months)", 20, 0),
-    ("Operational roll-out and controller training", 5, 0),
-]
+    ("Software built and verified", 35, 92, "This repository", "-"),
+    ("Live data and CRIS integration", 15, 40, "Gateway, contract, test vector, simulator",
+     "Authorise access; share spec; issue keys; test in CRIS environment"),
+    ("Security audit and hosting", 10, 35, "ASVS self-assessment, attack tests, SAST/SCA",
+     "CERT-In/STQC audit; host on IR infrastructure"),
+    ("Safety acceptance", 15, 30, "Draft hazard log and safety case with evidence",
+     "Hazard workshop; scoring; independent assessment; RDSO/IR acceptance"),
+    ("Shadow-mode trial", 20, 20, "Trial tooling (/shadow), protocol, metrics",
+     "Run 3-12 months on a division; review disagreements"),
+    ("Roll-out and training", 5, 30, "Operator guide and training modules", "Deliver training; issue procedures"),
+]  # fmt: skip
 
 
 def build(out: Path) -> Path:
@@ -252,9 +274,10 @@ def build(out: Path) -> Path:
     tlog = load(ROOT / "models" / "training_log.json")
     model = load(ROOT / "models" / "runtime_model_metrics.json")
     audit = load(EVIDENCE / "audit" / "audit_summary.json")
+    sched = load(EVIDENCE / "schedules" / "schedule_audit.json")
     nat_stats = audit.get("national_stats", {})
     software_pct = sum(v for _, v, _ in SOFTWARE_READINESS) / len(SOFTWARE_READINESS)
-    path_pct = sum(w * done / 100 for _, w, done in DEPLOYMENT_PATH)
+    path_pct = sum(w * done / 100 for _, w, done, _, _ in DEPLOYMENT_PATH)
 
     story: list[Any] = []
     # ---- cover ---------------------------------------------------------------------------------------
@@ -313,16 +336,16 @@ def build(out: Path) -> Path:
     story += [
         p("1. How much is done, and what is left", "h1"),
         p(
-            f"<b>Software side: about {software_pct:.0f}% done.</b> What remains on the software side is work that "
-            "needs things only Indian Railways can provide: the field mapping of the real CRIS feed interface, "
-            "retraining on actual running data, and controller feedback from a trial. The official data.gov.in "
-            "file also has to be downloaded from a connection in India, since the portal refuses this build "
-            "environment."
+            f"<b>Software side: about {software_pct:.0f}% done</b> - everything this project can build and verify. "
+            "The rest of the software work needs inputs only Indian Railways holds: CRIS's interface specification, "
+            "actual running data to retrain on, the official timetable with running days (downloadable only from "
+            "India), and controller feedback from a trial."
         ),
         p(
-            f"<b>Whole path to operational use: about {path_pct:.0f}% done.</b> The steps after the software are "
-            "authorisations, certification and a field trial, and they take most of the calendar time. Software "
-            "alone cannot complete them."
+            f"<b>Whole path to railway use: about {path_pct:.0f}% done, about {100 - path_pct:.0f}% left.</b> "
+            "For every railway stage the project has prepared what it can, so that stage becomes review and sign-off. "
+            "What is left is authorisation, an independent audit, safety acceptance and a field trial. Software alone "
+            "cannot complete those, so this figure cannot honestly reach 90% before Indian Railways acts."
         ),
         bar_chart([(k, v) for k, v, _ in SOFTWARE_READINESS], "Software readiness by work package (judgement)"),
         Spacer(1, 3 * mm),
@@ -331,14 +354,17 @@ def build(out: Path) -> Path:
             [62, 14, 94],
         ),  # fmt: skip
         Spacer(1, 4 * mm),
-        p("Path to operational use (weights are shares of total effort)", "h2"),
+        p("Path to railway use (weights are shares of total effort)", "h2"),
+        bar_chart([(k, d) for k, _w, d, _a, _b in DEPLOYMENT_PATH], "Done per stage (judgement)"),
         table(
-            [["Stage", "Weight", "Done", "Who can complete it"]]
-            + [
-                [k, f"{w}%", f"{d}%", "This project" if d else "Indian Railways / CRIS / RDSO / CERT-In"]
-                for k, w, d in DEPLOYMENT_PATH
-            ],
-            [86, 16, 14, 54],
+            [["Stage", "Weight", "Done", "Done by this project", "Left: only the railway can do"]]
+            + [[k, f"{w}%", f"{d}%", a, b] for k, w, d, a, b in DEPLOYMENT_PATH],
+            [34, 16, 12, 50, 58],
+        ),  # fmt: skip
+        p(
+            "Readiness packs: <i>seva2026/railway_readiness/</i> - hazard log, safety case, live-data interface "
+            "contract, ASVS checklist, shadow-trial plan, operator guide.",
+            "small",
         ),  # fmt: skip
     ]
 
@@ -401,6 +427,16 @@ def build(out: Path) -> Path:
                     "Security layer (security.py)",
                     "Roles, fail-closed production mode, rate limits, body caps, host "
                     "allow-list, strict request schemas, security headers.",
+                ],
+                [
+                    "Working schedules (schedules.py)",
+                    "Every train's stop matrix (day, times, dwell, distance, section speed), per-train metrics and a "
+                    "completeness audit of all 5,208 trains; running days honoured when official data supplies them.",
+                ],
+                [
+                    "Shadow trial (shadow.py)",
+                    "Logs controllers' actual decisions beside the recommendations shown at the time and measures "
+                    "agreement, without changing anything: the evidence a field trial needs.",
                 ],
                 [
                     "Simulation harness (simulate.py)",
@@ -502,11 +538,60 @@ def build(out: Path) -> Path:
             "format fixture."
         ),
         p(
-            "<b>Known limits.</b> The timetable snapshot is from about 2016 and has no running days, so every train is "
-            "treated as daily. Track counts, line speeds and lengths are inferred. Loops, platforms and signals are not "
-            "in any open dataset."
+            "<b>Known limits.</b> The timetable snapshot is from about 2016 and has no running days, so trains without "
+            "known days are treated as daily (the twin honours running days as soon as an official file supplies them). "
+            "Track counts, line speeds and lengths are inferred. Loops, platforms and signals are not in any open dataset."
         ),
     ]
+    if sched:
+        cov = sched.get("coverage_pct", {})
+        dur = sched.get("timetable_vs_published_duration", {})
+        suspects = sched.get("suspect_station_coordinates", [])
+        story += [
+            p("All trains: working schedules and completeness", "h2"),
+            p(
+                "Every published train was checked: <i>python -m india_rail schedules --audit</i>. Each train's working "
+                "schedule (every stop with day, arrival, departure, dwell, distance from origin, section run time and "
+                "speed) is available from <i>python -m india_rail schedules --train &lt;number&gt;</i> and "
+                "<i>GET /trains/&lt;number&gt;/working-schedule</i>."
+            ),
+            table(
+                [
+                    ["Measure", "Value"],
+                    ["Trains in the published list", f"{sched.get('trains_published', 0):,}"],
+                    [
+                        "With a usable timetable",
+                        f"{sched.get('trains_with_usable_timetable', 0):,} ({cov.get('timetable')}%)",
+                    ],
+                    [
+                        "Timed stops / halts with dwell",
+                        f"{sched.get('stops_in_timetables', 0):,} / {sched.get('halts_with_dwell', 0):,}",
+                    ],
+                    [
+                        "Timetable duration within 30 min of the published duration",
+                        f"{dur.get('within_tolerance', 0):,} trains (median difference {dur.get('median_abs_diff_min')} min)",
+                    ],
+                    [
+                        "Published duration / distance known",
+                        f"{cov.get('published_duration')}% / {cov.get('published_distance')}%",
+                    ],
+                    [
+                        "Accommodation classes / return train known",
+                        f"{cov.get('class_information')}% / {cov.get('return_train')}%",
+                    ],
+                    ["Running days known", f"{cov.get('running_days')}% (not in the open data)"],
+                    [
+                        "Stations with suspect published coordinates",
+                        f"{len(suspects)} (e.g. "
+                        + ", ".join(f"{x['station_code']} {x['impossible_sections']}" for x in suspects[:4])
+                        + " impossible sections)",
+                    ],
+                ],
+                [80, 90],
+            ),  # fmt: skip
+            Spacer(1, 2 * mm),
+            table([["Flag", "Trains"]] + [[k, f"{v:,}"] for k, v in sched.get("flag_counts", {}).items()], [80, 30]),
+        ]
 
     # ---- 4. ML ---------------------------------------------------------------------------------------------
     rounds = tlog.get("rounds", [])
@@ -816,6 +901,8 @@ def build(out: Path) -> Path:
                 ["Simulation", "python -m india_rail.railguard.simulate --demo 70000 --national 90000"],
                 ["ML training rounds", "python -m india_rail.training"],
                 ["Official data", "python -m india_rail official --file timetable.csv"],
+                ["All-train schedules", "python -m india_rail schedules --audit | --train 12951 | --export DIR"],
+                ["Shadow trial", "POST /railguard/national/shadow/actual; GET /railguard/national/shadow/report"],
                 ["Verify an audit log", "python -m india_rail.railguard.audit verify <events.jsonl>"],
                 ["Rebuild this report", "python scripts/build_report.py"],
             ],

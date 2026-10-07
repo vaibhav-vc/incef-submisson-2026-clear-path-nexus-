@@ -105,3 +105,28 @@ def test_feed_endpoint_requires_feed_role_and_valid_signature(data, monkeypatch)
     assert refused.status_code == 401 and "bad signature" in refused.json()["detail"]
     ok = client.post(url, json=good, headers=feed)
     assert ok.status_code == 200 and ok.json()["accepted"] == 1
+
+
+def test_published_signing_test_vector():
+    """The vector in seva2026/railway_readiness/LIVE_DATA_INTERFACE.md, so the contract cannot drift from the code."""
+
+    key = bytes.fromhex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+    envelope = {
+        "source": "RTIS",
+        "key_id": "k1",
+        "sent_at": "2026-10-07T10:15:00+05:30",
+        "nonce": "0123456789abcdef0123456789abcdef",
+        "sequence": 1,
+        "events": [
+            {
+                "type": "POSITION",
+                "train_number": "12951",
+                "start_date": "2026-10-07",
+                "lat": 22.30712,
+                "lon": 73.18121,
+                "speed_kmph": 104.0,
+                "observed_at": "2026-10-07T10:14:52+05:30",
+            }  # fmt: skip
+        ],
+    }
+    assert sign(envelope, key) == "8ae2417f1ce117df5593a0fff30e1e2806d6f12a22eb3677a08f2d33139b0886"

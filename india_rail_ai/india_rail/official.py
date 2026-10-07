@@ -91,7 +91,43 @@ COLUMNS = {
     "arr": ("arrivaltime", "arrival", "arr"),
     "dep": ("departuretime", "departure", "dep"),
     "km": ("distance", "distancekm", "km"),
+    "days": ("daysofrun", "runningdays", "daysofoperation", "runson", "days", "runsondays"),
 }
+WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+DAY_WORDS: dict[str, int] = {}
+for _i, _name in enumerate(("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")):
+    DAY_WORDS.update({_name: _i, _name[:3]: _i, _name[:2]: _i})
+DAY_WORDS.update({"tues": 1, "weds": 2, "thur": 3, "thurs": 3})
+
+
+def parse_running_days(text: str | None) -> str | None:
+    """Canonical days of service ("Daily" or "Mon,Wed,Fri") from the spellings timetables use; None if unclear.
+
+    Accepted: "Daily" / "All days"; day names or abbreviations separated by commas, spaces or slashes;
+    a 7-character Monday-first mask of Y/N or 1/0; day numbers 1-7 (1 = Monday) separated by commas/spaces.
+    """
+
+    value = (text or "").strip().lower()
+    if not value:
+        return None
+    if value in ("daily", "all days", "all", "everyday", "every day"):
+        return "Daily"
+    days: set[int] = set()
+    if re.fullmatch(r"[yn10]{7}", value):
+        days = {i for i, c in enumerate(value) if c in "y1"}
+    else:
+        for token in filter(None, re.split(r"[\s,/;&]+|\band\b", value)):
+            if token in DAY_WORDS:
+                days.add(DAY_WORDS[token])
+            elif token.isdigit() and 1 <= int(token) <= 7:
+                days.add(int(token) - 1)
+            else:
+                return None  # unknown word: refuse to guess
+    if not days:
+        return None
+    return "Daily" if len(days) == 7 else ",".join(WEEKDAYS[d] for d in sorted(days))
+
+
 TIME = re.compile(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?$")
 
 
@@ -137,6 +173,7 @@ def parse_timetable(text: str) -> list[dict[str, Any]]:
             continue
         rows.append(
             {
+                "running_days": parse_running_days(values.get("days")),
                 "train_number": train,
                 "train_name": name,
                 "seq": seq,
@@ -201,6 +238,8 @@ def ingest(path: Path, source_key: str = "ogd_timetable", db_path: Path = DB_PAT
             rows,
         )
         con.executemany("INSERT INTO official_section_km VALUES (?, ?)", sorted(km.items()))
+        days = {r["train_number"]: r["running_days"] for r in rows if r["running_days"]}
+        con.executemany("UPDATE train_details SET running_days = ? WHERE number = ?", [(d, n) for n, d in days.items()])
         source = SOURCES[source_key]
         con.execute(
             "INSERT INTO official_provenance VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -209,7 +248,8 @@ def ingest(path: Path, source_key: str = "ogd_timetable", db_path: Path = DB_PAT
         )  # fmt: skip
     report = reconcile(con)
     con.close()
-    return {"file": path.name, "sha256": digest, "rows": len(rows), "sections_with_rail_km": len(km), **report}
+    return {"file": path.name, "sha256": digest, "rows": len(rows), "sections_with_rail_km": len(km),
+            "trains_with_running_days": len(days), **report}  # fmt: skip
 
 
 def reconcile(con: sqlite3.Connection) -> dict[str, Any]:

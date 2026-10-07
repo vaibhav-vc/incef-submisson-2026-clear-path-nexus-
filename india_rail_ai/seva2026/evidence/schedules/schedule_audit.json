@@ -1,0 +1,621 @@
+{
+  "trains_published": 5208,
+  "trains_with_usable_timetable": 5187,
+  "stops_in_timetables": 394125,
+  "halts_with_dwell": 93620,
+  "coverage_pct": {
+    "timetable": 99.6,
+    "published_duration": 99.71,
+    "published_distance": 99.19,
+    "class_information": 45.87,
+    "return_train": 88.5,
+    "running_days": 0.0
+  },
+  "timetable_vs_published_duration": {
+    "within_tolerance": 5129,
+    "tolerance_min": 30,
+    "median_abs_diff_min": 0.0
+  },
+  "trains_with_no_flags": 0,
+  "trains_with_no_flags_except_running_days": 1223,
+  "suspect_station_coordinates": [
+    {
+      "station_code": "KRLS",
+      "name": "KURLAS",
+      "impossible_sections": 91
+    },
+    {
+      "station_code": "GOH",
+      "name": "GAROT",
+      "impossible_sections": 91
+    },
+    {
+      "station_code": "KTHL",
+      "name": "KATHOLA",
+      "impossible_sections": 87
+    },
+    {
+      "station_code": "MIR",
+      "name": "MAIJAPUR",
+      "impossible_sections": 87
+    },
+    {
+      "station_code": "GMS",
+      "name": "GARHMUKTESAR",
+      "impossible_sections": 81
+    },
+    {
+      "station_code": "QXR",
+      "name": "KUCHESAR ROAD",
+      "impossible_sections": 80
+    },
+    {
+      "station_code": "HYG",
+      "name": "HOOGHLY GHAT",
+      "impossible_sections": 64
+    },
+    {
+      "station_code": "HZD",
+      "name": "HAZARIBAGH ROAD",
+      "impossible_sections": 55
+    },
+    {
+      "station_code": "BNGY",
+      "name": "BAHMAN JYOTIA",
+      "impossible_sections": 53
+    },
+    {
+      "station_code": "BV",
+      "name": "BABHNAN",
+      "impossible_sections": 53
+    },
+    {
+      "station_code": "PSB",
+      "name": "PARSABAD",
+      "impossible_sections": 52
+    },
+    {
+      "station_code": "KS",
+      "name": "KHETA SARAI",
+      "impossible_sections": 48
+    },
+    {
+      "station_code": "KHA",
+      "name": "Khaigaon",
+      "impossible_sections": 45
+    },
+    {
+      "station_code": "MDRR",
+      "name": "MADHAVNAGAR ROA",
+      "impossible_sections": 39
+    },
+    {
+      "station_code": "NWR",
+      "name": "NIWAR",
+      "impossible_sections": 39
+    },
+    {
+      "station_code": "GFAE",
+      "name": "GARIFA",
+      "impossible_sections": 32
+    },
+    {
+      "station_code": "BDC",
+      "name": "BANDEL JN",
+      "impossible_sections": 32
+    },
+    {
+      "station_code": "MGWN",
+      "name": "MAHGAWAN HALT",
+      "impossible_sections": 32
+    },
+    {
+      "station_code": "DHPR",
+      "name": "DAPPAR",
+      "impossible_sections": 31
+    },
+    {
+      "station_code": "GHG",
+      "name": "GHAGGHAR",
+      "impossible_sections": 31
+    },
+    {
+      "station_code": "MGN",
+      "name": "MEGHNAGAR",
+      "impossible_sections": 30
+    },
+    {
+      "station_code": "THDR",
+      "name": "THANDLA RD",
+      "impossible_sections": 30
+    },
+    {
+      "station_code": "CAER",
+      "name": "CHHANERA",
+      "impossible_sections": 28
+    },
+    {
+      "station_code": "PTWA",
+      "name": "PATWARA",
+      "impossible_sections": 27
+    },
+    {
+      "station_code": "MLIH",
+      "name": "MAULI HALT",
+      "impossible_sections": 27
+    },
+    {
+      "station_code": "BTTN",
+      "name": "BHATIAN",
+      "impossible_sections": 27
+    },
+    {
+      "station_code": "KTE",
+      "name": "KATNI",
+      "impossible_sections": 27
+    },
+    {
+      "station_code": "CJA",
+      "name": "CHONGAJAN",
+      "impossible_sections": 26
+    },
+    {
+      "station_code": "MDRA",
+      "name": "MEDRA",
+      "impossible_sections": 26
+    },
+    {
+      "station_code": "NJN",
+      "name": "NAOJAN",
+      "impossible_sections": 26
+    },
+    {
+      "station_code": "LAV",
+      "name": "LABHA",
+      "impossible_sections": 25
+    },
+    {
+      "station_code": "GRR",
+      "name": "GORPHAR",
+      "impossible_sections": 25
+    },
+    {
+      "station_code": "BJRA",
+      "name": "BHAJERA",
+      "impossible_sections": 23
+    },
+    {
+      "station_code": "KPO",
+      "name": "KARANPURA",
+      "impossible_sections": 23
+    },
+    {
+      "station_code": "NIQ",
+      "name": "NIGAURA",
+      "impossible_sections": 22
+    },
+    {
+      "station_code": "JTI",
+      "name": "JAITHARI",
+      "impossible_sections": 22
+    },
+    {
+      "station_code": "SAHP",
+      "name": "SAHIJPUR",
+      "impossible_sections": 21
+    },
+    {
+      "station_code": "RTI",
+      "name": "RAOTI",
+      "impossible_sections": 20
+    },
+    {
+      "station_code": "KMV",
+      "name": "KARMAD",
+      "impossible_sections": 19
+    },
+    {
+      "station_code": "BILD",
+      "name": "BILDI",
+      "impossible_sections": 19
+    },
+    {
+      "station_code": "CTH",
+      "name": "CHIKALTHANA",
+      "impossible_sections": 19
+    },
+    {
+      "station_code": "KWE",
+      "name": "KHURIAL",
+      "impossible_sections": 18
+    },
+    {
+      "station_code": "MENP",
+      "name": "MEENAPUR",
+      "impossible_sections": 18
+    },
+    {
+      "station_code": "CCK",
+      "name": "CHICHAKI",
+      "impossible_sections": 17
+    },
+    {
+      "station_code": "JNU",
+      "name": "JAUNPUR JN",
+      "impossible_sections": 17
+    },
+    {
+      "station_code": "SGBJ",
+      "name": "SURGAON BANJARI",
+      "impossible_sections": 17
+    },
+    {
+      "station_code": "REN",
+      "name": "REN",
+      "impossible_sections": 16
+    },
+    {
+      "station_code": "CBH",
+      "name": "CHAUBE",
+      "impossible_sections": 16
+    },
+    {
+      "station_code": "KQW",
+      "name": "KHEDULI",
+      "impossible_sections": 16
+    },
+    {
+      "station_code": "GYN",
+      "name": "GYANPUR ROAD",
+      "impossible_sections": 16
+    },
+    {
+      "station_code": "KEA",
+      "name": "KATRA",
+      "impossible_sections": 15
+    },
+    {
+      "station_code": "GTP",
+      "name": "Ghatpuri",
+      "impossible_sections": 15
+    },
+    {
+      "station_code": "SVX",
+      "name": "SAVARDA",
+      "impossible_sections": 15
+    },
+    {
+      "station_code": "AVRD",
+      "name": "ARAVALI ROAD",
+      "impossible_sections": 15
+    },
+    {
+      "station_code": "KRTL",
+      "name": "Kartauli",
+      "impossible_sections": 15
+    },
+    {
+      "station_code": "NGB",
+      "name": "NAWABGANJ GONDA",
+      "impossible_sections": 15
+    },
+    {
+      "station_code": "PJY",
+      "name": "PARA JANI HALT",
+      "impossible_sections": 12
+    },
+    {
+      "station_code": "JJK",
+      "name": "JHINJHAK",
+      "impossible_sections": 12
+    },
+    {
+      "station_code": "ULD",
+      "name": "ACHALDA",
+      "impossible_sections": 12
+    },
+    {
+      "station_code": "PATA",
+      "name": "PATA",
+      "impossible_sections": 12
+    },
+    {
+      "station_code": "SHJP",
+      "name": "SAHAJIPUR HALT",
+      "impossible_sections": 12
+    },
+    {
+      "station_code": "ANTU",
+      "name": "ANTU",
+      "impossible_sections": 12
+    },
+    {
+      "station_code": "CDB",
+      "name": "CHAUDHRIBANDH",
+      "impossible_sections": 11
+    },
+    {
+      "station_code": "PNME",
+      "name": "PARASNATH",
+      "impossible_sections": 11
+    },
+    {
+      "station_code": "CEU",
+      "name": "CHIHERU",
+      "impossible_sections": 10
+    },
+    {
+      "station_code": "GRJA",
+      "name": "GORINJA",
+      "impossible_sections": 10
+    },
+    {
+      "station_code": "JRC",
+      "name": "JALANDHAR CANT",
+      "impossible_sections": 10
+    },
+    {
+      "station_code": "ATRR",
+      "name": "ATRAURA",
+      "impossible_sections": 10
+    },
+    {
+      "station_code": "OKD",
+      "name": "OKHA MADHI",
+      "impossible_sections": 8
+    },
+    {
+      "station_code": "GMH",
+      "name": "GAMHARIA",
+      "impossible_sections": 8
+    },
+    {
+      "station_code": "BRBS",
+      "name": "BIRBANS",
+      "impossible_sections": 8
+    },
+    {
+      "station_code": "JRLE",
+      "name": "JANGIPUR ROAD",
+      "impossible_sections": 7
+    },
+    {
+      "station_code": "LGL",
+      "name": "Lalgola",
+      "impossible_sections": 7
+    },
+    {
+      "station_code": "PHR",
+      "name": "PHILLAUR JN",
+      "impossible_sections": 6
+    },
+    {
+      "station_code": "SNT",
+      "name": "SAINTHIA",
+      "impossible_sections": 6
+    },
+    {
+      "station_code": "RHNE",
+      "name": "ROHINI",
+      "impossible_sections": 6
+    },
+    {
+      "station_code": "GRY",
+      "name": "GORAYA",
+      "impossible_sections": 6
+    },
+    {
+      "station_code": "JGG",
+      "name": "JANGIGANJ",
+      "impossible_sections": 6
+    },
+    {
+      "station_code": "HPR",
+      "name": "HIRAPUR",
+      "impossible_sections": 6
+    },
+    {
+      "station_code": "NRD",
+      "name": "NARODA",
+      "impossible_sections": 5
+    },
+    {
+      "station_code": "NTS",
+      "name": "Nattrasankottai",
+      "impossible_sections": 5
+    },
+    {
+      "station_code": "CUX",
+      "name": "CHAURA",
+      "impossible_sections": 5
+    },
+    {
+      "station_code": "JMU",
+      "name": "JAMUI",
+      "impossible_sections": 5
+    },
+    {
+      "station_code": "GHLE",
+      "name": "GADADHARPUR",
+      "impossible_sections": 5
+    },
+    {
+      "station_code": "VPL",
+      "name": "VENKATAMPALLE",
+      "impossible_sections": 5
+    },
+    {
+      "station_code": "PNGI",
+      "name": "Panangudi",
+      "impossible_sections": 5
+    },
+    {
+      "station_code": "KDT",
+      "name": "KHADARPET",
+      "impossible_sections": 5
+    },
+    {
+      "station_code": "ALMW",
+      "name": "ALMAW",
+      "impossible_sections": 4
+    },
+    {
+      "station_code": "STA",
+      "name": "SATNA",
+      "impossible_sections": 4
+    },
+    {
+      "station_code": "SJGH",
+      "name": "SARAI JAGDISH",
+      "impossible_sections": 4
+    },
+    {
+      "station_code": "SAGM",
+      "name": "SAGMA",
+      "impossible_sections": 4
+    },
+    {
+      "station_code": "JEP",
+      "name": "JEONATHPUR",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "KHOH",
+      "name": "KHOH",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "BAQ",
+      "name": "GANJ BASODA",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "BON",
+      "name": "BHONRA",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "ARW",
+      "name": "AHRAURA ROAD",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "KYM",
+      "name": "KADIYAN",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "SGRP",
+      "name": "SINGHIRAMPUR",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "BRAG",
+      "name": "BARANG",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "KDJ",
+      "name": "KHUDAGANJ",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "RKRI",
+      "name": "RAO KHEDI",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "UDN",
+      "name": "UDHNA JN",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "BIP",
+      "name": "BAHILPURWA",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "CDSL",
+      "name": "CHANDRESAL",
+      "impossible_sections": 3
+    },
+    {
+      "station_code": "NOL",
+      "name": "NIYOL",
+      "impossible_sections": 3
+    }
+  ],
+  "flag_counts": {
+    "RUNNING_DAYS_UNKNOWN": 5208,
+    "NO_CLASS_INFORMATION": 2819,
+    "STOPS_WITHOUT_COORDINATES": 1071,
+    "DISTANCE_INCONSISTENT_WITH_TIME": 794,
+    "DURATION_DIFFERS_FROM_PUBLISHED": 50,
+    "NO_PUBLISHED_DISTANCE": 42,
+    "RETURN_TRAIN_NOT_LISTED": 38,
+    "NO_USABLE_TIMETABLE": 21,
+    "NO_PUBLISHED_DURATION": 8
+  },
+  "trains_by_type": {
+    "Pass": 2459,
+    "Exp": 1288,
+    "SF": 719,
+    "MEMU": 297,
+    "Hyd": 121,
+    "GR": 52,
+    "Raj": 48,
+    "Drnt": 48,
+    "SKr": 42,
+    "JShtb": 40,
+    "Shtb": 31,
+    "Mail": 19,
+    "": 15,
+    "Toy": 14,
+    "Del": 8,
+    "DEMU": 4,
+    "Klkt": 3
+  },
+  "trains_by_zone": {
+    "NR": 628,
+    "SR": 606,
+    "WR": 470,
+    "SCR": 437,
+    "NER": 394,
+    "ER": 369,
+    "CR": 359,
+    "?": 275,
+    "ECR": 258,
+    "SER": 251,
+    "NWR": 232,
+    "SWR": 227,
+    "NFR": 219,
+    "NCR": 135,
+    "ECoR": 120,
+    "SECR": 118,
+    "WCR": 74,
+    "KR": 21,
+    "": 15
+  },
+  "ingest_cleaning": {
+    "schedule_rows": 417080,
+    "duplicate_rows": 443,
+    "trains_with_schedule": 5208,
+    "trains_skipped_too_short": 21,
+    "stops_written": 394125,
+    "sections_written": 388938,
+    "rows_missing_time": 22508,
+    "day_field_disagreements": 1220,
+    "non_monotonic_times_clamped": 780,
+    "sections_without_coordinates": 3054,
+    "negative_runtime_sections_dropped": 0,
+    "notes": [
+      "Times are journey minutes from 00:00 IST on the origin day.",
+      "day_field_disagreements counts rows whose published day contradicts the clock sequence; spot checks show the published day is the faulty field (e.g. train 59298 increments its day at most stops within four hours)."
+    ]
+  },
+  "notes": [
+    "RUNNING_DAYS_UNKNOWN: the open data has no days of service; the twin treats such trains as daily. Ingest the official timetable (Trains at a Glance / NTES) to fill them.",
+    "Straight-line distances are scaled to the published train distance; official per-stop distances replace them once the data.gov.in timetable is ingested.",
+    "DISTANCE_INCONSISTENT_WITH_TIME: straight-line speed between two stops above 160 km/h even allowing a minute of timetable rounding. Almost always a wrong station coordinate in the open station list; suspect_station_coordinates names the stations involved."
+  ]
+}

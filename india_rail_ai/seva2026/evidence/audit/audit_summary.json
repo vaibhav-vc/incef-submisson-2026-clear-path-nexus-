@@ -1,9 +1,9 @@
 {
-  "tests_passed": 115,
+  "tests_passed": 133,
   "attack_tests": 32,
   "bandit_findings": 0,
   "bandit_reviewed_suppressions": 7,
-  "bandit_lines_scanned": 7818,
+  "bandit_lines_scanned": 8272,
   "pip_audit": "0 known vulnerabilities in 45 pinned packages",
   "national_stats": {
     "stations_total": 8990,
@@ -17,6 +17,8 @@
     "sections_assumed_single": 3640,
     "stations_placed_from_neighbours": 187,
     "train_numbers": 5187,
+    "trains_with_known_running_days": 0,
+    "service_date": "2026-10-08",
     "runs_in_window": 7580,
     "occupations": 843568
   }

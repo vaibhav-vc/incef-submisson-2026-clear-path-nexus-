@@ -86,6 +86,15 @@ def train(number: str) -> dict[str, Any]:
     return {"train": info, "stops": net.schedule(number)}
 
 
+@app.get("/trains/{number}/working-schedule", dependencies=READ)
+def train_working_schedule(number: str) -> dict[str, Any]:
+    """Every stop with day, dwell, distance and section speed, plus the train's metrics and data-quality flags."""
+
+    from india_rail.schedules import working_schedule
+
+    return _require(working_schedule(services().con, number), "Train")
+
+
 @app.get("/trains/{number}/slack", dependencies=READ)
 def train_slack(number: str) -> dict[str, Any]:
     result = services().timetable_slack(number)

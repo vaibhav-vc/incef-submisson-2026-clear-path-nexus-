@@ -60,3 +60,38 @@ def test_ingest_records_provenance_reconciles_and_twin_uses_rail_km(db_path, tmp
 def test_download_without_published_url_points_to_the_portal():
     with pytest.raises(SystemExit, match="data.gov.in"):
         official.download("ogd_timetable")
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Daily", "Daily"),
+        ("Mon, Wed, Fri", "Mon,Wed,Fri"),
+        ("YNYNYNN", "Mon,Wed,Fri"),
+        ("1111111", "Daily"),
+        ("1,3,5", "Mon,Wed,Fri"),
+        ("Tue/Thu/Sat", "Tue,Thu,Sat"),
+        ("Monday and Thursday", "Mon,Thu"),
+        ("M T W", None),  # T could be Tuesday or Thursday: refuse to guess
+        ("weekly?", None),
+        ("", None),
+    ],
+)
+def test_running_days_are_parsed_or_refused(text, expected):
+    assert official.parse_running_days(text) == expected
+
+
+def test_twin_runs_trains_only_on_their_days(db_path, tmp_path):
+    from datetime import date
+
+    path = tmp_path / "timetable.csv"
+    lines = CSV.strip().splitlines()
+    tagged = [lines[0] + ",Days of Run"] + [line + (",Mon" if line.startswith("'12001") else ",") for line in lines[1:]]
+    path.write_text("\n".join(tagged) + "\n")
+    report = official.ingest(path, db_path=db_path)
+    assert report["trains_with_running_days"] == 1
+    monday = build_national(db_path, service_date=date(2026, 10, 5))
+    tuesday = build_national(db_path, service_date=date(2026, 10, 6))
+    assert "12001@0" in monday.runs and "12001@0" not in tuesday.runs  # 12001 runs on Mondays only
+    assert "54001@0" in tuesday.runs  # unknown days: treated as daily (and flagged by the schedule audit)
+    assert monday.stats["trains_with_known_running_days"] == 1

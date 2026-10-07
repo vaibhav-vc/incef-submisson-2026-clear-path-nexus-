@@ -25,6 +25,7 @@ import threading
 from bisect import bisect_left, bisect_right, insort
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -137,10 +138,15 @@ def _section_id(a: str, b: str) -> str:
     return f"{a}-{b}" if a < b else f"{b}-{a}"
 
 
-def build_national(db_path: Path = DB_PATH) -> NationalData:
+def build_national(db_path: Path = DB_PATH, service_date: date | None = None) -> NationalData:
+    """`service_date` is the calendar date of day 0 (default: today in India); it matters only for trains whose
+    running days are known, which then run only on those weekdays. Others are treated as daily and flagged."""
+
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     stations = {code: (lat, lon) for code, lat, lon in con.execute("SELECT code, lat, lon FROM stations")}
     official_km = _official_section_km(con)
+    running_days = _running_days(con)
+    service_date = service_date or datetime.now(timezone(timedelta(hours=5, minutes=30))).date()
     trains = {row[0]: row[1:] for row in con.execute("SELECT number, name, type FROM trains")}
     rows = con.execute(
         "SELECT train_number, seq, from_code, to_code, dep_min, arr_min, runtime_min, crow_km "
@@ -156,7 +162,7 @@ def build_national(db_path: Path = DB_PATH) -> NationalData:
         neighbours[a].add(b)
         neighbours[b].add(a)
     network = Network(nodes=_place_nodes(stations, nodes_used, neighbours), sections=sections)
-    runs, index = _build_runs(by_train, trains)
+    runs, index = _build_runs(by_train, trains, running_days, service_date)
     occupancy = _build_occupancy(runs, index)
 
     own = {n for n in nodes_used if stations.get(n, (None,))[0] is not None}
@@ -173,6 +179,8 @@ def build_national(db_path: Path = DB_PATH) -> NationalData:
         "sections_assumed_single": len(sections) - inferred_multi,
         "stations_placed_from_neighbours": len(nodes_used - own),
         "train_numbers": len(by_train),
+        "trains_with_known_running_days": sum(1 for n in by_train if n in running_days),
+        "service_date": service_date.isoformat(),
         "runs_in_window": len(runs),
         "occupations": sum(len(v) for v in index.values()),
     }
@@ -252,8 +260,10 @@ def _place_nodes(
     return {n: (round(lon, 5), round(lat, 5)) for n, (lon, lat) in coords.items()}
 
 
-def _build_runs(by_train: dict[str, list[tuple]], trains: dict[str, tuple]) -> tuple[dict[str, Run], dict]:
-    """One run per train number and start day that touches the two-day window."""
+def _build_runs(
+    by_train: dict[str, list[tuple]], trains: dict[str, tuple], running_days: dict[str, set[int]], service_date: date
+) -> tuple[dict[str, Run], dict]:
+    """One run per train number and start day that touches the two-day window (and on which the train runs)."""
 
     runs: dict[str, Run] = {}
     index: dict[str, list[tuple[str, int]]] = defaultdict(list)
@@ -266,6 +276,9 @@ def _build_runs(by_train: dict[str, list[tuple]], trains: dict[str, tuple]) -> t
             off = day * 1440
             if legs[-1][4] + off < 0 or legs[0][3] + off > WINDOW_MIN:
                 continue
+            days = running_days.get(number)
+            if days is not None and (service_date + timedelta(days=day)).weekday() not in days:
+                continue  # does not run on that start date
             key = f"{number}@{day}"
             runs[key] = Run(
                 key,
@@ -305,6 +318,20 @@ def _build_occupancy(runs: dict[str, Run], index: dict[str, list[tuple[str, int]
 
 
 PASSING_MAX_OFFSET_KM = 2.0  # a station further than this from every section line is not placed
+
+
+def _running_days(con: sqlite3.Connection) -> dict[str, set[int]]:
+    """Weekdays (0 = Monday) each train runs, for trains whose days of service are known."""
+
+    try:
+        rows = con.execute("SELECT number, running_days FROM train_details WHERE running_days IS NOT NULL")
+    except sqlite3.OperationalError:
+        return {}
+    names = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    out = {}
+    for number, days in rows:
+        out[number] = set(range(7)) if days == "Daily" else {names.index(d) for d in days.split(",") if d in names}
+    return out
 
 
 def _official_section_km(con: sqlite3.Connection) -> dict[str, float]:
@@ -1020,7 +1047,7 @@ class NationalTwin:
                     ranking["candidates"].append(
                         {
                             "candidate_id": f"N{n}",
-                            "action": cand["label"].split(" ")[0] + ("+YIELD" if cand["yields"] else ""),
+                            "action": cand["label"].split(";")[0].split(" ")[0] + ("+YIELD" if cand["yields"] else ""),
                             "summary": f"{key}: {cand['label']}",
                             **scoring.public(s),
                             "final_delay_min": round(max(plan.exit[-1] - self.runs[key].s_exit[-1], 0), 1),
