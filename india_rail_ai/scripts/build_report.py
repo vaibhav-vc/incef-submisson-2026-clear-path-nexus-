@@ -271,6 +271,7 @@ DEPLOYMENT_PATH = [
 def build(out: Path) -> Path:
     sim = load(EVIDENCE / "simulation" / "simulation_results.json")
     reg = load(EVIDENCE / "simulation" / "regression_results.json")
+    final = load(EVIDENCE / "simulation" / "final_code_results.json")
     tlog = load(ROOT / "models" / "training_log.json")
     model = load(ROOT / "models" / "runtime_model_metrics.json")
     audit = load(EVIDENCE / "audit" / "audit_summary.json")
@@ -732,11 +733,16 @@ def build(out: Path) -> Path:
             "small",
         ),
     ]
-    if reg:
-        story.append(p(f"Regression run on the final code: {reg.get('completed_episodes', 0):,} episodes, "
-                       f"{reg.get('operations_checked', 0):,} operations, "
-                       f"{sum(t.get('violations_total', 0) for t in reg.get('twins', {}).values())} violations "
-                       f"(code checksum {str(reg.get('code_checksum', ''))[:16]}…).", "small"))  # fmt: skip
+    for label, run in (("Regression run (after the main run's code)", reg), ("Run on the exact final code", final)):
+        if run:
+            story.append(p(f"{label}: {run.get('completed_episodes', 0):,} episodes, "
+                           f"{run.get('operations_checked', 0):,} operations, "
+                           f"{sum(t.get('violations_total', 0) for t in run.get('twins', {}).values())} violations "
+                           f"(code checksum {str(run.get('code_checksum', ''))[:16]}…).", "small"))  # fmt: skip
+    total_ops = sum(r.get("operations_checked", 0) for r in (sim, reg, final) if r)
+    story.append(p(f"<b>All runs together: {total_ops:,} checked operations, "
+                   f"{sum(t.get('violations_total', 0) for r in (sim, reg, final) if r for t in r.get('twins', {}).values())} "
+                   "violations.</b>", "body"))  # fmt: skip
     story += [
         p("Invariants", "h2"),
         table(
