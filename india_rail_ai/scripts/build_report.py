@@ -313,6 +313,7 @@ def build(out: Path) -> Path:
     ]
     sim_ops = sim.get("operations_checked", 0)
     viol = sum(t.get("violations_total", 0) for t in sim.get("twins", {}).values())
+    final_viol = sum(t.get("violations_total", 0) for t in final.get("twins", {}).values()) if final else viol
     locked = tlog.get("locked_test", {})
     story.append(
         tiles(
@@ -322,7 +323,7 @@ def build(out: Path) -> Path:
                 ("sections between stops", f"{nat_stats.get('sections', 8738):,}"),
                 ("timetabled train runs in the 2-day window", f"{nat_stats.get('runs_in_window', 7580):,}"),
                 ("operations checked in simulation", f"{sim_ops:,}"),
-                ("safety-invariant violations (final run)", f"{viol}"),
+                ("invariant violations on the final code", f"{final_viol}"),
                 ("automated tests passing", f"{audit.get('tests_passed', '-')}"),
                 (
                     "ML error vs section median (locked test)",
@@ -711,6 +712,12 @@ def build(out: Path) -> Path:
             "Full end-to-end episodes cost about 0.1 s each, so the 5-million target is counted honestly as checked "
             "operations, not as episodes."
         ),
+        p(
+            "<b>Result.</b> The main run checked over 5 million operations. The national twin had no violations. "
+            "The tabletop twin had 8 violations in 70,000 episodes: 7 were one real defect (re-holding a train that "
+            "was already held released it forward) and 1 was a test-case error in the harness. Both were fixed, all 8 "
+            "episodes replay clean, and a further run on the fixed, final code is reported below."
+        ),
         table(
             [["Twin", "Episodes", "Operations checked", "Violations", "CPU ms / episode"]]
             + [
@@ -969,6 +976,14 @@ SIM_FINDINGS = [
         "A disruption reported by a live station event could not be applied where the train really was",
         "Feed events pin the stop index",
     ),
+    (
+        "Main run, 7 episodes: re-holding an already-held train released it towards its timetabled position",
+        "A re-hold never moves the stop point later; regression test fails on the old code",
+    ),
+    (
+        "Main run, 1 episode: a harness test case (not the system) mislabelled a plausible move as a jump",
+        "Harness fixed",
+    ),
 ]
 SEC_FINDINGS = [
     (
@@ -993,9 +1008,10 @@ AUDITS = [
     [
         "1",
         "Safety logic",
-        "13 defects found by the randomised simulation and fixed (section 5): stale approvals, "
-        "position snapping, holds, closures, planner scope, cascade hang, horizon symmetry, replay determinism",
-        "simulate.py; 0 violations in the final run",
+        "14 system defects found by the randomised simulation and fixed (section 5): stale approvals, "
+        "position snapping, holds and re-holds, closures, planner scope, cascade hang, horizon symmetry, "
+        "replay determinism",
+        "simulate.py; 0 violations on the final code",
     ],
     [
         "2",

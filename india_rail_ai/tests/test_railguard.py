@@ -283,3 +283,18 @@ def test_all_six_judge_scenarios_pass():
     assert len(results) == 6
     failed = {name: [k for k, v in r["checks"].items() if not v] for name, r in results.items() if not r["passed"]}
     assert failed == {}
+
+
+def test_re_holding_a_held_train_never_moves_it():
+    """Found by the randomised simulation: a second hold used to release a held train to its timetabled spot."""
+
+    engine = RailGuardEngine()
+    rec = engine.recommend()
+    engine.approve(rec["snapshot_id"], rec["ranking"]["candidates"][0]["candidate_id"], "controller-1")
+    engine.tick(400)
+    engine.hold("controller-1", "first hold", "A")
+    engine.tick(600)
+    held = engine.position_of("A")
+    engine.hold("controller-1", "hold everything", None)
+    engine.tick(5)
+    assert engine.position_of("A") == held

@@ -391,7 +391,8 @@ class DemoEpisode:
             far = max(e.net.sections.values(), key=lambda s: e.track_distance(e.position_of(tid), (s.id, s.a, 0.0)))
             if e.track_distance(e.position_of(tid), (far.id, far.a, 0.0)) < 5:
                 return
-            obs.update(section_id=far.id, from_node=far.a, offset_km=0.0, t=train.last_position_t or e.t)
+            last = train.last_position_t if train.last_position_t is not None else e.t
+            obs.update(section_id=far.id, from_node=far.a, offset_km=0.0, t=last)  # same second: a true jump
         elif kind == "nan":
             obs["offset_km"] = rng.choice(("abc", None, [1]))
         before, seq = e.position_of(tid), e.last_sequence[tid]

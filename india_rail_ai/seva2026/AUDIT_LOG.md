@@ -6,7 +6,7 @@ Findings are listed with the evidence that caught them and the evidence that the
 
 Final state after all five passes: **115 automated tests pass** (Python 3.11 and 3.13), **Bandit 0 findings**,
 **pip-audit 0 known vulnerabilities**, **0 safety-invariant violations** in the randomised simulation
-(`evidence/simulation/simulation_results.json`), UI regression with **0 HTTP errors and 0 console errors** under
+(final-code run in `evidence/simulation/final_code_results.json`; the main run found two last defects, see pass 1), UI regression with **0 HTTP errors and 0 console errors** under
 a strict Content-Security-Policy.
 
 ## Pass 1 - Safety logic (randomised simulation, `india_rail/railguard/simulate.py`)
@@ -31,6 +31,12 @@ finding below was reproduced from its episode id, fixed, and re-checked with the
 | 11 | The PRIORITY option returned a plan its own re-check had not validated | Return the validated plan |
 | 12 | Trains listed as "re-pathed" whose timings had not changed | Only changed runs are reported |
 | 13 | Replay did not reproduce some rankings: threats/acknowledgements not restored; changed-run index order-dependent | Restore derived state; sorted index; 1,585 consecutive replays, 0 mismatches |
+| 14 | Found by the 5-million-operation main run (7 of 70,000 tabletop episodes): holding a train that was already held recomputed its stop point from the timetable and released it forward (~4.5 km jump) | A re-hold never moves the stop point later; regression test `test_re_holding_a_held_train_never_moves_it` fails on the old code and passes now |
+| 15 | Same run, 1 episode: a harness test case (not the system) read a last-fix time of 0 as "missing" and generated a plausible move it expected to be rejected | Harness fixed; the engine's acceptance was correct |
+
+The main run (160,000 episodes, 5,068,492 operations) therefore ended with 8 violations in the tabletop twin and
+0 in the national twin; all 8 episodes replay clean after fixes 14-15, and a verification run on the fixed code is
+recorded in `evidence/simulation/final_code_results.json`.
 
 ## Pass 2 - Security (`tests/test_security.py`, `tests/test_attacks.py`, `tests/test_livefeed.py`)
 

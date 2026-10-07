@@ -641,6 +641,9 @@ class RailGuardEngine:
                 for trav in plan.traversals:
                     if trav.enter <= now_min < trav.exit:
                         stop_by = trav.exit
+                previous = self.controller_hold.get(tid)
+                if previous is not None:  # already held: it stays where it stopped (never released by a re-hold)
+                    stop_by = min(stop_by, previous["stop_by_min"])
                 self.controller_hold[tid] = {"reason": reason, "by": controller, "t": self.t, "stop_by_min": stop_by}
             event = self.audit.record(self.t, "CONTROLLER_HOLD", controller, {"trains": targets, "reason": reason})
             self.refresh()
