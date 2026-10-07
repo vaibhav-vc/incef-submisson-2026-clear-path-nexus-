@@ -1,52 +1,30 @@
-"""Claude-powered assistant for timetable questions and disruption planning.
+"""Optional Claude-powered assistant (paid Anthropic API; never used by default).
 
-The assistant answers in natural language by calling the same read-only tools
-the API exposes. It can propose a re-plan but cannot apply one: there is no tool
-that writes to any operational system.
+The free assistants in `free_assistant.py` are the default. This one is only
+used when explicitly selected with provider "claude", and each question is
+billed to the caller's own Anthropic account.
 
-Requires the `anthropic` package and an Anthropic API credential
-(ANTHROPIC_API_KEY or an `ant auth login` profile).
+It answers by calling the same read-only tools as the other assistants. It can
+propose a re-plan but cannot apply one: no tool writes to any system.
 """
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import anthropic
 from anthropic import beta_tool
 
 from india_rail.services import Services
+from india_rail.tools import SYSTEM_PROMPT, RailTools, clip
 
 MODEL = "claude-opus-5-5"
-MAX_TOOL_RESULT_CHARS = 20_000
-
-SYSTEM_PROMPT = """You assist Indian Railways planners and section controllers.
-
-You answer questions about trains, stations, schedules and network load, and you
-prepare disruption re-plans, using only the tools provided. The data is an open
-community timetable snapshot (about 2016, CC0, DataMeet) with no running-days
-information, so say so whenever an answer depends on current or day-specific
-service. Run-time predictions come from a gradient-boosted model of planned
-(timetabled) run times, not observed delays.
-
-When you prepare a re-plan, present it as a proposal for the controller to
-accept or reject: list the holds, the projected delays, the conflicts left
-unresolved and the assumptions the planner reported. Never describe a plan as
-issued, applied or sent to trains or signalling; you have no such capability.
-If a station or train name is ambiguous, look it up before answering. Keep
-answers concise and use station codes alongside names."""
-
-
-def _clip(payload: Any) -> str:
-    text = json.dumps(payload, default=str)
-    if len(text) > MAX_TOOL_RESULT_CHARS:
-        text = text[:MAX_TOOL_RESULT_CHARS] + '..."(truncated)"'
-    return text
 
 
 def build_tools(services: Services) -> list:
-    net = services.network
+    """Wrap the shared tools; the decorator derives each schema from the docstring."""
+
+    tools = RailTools(services)
 
     @beta_tool
     def search_trains(query: str) -> str:
@@ -55,7 +33,7 @@ def build_tools(services: Services) -> list:
         Args:
             query: Train number such as "12951" or part of a name such as "Rajdhani".
         """
-        return _clip(net.search_trains(query))
+        return clip(tools.search_trains(query))
 
     @beta_tool
     def search_stations(query: str) -> str:
@@ -64,7 +42,7 @@ def build_tools(services: Services) -> list:
         Args:
             query: Station code such as "NDLS" or part of a name such as "Howrah".
         """
-        return _clip(net.search_stations(query))
+        return clip(tools.search_stations(query))
 
     @beta_tool
     def train_schedule(train_number: str) -> str:
@@ -73,12 +51,7 @@ def build_tools(services: Services) -> list:
         Args:
             train_number: Five-digit train number.
         """
-        info = net.train(train_number)
-        if info is None:
-            return _clip({"error": f"Unknown train {train_number}"})
-        stops = net.schedule(train_number)
-        halts = [s for i, s in enumerate(stops) if s["dwell_min"] > 0 or i in (0, len(stops) - 1)]
-        return _clip({"train": info, "timed_points": len(stops), "halts": halts})
+        return clip(tools.train_schedule(train_number))
 
     @beta_tool
     def trains_between(origin: str, destination: str) -> str:
@@ -88,7 +61,7 @@ def build_tools(services: Services) -> list:
             origin: Origin station code.
             destination: Destination station code.
         """
-        return _clip(net.trains_between(origin, destination))
+        return clip(tools.trains_between(origin, destination))
 
     @beta_tool
     def station_board(station_code: str) -> str:
@@ -97,7 +70,7 @@ def build_tools(services: Services) -> list:
         Args:
             station_code: Station code.
         """
-        return _clip(net.station_board(station_code))
+        return clip(tools.station_board(station_code))
 
     @beta_tool
     def busiest_sections(zone: str = "", limit: int = 15) -> str:
@@ -107,7 +80,7 @@ def build_tools(services: Services) -> list:
             zone: Optional railway zone code such as "CR" or "NR" to restrict by train zone.
             limit: Number of sections to return (max 50).
         """
-        return _clip(net.busiest_sections(limit=max(1, min(limit, 50)), zone=zone or None))
+        return clip(tools.busiest_sections(zone, limit))
 
     @beta_tool
     def fastest_path(origin: str, destination: str) -> str:
@@ -117,7 +90,7 @@ def build_tools(services: Services) -> list:
             origin: Origin station code.
             destination: Destination station code.
         """
-        return _clip(net.fastest_path(origin, destination) or {"error": "No path in the timetable network"})
+        return clip(tools.fastest_path(origin, destination))
 
     @beta_tool
     def timetable_slack(train_number: str) -> str:
@@ -126,7 +99,7 @@ def build_tools(services: Services) -> list:
         Args:
             train_number: Five-digit train number.
         """
-        return _clip(services.timetable_slack(train_number))
+        return clip(tools.timetable_slack(train_number))
 
     @beta_tool
     def plan_disruption(train_number: str, station_code: str, delay_min: int, headway_min: int = 6) -> str:
@@ -138,12 +111,7 @@ def build_tools(services: Services) -> list:
             delay_min: Delay in minutes (1-720).
             headway_min: Minimum separation between trains entering a section, in minutes.
         """
-        if not 1 <= delay_min <= 720 or not 2 <= headway_min <= 30:
-            return _clip({"error": "delay_min must be 1-720 and headway_min 2-30"})
-        try:
-            return _clip(services.plan(train_number, station_code, delay_min, headway_min))
-        except (KeyError, ValueError) as exc:
-            return _clip({"error": str(exc)})
+        return clip(tools.plan_disruption(train_number, station_code, delay_min, headway_min))
 
     return [
         search_trains,
@@ -159,6 +127,8 @@ def build_tools(services: Services) -> list:
 
 
 class RailAssistant:
+    name = "claude"
+
     def __init__(self, services: Services, client: anthropic.Anthropic | None = None):
         self.client = client or anthropic.Anthropic()
         self.tools = build_tools(services)

@@ -5,7 +5,9 @@ Planning automation for Indian Railways traffic control, built on open data:
 1. **Data pipeline.** It ingests the open Indian Railways timetable (about 9,000 stations, 5,200 trains and 394,000 timed stops) into SQLite, with every source file's SHA-256 pinned.
 2. **ML run-time model.** Gradient-boosted trees predict how many minutes a train needs between two stops, with a calibrated P10–P90 interval.
 3. **Disruption planner.** When a train runs late, it spreads the delay through the network, finds trains that would come too close, and proposes priority-based holds to restore separation.
-4. **AI assistant.** Claude, using tool calls over all of the above, answers questions like "which trains run Delhi to Mumbai?" or "12002 is 30 minutes late at NDLS — what should we hold?".
+4. **Assistant.** Answers questions like "which trains run Delhi to Mumbai?" or "12002 is 30 minutes late at NDLS — what should we hold?" by calling all of the above. It's free by default: built-in offline, or a local open-source AI model.
+
+**Cost: nothing.** The data is public domain (CC0) or open (ODbL). All code and libraries are open source. Everything runs on your own computer with no account, API key or subscription. The only paid option is the Claude assistant; it's off unless you choose it by name and use your own key.
 
 ## What "automation" means here
 
@@ -21,8 +23,8 @@ python -m india_rail summary
 python -m india_rail plan 12002 NDLS 30          # Shatabdi 30 min late at New Delhi
 python -m india_rail slack 12951                 # where the Mumbai Rajdhani timetable has padding
 python -m india_rail serve                       # HTTP API on http://127.0.0.1:8100/docs
-export ANTHROPIC_API_KEY=...                     # or `ant auth login`
-python -m india_rail ask "Which trains run from NDLS to BCT, and which is fastest?"
+python -m india_rail ask "trains from New Delhi to Howrah"     # free assistant
+python -m india_rail ask "12002 is 30 min late at NDLS"
 python -m india_rail ask                         # interactive session
 ```
 
@@ -89,14 +91,27 @@ Results from the real timetable (6-minute headway):
 
 Large delays on the Delhi–Howrah and Delhi–Mumbai trunk routes can cascade past the 30-train limit. Those cases are listed under `unresolved` rather than dropped. Because the planner chooses who waits one conflict at a time, it isn't an optimiser. A mixed-integer or constraint-programming re-scheduler is the natural next step once track-count and loop-line data are available.
 
-## AI assistant
+## Assistant
 
-`india_rail/assistant.py`:
+All three assistants share the same nine read-only tools in `india_rail/tools.py`:
+- train and station search;
+- schedule, trains between stations, station board;
+- busiest sections, fastest path;
+- timetable slack;
+- the disruption planner.
 
-- **Model:** `claude-opus-5-5`, with adaptive thinking and server-side refusal fallback.
-- **Agent loop:** the Anthropic SDK's tool runner, over nine read-only tools: train/station search, schedule, trains between stations, station board, busiest sections, fastest path, timetable slack, and the disruption planner.
-- **No write tools:** it can propose a plan but has no tool that changes anything.
-- **Testing:** `tests/test_assistant.py` runs the full tool loop against a mocked API.
+None of them can change anything; plans are proposals.
+
+| Provider | Cost | Needs | Understands |
+|---|---|---|---|
+| `offline` | Free | Nothing | The common question types: delays/holds, trains between stations, fastest route, schedule, station board, busiest sections, slack, train/station search |
+| `ollama` | Free | [Ollama](https://ollama.com) installed, then `ollama pull qwen2.5:7b` (about 5 GB; runs on a laptop CPU, faster with a GPU) | Free-form questions, with the model calling the tools itself |
+| `claude` | **Paid** (Anthropic API, your own key) | `ANTHROPIC_API_KEY` | Free-form questions, strongest reasoning |
+
+- `--provider auto` (the default) uses Ollama if it's running and the offline assistant otherwise. It never picks the paid option.
+- Choose a different local model with `OLLAMA_MODEL=llama3.1:8b`.
+- The HTTP API refuses `provider: "claude"` unless the server sets `INDIA_RAIL_ALLOW_PAID_ASSISTANT=1`, so nobody can run up charges on a shared server.
+- The tests run the offline assistant on a miniature network and the Ollama and Claude tool loops against mocked servers.
 
 ## HTTP API
 

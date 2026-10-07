@@ -4,6 +4,8 @@ scikit-learn==1.7.1
 joblib==1.5.1
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
+# Optional, only for the paid Claude assistant (provider "claude"); the default assistants are free.
 anthropic==1.11.0
 pytest==8.3.4
+httpx==0.28.1  # FastAPI TestClient in the test suite
 ruff==0.8.6

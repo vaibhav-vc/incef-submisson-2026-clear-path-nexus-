@@ -28,8 +28,14 @@ def main(argv: list[str] | None = None) -> int:
     slack = sub.add_parser("slack", help="compare a train's timetable with model predictions")
     slack.add_argument("train_number")
 
-    ask = sub.add_parser("ask", help="ask the AI assistant (needs an Anthropic API credential)")
+    ask = sub.add_parser("ask", help="ask the assistant (free by default: local Ollama model or offline)")
     ask.add_argument("question", nargs="*", help="omit for an interactive session")
+    ask.add_argument(
+        "--provider",
+        default="auto",
+        choices=["auto", "offline", "ollama", "claude"],
+        help="auto/offline/ollama are free; claude uses the paid Anthropic API with your own key",
+    )
 
     serve = sub.add_parser("serve", help="run the HTTP API")
     serve.add_argument("--host", default="127.0.0.1")
@@ -68,13 +74,13 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "slack":
         print(json.dumps(services.timetable_slack(args.train_number), indent=2))
     elif args.command == "ask":
-        from india_rail.assistant import RailAssistant
+        from india_rail.free_assistant import make_assistant
 
-        assistant = RailAssistant(services)
+        assistant = make_assistant(services, args.provider)
         if args.question:
             print(assistant.ask(" ".join(args.question)))
             return 0
-        print("India Rail assistant. Empty line to exit.")
+        print(f"India Rail assistant ({assistant.name}). Empty line to exit.")
         while line := input("> ").strip():
             print(assistant.ask(line), "\n")
     return 0

@@ -104,15 +104,20 @@ def plan_disruption(request: DisruptionRequest) -> dict[str, Any]:
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
+    provider: str = Field("auto", pattern="^(auto|offline|ollama|claude)$")
 
 
 @app.post("/assistant/ask")
 def ask(request: AskRequest) -> dict[str, str]:
-    if os.environ.get("INDIA_RAIL_ASSISTANT_ENABLED", "1") != "1":
-        raise HTTPException(status_code=503, detail="Assistant disabled")
-    try:
-        from india_rail.assistant import RailAssistant
-    except ImportError as exc:
-        raise HTTPException(status_code=503, detail="Install the anthropic package to use the assistant") from exc
+    from india_rail.free_assistant import make_assistant
+
+    # The paid provider is refused unless the server operator opted in, so a
+    # caller of a shared deployment can never run up API charges.
+    if request.provider == "claude" and os.environ.get("INDIA_RAIL_ALLOW_PAID_ASSISTANT") != "1":
+        raise HTTPException(status_code=403, detail="Paid assistant disabled on this server; use auto/offline/ollama")
     # A fresh assistant per request: no conversation state is shared between callers.
-    return {"answer": RailAssistant(services()).ask(request.question)}
+    try:
+        assistant = make_assistant(services(), request.provider)
+        return {"provider": assistant.name, "answer": assistant.ask(request.question)}
+    except (ImportError, OSError) as exc:  # Ollama not running, package missing, network error
+        raise HTTPException(status_code=503, detail=f"{request.provider} assistant unavailable: {exc}") from exc

@@ -54,10 +54,17 @@ class RailNetwork:
 
     def search_stations(self, text: str, limit: int = 10) -> list[dict[str, Any]]:
         like = f"%{text.strip()}%"
+        # Exact code, then exact name, then the station most trains call at:
+        # "Ahmedabad" should find the main junction, not a minor halt.
         return self._rows(
-            "SELECT code, name, zone, state FROM stations WHERE code = ? OR name LIKE ? "
-            "ORDER BY (code = ?) DESC, length(name) LIMIT ?",
-            (text.upper(), like, text.upper(), limit),
+            """
+            SELECT code, name, zone, state,
+                   (SELECT count(*) FROM stops WHERE stops.station_code = stations.code) AS train_calls
+            FROM stations WHERE code = ? OR name LIKE ?
+            ORDER BY (code = ?) DESC, (upper(name) = upper(?)) DESC, train_calls DESC, length(name)
+            LIMIT ?
+            """,
+            (text.upper(), like, text.upper(), text.strip(), limit),
         )
 
     def train(self, number: str) -> dict[str, Any] | None:
