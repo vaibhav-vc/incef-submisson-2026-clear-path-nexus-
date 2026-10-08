@@ -330,6 +330,11 @@ def main(argv: list[str] | None = None) -> int:
     validate.add_argument("--out", type=Path, default=None)
     scen = sub.add_parser("scenarios", help="retrain and score forecasts by situation in rolling-origin rounds")
     scen.add_argument("--out", type=Path, default=None)
+    bank = sub.add_parser("scenario-bank", help="train and test forecasts and the planner under 75,556 scenarios")
+    bank.add_argument("--scenarios", type=int, default=75_556, help="real forecast scenarios (0 to skip)")
+    bank.add_argument("--planner", type=int, default=75_556, help="planner disruption scenarios (0 to skip)")
+    bank.add_argument("--workers", type=int, default=4)
+    bank.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
     if args.command == "fetch":
         print(fetch())
@@ -341,6 +346,12 @@ def main(argv: list[str] | None = None) -> int:
 
         target = CURRENT_DB_PATH if args.db == "current" else REAL_DB_PATH
         print(json.dumps(apply_to_database(args.pbf, target), indent=2))
+    elif args.command == "scenario-bank":
+        from india_rail import scenario_bank
+
+        report = scenario_bank.run(args.out or scenario_bank.EVIDENCE, args.scenarios, args.planner, args.workers)
+        shown = {k: v for k, v in report.items() if k in ("forecasts", "planner")}
+        print(json.dumps(shown, indent=1, default=str)[:4000])
     elif args.command == "scenarios":
         from india_rail import scenario_ml
 

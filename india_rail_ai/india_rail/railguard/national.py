@@ -687,8 +687,11 @@ class NationalTwin:
         self.now = self.start_min
         self.version = 0  # bumped by every state change; an approval must match the version it was ranked on
         self.plans: dict[str, Plan] = {}  # changed runs only
-        # Occupations of changed runs per piece of track: (run, section index, from fraction, to fraction, entry)
-        self.changed_index: dict[str, list[tuple[str, int, float, float, str]]] = defaultdict(list)
+        # Occupations of changed runs per piece of track, sorted by entry time so a window is found by bisection:
+        # (enter, run, section index, exit, entry station, timetabled enter, timetabled exit). Plans are replaced,
+        # never edited, so the times stay those of the run's current plan.
+        self.changed_index: dict[str, list[tuple]] = defaultdict(list)
+        self.changed_span: dict[str, float] = defaultdict(float)  # longest changed occupation per piece (a bound)
         self.section_overrides: dict[str, Section] = {}
         self.evidence = EvidenceStore()  # live-feed positions only; absence = PROJECTED
         self.threats = ThreatRegistry()
@@ -785,11 +788,13 @@ class NationalTwin:
                 if key in self.plans or key in overrides or key in exclude:
                     continue
                 yield key, occ.idx[n], occ.enter[n], occ.exit[n], occ.frm[n], occ.enter[n], occ.exit[n]
-        for key, j, f0, f1, pfrm in self.changed_index.get(sid, ()):
-            if key not in overrides and key not in exclude:
-                p = self.plans[key]
-                e, x, se, sx = _piece(p.enter[j], p.exit[j], p.s_enter[j], p.s_exit[j], f0, f1)
-                yield key, j, e, x, pfrm, se, sx
+        changed = self.changed_index.get(sid)
+        if changed:
+            first = bisect_left(changed, (lo - self.changed_span[sid],))
+            last = bisect_right(changed, (hi, "\uffff"))
+            for e, key, j, x, pfrm, se, sx in changed[first:last]:
+                if key not in overrides and key not in exclude:
+                    yield key, j, e, x, pfrm, se, sx
         for key, p in overrides.items():
             if key not in exclude:
                 for j, other_sid in enumerate(p.sections):
@@ -988,17 +993,20 @@ class NationalTwin:
     def _track_entries(self, key: str, plan: Plan):
         for i, sid in enumerate(plan.sections):
             for psid, f0, f1, pfrm in self.parts(sid, plan.frm[i]):
-                yield psid, (key, i, f0, f1, pfrm)
+                e, x, se, sx = _piece(plan.enter[i], plan.exit[i], plan.s_enter[i], plan.s_exit[i], f0, f1)
+                yield psid, (e, key, i, x, pfrm, se, sx)
 
     def _set_plan(self, key: str, plan: Plan) -> None:
         old = self.plans.get(key)
         if old is not None:
             for psid, entry in self._track_entries(key, old):
-                self.changed_index[psid].remove(entry)
+                entries = self.changed_index[psid]
+                del entries[bisect_left(entries, entry[:3])]  # (enter, run, index) is unique
         self.plans[key] = plan
         for psid, entry in self._track_entries(key, plan):
-            # Kept sorted, so conflict search (and therefore ranking) never depends on the order of decisions.
+            # Sorted by content, so conflict search (and therefore ranking) never depends on the order of decisions.
             insort(self.changed_index[psid], entry)
+            self.changed_span[psid] = max(self.changed_span[psid], entry[3] - entry[0])
 
     def _violations(self, plan: Plan, start: int, run: Run) -> list[str]:
         out = []
@@ -1272,6 +1280,13 @@ class NationalTwin:
             bad = min(i for i in range(start, len(base.sections)) if hit(base.sections[i]))
             for detour in self._detours(key, base, start, bad, banned):
                 options.append((f"REROUTE {detour.note}", detour, 0))
+                # Diverted, then waiting at stations for free paths on the diversion (as a controller would when
+                # the trains already on it cannot be held)
+                pathed = self._path_through(key, detour, start)
+                if pathed is not None and pathed.enter != detour.enter:
+                    waits = sum(1 for i, v in pathed.sources.items() if v > detour.sources.get(i, 0.0))
+                    pathed = replace(pathed, note=f"{detour.note}; {pathed.note}")
+                    options.append((f"REROUTE+PATH {pathed.note}", pathed, waits))
         out = []
         for label, plan, holds in options:
             violations = self._violations(plan, start, run)
@@ -1313,6 +1328,18 @@ class NationalTwin:
             if cand["feasible"] and (reasons := self._violations(cand["plan"], start, run)):
                 cand.update(feasible=False, reasons=reasons)
         return out
+
+    def _hold_short(self, key: str, start: int) -> str | None:
+        """When nothing gets the train round a closed or obstructed section: where it should wait for it."""
+
+        plan = self.plan_of(key)
+        for i in range(start, len(plan.sections)):
+            sec = self.physical(plan.sections[i])
+            if not sec.available or sec.obstacle:
+                what = "reopens" if not sec.available else "is inspected and cleared"
+                return (f"Hold {key} at {plan.frm[i]}, the last stop before {plan.sections[i]}, until the section "
+                        f"{what}: no diversion within the planning limits")  # fmt: skip
+        return None
 
     def _raw(self, key: str, start: int, cand: dict[str, Any]) -> dict[str, float]:
         run, plan = self.runs[key], cand["plan"]
@@ -1408,6 +1435,9 @@ class NationalTwin:
                 state, reason = "HOLD", "Live position of an involved train is stale"
             elif ranking["state"] != "RANKED":
                 state, reason = "NO_FEASIBLE_PLAN", "No conflict-free alternative within the planning options"
+                if (hold := self._hold_short(key, start)) is not None:
+                    ranking["fallback"] = hold
+                    reason += "; " + hold
             elif critical:
                 state, reason = "REVIEW", "Critical threat open: " + ", ".join(sorted({t.type for t in critical}))
             elif involved_state == "PROJECTED":
@@ -1623,10 +1653,13 @@ class NationalTwin:
                 self.refresh()
             return {"accepted": True}
 
-    def tick(self, minutes: float = 1.0) -> None:
+    def tick(self, minutes: float = 1.0, refresh: bool = True) -> None:
+        """Advance the twin clock. `refresh=False` when the caller re-evaluates threats itself straight after."""
+
         with self.lock:
             self.now += max(float(minutes), 0.0)
-            self.refresh()
+            if refresh:
+                self.refresh()
 
     # ---- threats (scalable: O(changed runs + flagged sections + running runs)) -----------------------
     def refresh(self) -> None:

@@ -163,7 +163,7 @@ class FeedGateway:
             if self.follow_clock:
                 wall = self._minutes(datetime.fromtimestamp(self.clock(), IST))
                 if wall > twin.now:
-                    twin.tick(wall - twin.now)
+                    twin.tick(wall - twin.now, refresh=False)  # threats are re-evaluated once, below
             results = [self._event(source, event) for event in events]
             accepted = sum(1 for r in results if r["accepted"])
             twin.refresh()  # threats re-evaluated once per batch, after every event is in

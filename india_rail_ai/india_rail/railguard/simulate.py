@@ -837,13 +837,20 @@ class NationalEpisode:
     def check_index(self) -> None:
         tw = self.tw
         expected = sorted(
-            (piece, k, i, f0, f1, pfrm)
+            (piece, k, i, round(p.enter[i] + f0 * (p.exit[i] - p.enter[i]), 6), pfrm)
             for k, p in tw.plans.items()
             for i, sid in enumerate(p.sections)
-            for piece, f0, f1, pfrm in tw.parts(sid, p.frm[i])
+            for piece, f0, _f1, pfrm in tw.parts(sid, p.frm[i])
         )
-        actual = sorted((piece, *entry) for piece, entries in tw.changed_index.items() for entry in entries)
-        check(expected == actual, "NO_CRASH", "changed-run index out of sync with plans")
+        actual = sorted(
+            (piece, k, i, round(e, 6), pfrm)
+            for piece, entries in tw.changed_index.items()
+            for e, k, i, _x, pfrm, *_ in entries
+        )
+        spans = all(e[3] - e[0] <= tw.changed_span[piece] + 1e-9 for piece, es in tw.changed_index.items() for e in es)
+        check(expected == actual and spans, "NO_CRASH", "changed-run index out of sync with plans")
+        sorted_ok = all(es == sorted(es) for es in tw.changed_index.values())
+        check(sorted_ok, "NO_CRASH", "changed-run index not in time order")
 
     def check_cab(self, key: str) -> None:
         cab = self.tw.cab(key)

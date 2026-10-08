@@ -250,6 +250,7 @@ def forecast_rows(d: dict[str, pd.DataFrame], lookups: Lookups | None = None) ->
             qs = sorted(q for q in {p + 1, p + 3, p + 6, n - 1} if p < q < n)
             block = lk.rows(train, day, int(seq[p]), float(delay[p]), [int(seq[q]) for q in qs], own)
             block["d_tgt"] = [float(delay[q]) for q in qs]
+            block["d_prev"] = [float(delay[p - 1]) if p else np.nan] * len(qs)  # the run's previous report
             block["now_seq"] = [int(seq[p])] * len(qs)
             block["run"], block["date"] = [run] * len(qs), [day] * len(qs)
             for k, v in block.items():
@@ -260,6 +261,43 @@ def forecast_rows(d: dict[str, pd.DataFrame], lookups: Lookups | None = None) ->
 COLD_START_SHARE = 0.15
 FORECAST_FEATURES = ["d_now", "sch_gap", "stops_gap", "km_gap", "single_km_gap", "dwell_recovery", "priority",
                      "hour", "weekday", "hist_change", "hist_q", "hist_n_q"]  # fmt: skip
+# Damaged inputs a live forecaster must survive, with the share of training rows given each (scenario_bank.py)
+STRESS_TRAINING = {
+    "feed_noise_pm3_min": 0.05,
+    "missed_report": 0.05,
+    "garbled_report_pm30_min": 0.02,
+    "unknown_train_class": 0.03,
+    "unknown_route_facts": 0.03,
+}
+
+
+def cold_start(fit: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """A share of rows without the train's delay history, so the model has learned what to do for a train it has
+    never seen (new or renumbered in a new timetable)."""
+
+    fit = fit.copy()
+    no_history = rng.random(len(fit)) < COLD_START_SHARE
+    fit.loc[no_history, ["hist_q", "hist_change"]] = np.nan
+    fit.loc[no_history, "hist_n_q"] = 0
+    return fit
+
+
+def stress_training(fit: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """cold_start, plus rows with the damaged inputs of STRESS_TRAINING: the target stays the real outcome, so
+    the model learns how far to trust a report that may be noisy, stale or wrong."""
+
+    out = cold_start(fit, rng)
+    n, d_now = len(out), out.d_now.to_numpy(dtype=float).copy()
+    noisy = rng.random(n) < STRESS_TRAINING["feed_noise_pm3_min"]
+    d_now[noisy] = np.maximum(d_now[noisy] + rng.uniform(-3, 3, int(noisy.sum())), 0)
+    missed = (rng.random(n) < STRESS_TRAINING["missed_report"]) & out.d_prev.notna().to_numpy()
+    d_now[missed] = out.d_prev.to_numpy(dtype=float)[missed]
+    garbled = rng.random(n) < STRESS_TRAINING["garbled_report_pm30_min"]
+    d_now[garbled] = np.maximum(d_now[garbled] + rng.choice([-30.0, 30.0], int(garbled.sum())), 0)
+    out["d_now"] = d_now
+    out.loc[rng.random(n) < STRESS_TRAINING["unknown_train_class"], "priority"] = UNKNOWN_PRIORITY
+    out.loc[rng.random(n) < STRESS_TRAINING["unknown_route_facts"], ["km_gap", "single_km_gap"]] = np.nan
+    return out
 
 
 def forecast(d: dict[str, pd.DataFrame], seed: int = 0, save_model: bool = True) -> tuple[dict[str, Any], dict]:
@@ -271,11 +309,7 @@ def forecast(d: dict[str, pd.DataFrame], seed: int = 0, save_model: bool = True)
     train, test = rows[rows.date <= SPLIT_DATE], rows[rows.date > SPLIT_DATE]
     rng = np.random.default_rng(seed)
     fit = train.iloc[rng.choice(len(train), size=min(len(train), 1_500_000), replace=False)].copy()
-    # A share of rows without the train's delay history, so the model has learned what to do for a train it has
-    # never seen (new or renumbered in a new timetable): measured on the cold-start test below (scenario_ml.py).
-    no_history = rng.random(len(fit)) < COLD_START_SHARE
-    fit.loc[no_history, ["hist_q", "hist_change"]] = np.nan
-    fit.loc[no_history, "hist_n_q"] = 0
+    fit = cold_start(fit, rng)  # measured on the cold-start test below and in scenario_ml.py / scenario_bank.py
 
     def model(loss: str, quantile: float | None = None) -> HistGradientBoostingRegressor:
         kw = {"quantile": quantile} if quantile is not None else {}

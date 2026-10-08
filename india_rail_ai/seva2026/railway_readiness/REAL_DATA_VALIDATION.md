@@ -31,9 +31,9 @@ At six times of day on four unseen days the national twin was given every train'
 
 | Twin | Warnings | Give-way train lost >=5 min | Comparable trains | Lift |
 |---|---|---|---|---|
-| Previous projection, no track data | 1,907 | 26.43% | 25.46% | 1.04x |
-| Previous projection + real track data | 1,461 | 27.24% | 25.45% | 1.07x |
-| Learned projection + real track data | 1,603 | 29.88% | 23.9% | 1.25x |
+| Previous projection, no track data | 13,615 | 27.74% | 24.62% | 1.13x |
+| Previous projection + real track data | 7,638 | 28.28% | 24.88% | 1.14x |
+| Learned projection + real track data | 8,217 | 28.4% | 23.03% | 1.23x |
 
 Warnings are informative but far from certain: sections between stopping stations cannot show block sections, intermediate loops or signals. Indian Railways' engineering registers and COA data are the next real gain (hazard H14).
 
@@ -41,8 +41,8 @@ Warnings are informative but far from certain: sections between stopping station
 
 | Projection | Reports | Accepted | Batch p50 / p95 | Projection within 15 min of the real arrival |
 |---|---|---|---|---|
-| Previous rule | 7,979 | 96.6% | 126.5 / 161.8 ms | 76.4% |
-| Learned forecast | 7,979 | 96.6% | 161.8 / 217.6 ms | 80.9% |
+| Previous rule | 7,979 | 96.6% | 96.7 / 114.4 ms | 76.4% |
+| Learned forecast | 7,979 | 96.6% | 125.0 / 187.3 ms | 80.9% |
 
 06:00-10:00 IST on 2024-09-24. Refused reports are out of order or for unknown runs, refused on purpose. Disruptions recorded automatically for controllers: 1,029.
 

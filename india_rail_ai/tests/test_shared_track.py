@@ -120,7 +120,7 @@ def test_a_late_express_conflicts_with_the_local_on_the_track_they_share(twin):
     seen = twin.conflicts(LOCAL, twin.plan_of(LOCAL), 0)
     assert any(c["other"] == RAJ and c["section_id"] == "A-B" and c["is_conflict"] for c in seen)
     assert any(t.type == "CONVERGING_PATH" and t.section_id == "A-B" for t in twin.threats.active())
-    assert any(entry[0] == RAJ for entry in twin.changed_index["C-D"])
+    assert any(entry[1] == RAJ for entry in twin.changed_index["C-D"])
 
 
 def test_every_ranked_plan_is_clear_on_shared_track(twin):
@@ -174,11 +174,38 @@ def test_opposing_trains_on_one_single_line_piece_are_critical(twin):
 def test_the_changed_run_index_follows_the_plans(twin):
     twin.disrupt(RAJ, "A", 30)
     twin.disrupt(LOCAL, "B", 10)
+    twin.disrupt(RAJ, "A", 5)  # replaced again: the old entries must go
     expected = sorted(
-        (piece, k, i, f0, f1, pfrm)
+        (piece, k, i, round(p.enter[i] + f0 * (p.exit[i] - p.enter[i]), 6), pfrm)
         for k, p in twin.plans.items()
         for i, sid in enumerate(p.sections)
-        for piece, f0, f1, pfrm in twin.parts(sid, p.frm[i])
+        for piece, f0, _f1, pfrm in twin.parts(sid, p.frm[i])
     )
-    actual = sorted((piece, *e) for piece, entries in twin.changed_index.items() for e in entries)
+    actual = sorted(
+        (piece, k, i, round(e, 6), pfrm) for piece, es in twin.changed_index.items() for e, k, i, _x, pfrm, *_ in es
+    )
     assert expected == actual
+    assert all(es == sorted(es) for es in twin.changed_index.values())  # time order: windows found by bisection
+    # A window query sees exactly the changed occupations overlapping it.
+    e, x = twin.plans[RAJ].enter[0], twin.plans[RAJ].exit[0]
+    assert RAJ in {k for k, *_ in twin.occupants("B-C", e, x)}
+    assert RAJ not in {k for k, *_ in twin.occupants("B-C", x + 60, x + 120)}
+
+
+def test_with_no_way_round_a_closure_the_controller_is_told_where_to_hold(twin):
+    twin.update_section("B-C", available=False)  # closes the Rajdhani's A-D too
+    twin.update_section("C-X", available=False)  # and the bypass
+    rec = twin.recommend(RAJ)
+    assert rec["state"] == "NO_FEASIBLE_PLAN"
+    assert rec["ranking"]["fallback"].startswith(f"Hold {RAJ} at A, the last stop before A-D")
+    assert "until the section reopens" in rec["reason"]
+
+
+def test_a_diverted_train_may_wait_for_paths_on_the_diversion(twin):
+    twin.update_section("B-C", available=False)  # the Rajdhani must go by the bypass
+    cands = twin.candidates(RAJ, twin.first_open(RAJ))
+    labels = [c["label"] for c in cands]
+    assert any(label.startswith("REROUTE ") for label in labels)
+    for c in cands:  # every feasible option avoids the closed track, waits or not
+        if c["feasible"]:
+            assert "B-C" not in c["plan"].sections and "A-D" not in c["plan"].sections
