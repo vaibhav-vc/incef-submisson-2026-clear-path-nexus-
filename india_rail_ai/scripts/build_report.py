@@ -531,9 +531,10 @@ def build(out: Path) -> Path:
         Spacer(1, 10 * mm),
         p(
             "<b>What this is.</b> A controller decision-support system for the whole Indian Railways network built from "
-            "open data: a digital twin of every station, junction, section and timetabled train; a re-planner that ranks "
-            "conflict-free alternatives after a disruption; a driver cab advisory; a machine-learning run-time model; "
-            "a tamper-evident audit trail; and a gateway ready for authorised live feeds."
+            "real data: a digital twin of every station, junction, section and timetabled train (September 2024 "
+            "timetable, observed running days, mapped track); a re-planner that ranks conflict-free alternatives after "
+            "a disruption; a driver cab advisory; delay forecasts learned from real running; a tamper-evident audit "
+            "trail; and a gateway ready for authorised live feeds, tested with a real morning's reports."
         ),
         p(
             "<b>What it is not.</b> It is advisory. It has no interface to signals, points, interlocking, Kavach/ATP or "
@@ -617,8 +618,14 @@ def build(out: Path) -> Path:
                 ["Component", "What it does"],
                 [
                     "National twin (railguard/national.py)",
-                    "Every station, junction and section from the open timetable; 7,580 train runs over a two-day window; "
-                    "occupancy index for fast conflict search; disruption, ranking, approval, threats, cab, replay.",
+                    "Every station, junction and section of the 2024 timetable with mapped track data; train runs over a "
+                    "two-day window on their observed running days; occupancy index for fast conflict search; "
+                    "disruption, ranking, approval, threats, cab, replay.",
+                ],
+                [
+                    "Real data (realdata.py, osm_infra.py, realval.py, railguard/eta.py)",
+                    "Observed running and the 2024 timetable; OpenStreetMap track data; verification against what "
+                    "happened; delay forecasts learned from real running for feed-reported trains.",
                 ],
                 [
                     "Tabletop twin + TwinTrack (engine.py, hardware/)",
@@ -702,7 +709,11 @@ def build(out: Path) -> Path:
                     "Arduino C++ for the ESP32",
                 ],
                 ["Service", "FastAPI 0.142, Starlette 1.7, Pydantic 2 (strict models), Uvicorn"],
-                ["Data", "SQLite, pandas, NumPy; DataMeet open timetable (CC0); data.gov.in pipeline (GODL)"],
+                [
+                    "Data",
+                    "SQLite, pandas, NumPy, SciPy; observed running Sep 2024 (research use); OpenStreetMap (ODbL) "
+                    "via pyosmium; DataMeet (CC0); data.gov.in pipeline (GODL)",
+                ],
                 [
                     "Machine learning",
                     "scikit-learn HistGradientBoosting (absolute-error and quantile losses), "
@@ -969,7 +980,7 @@ def build(out: Path) -> Path:
     # ---- 5. simulation -------------------------------------------------------------------------------------
     twins = sim.get("twins", {})
     story += [
-        p("6. Simulation: 5 million checked operations", "h1"),
+        p("6. Simulation: 9.9 million checked operations", "h1"),
         p(
             "An <b>episode</b> starts a fresh twin with random conditions, then runs a random sequence of operations. "
             "The operations are clock ticks, recommendations, approvals (including stale and wrong ones), section and "
@@ -1090,7 +1101,11 @@ def build(out: Path) -> Path:
                     f"{audit.get('bandit_findings', 0)} findings "
                     f"({audit.get('bandit_reviewed_suppressions', 7)} reviewed suppressions, each justified in the code)",
                 ],
-                ["Dependency audit (pip-audit)", f"{audit.get('pip_audit', '0 known vulnerabilities')}"],
+                [
+                    "Dependency audit (pip-audit)",
+                    f"{audit.get('pip_audit', {}).get('known_vulnerabilities', 0)} known vulnerabilities in "
+                    f"{audit.get('pip_audit', {}).get('packages', '-')} pinned packages",
+                ],
                 ["Browser", "Strict Content-Security-Policy verified in Chromium: no console errors on any page"],
             ],
             [44, 126],
@@ -1101,7 +1116,7 @@ def build(out: Path) -> Path:
     ]
 
     # ---- 7. audits ------------------------------------------------------------------------------------------
-    story += [p("8. Five audit passes", "h1"),
+    story += [p("8. Six audit passes", "h1"),
               p("Each pass looked at the whole system through one lens, fixed what it found, and re-ran the full "
                 "test suite and lint before the next pass. Details are in <i>seva2026/AUDIT_LOG.md</i>.")]  # fmt: skip
     story.append(table([["Pass", "Lens", "Main findings and fixes", "Evidence"], *AUDITS], [12, 30, 92, 36]))
@@ -1121,6 +1136,9 @@ def build(out: Path) -> Path:
                 "recorded as a disruption for the controller to decide on. The feed approves nothing.",
                 "With every involved train on a fresh live fix, recommendations become REVIEWABLE instead of "
                 "PLANNING_ONLY. This is tested end to end with a signed feed simulator.",
+                "Tested with real data: a real morning's 7,979 arrivals sent as signed STATION events at their real "
+                "times; 96.6% accepted (the rest out of order or unknown runs, refused on purpose), about 0.1 s per "
+                "one-minute batch. Reports are matched from each train's last observation, never from its projection.",
                 "Remaining for go-live: CRIS's interface specification (field names, identifiers, transport), credentials, "
                 "and a shadow-mode trial.",
             ]

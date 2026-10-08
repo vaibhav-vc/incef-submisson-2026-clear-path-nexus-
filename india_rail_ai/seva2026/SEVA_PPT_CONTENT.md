@@ -25,7 +25,8 @@ Observe → Verify (EvidenceGate) → Twin → Detect (RailGuard) → Optimise �
 
 ## 6. Validation (measured)
 - **6/6** judge scenarios pass (31 automated checks); **134** automated tests pass
-- Randomised verification: **6.68M** checked operations; **0** violations on the final code
+- Randomised verification: **9.87M** checked operations; **0** violations on the final code with real data
+- Verified on **56,395 real train runs** (1.26M actual arrivals): forecasts 13.7 vs 17.2 min error on unseen days
 - Conflict detection: **100% recall, 100% precision** on 861 synthetic delay cases
 - **0 false clears** in 42 injected fault cases
 - **0** single-line overlaps across 462 executed plans

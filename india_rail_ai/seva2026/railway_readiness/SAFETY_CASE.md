@@ -35,7 +35,8 @@ Python 3.11); pinned dependencies with SCA (pip-audit 0); SAST (Bandit 0); five 
 ## 4. Safety management evidence
 Hazard log (`HAZARD_LOG.md`); randomised verification (`../../india_rail/railguard/simulate.py`, 8 invariants, 5M+
 operations in the main run, which found one last defect, since fixed; 1,201,001 operations with 0 violations on
-the final code; every finding reproducible from its seed);
+the code before real data; on the final code with real data and the learned forecast, 3,187,925 operations in
+236,000 episodes with 0 violations; every finding reproducible from its seed);
 deterministic replay (1,585 consecutive replays, 0 mismatches).
 
 **Verification on real-life data** (`REAL_DATA_VALIDATION.md`, `../evidence/real_data/real_validation.json`): the

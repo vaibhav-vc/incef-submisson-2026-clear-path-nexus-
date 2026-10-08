@@ -2,7 +2,7 @@
 
 Planning automation for Indian Railways traffic control, built on open data:
 
-1. **Data pipeline.** It ingests the open Indian Railways timetable (about 9,000 stations, 5,200 trains and 394,000 timed stops) into SQLite, with every source file's SHA-256 pinned.
+1. **Data pipeline.** It ingests the open Indian Railways timetable (about 9,000 stations, 5,200 trains and 394,000 timed stops) into SQLite, with every source file's SHA-256 pinned. The national twin runs on **real data**: the September 2024 timetable with every train's observed running days, and real track data from OpenStreetMap. It is verified against 1.26 million actual arrival times ([Real-life data and verification](#real-life-data-and-verification)).
 2. **ML run-time model.** Gradient-boosted trees predict how many minutes a train needs between two stops, with a calibrated P10–P90 interval.
 3. **Disruption planner.** When a train runs late, it spreads the delay through the network, finds trains that would come too close, and proposes priority-based holds to restore separation.
 4. **Assistant.** Answers questions like "which trains run Delhi to Mumbai?" or "12002 is 30 minutes late at NDLS — what should we hold?" by calling all of the above. It's free by default: built-in offline, or a local open-source AI model.
@@ -127,7 +127,7 @@ The parts:
 - **Cab:** each driver sees only the approved plan.
 - **Audit:** a hash chain (optional HMAC, persisted) records every decision, and each decision replays to the same ranking.
 - **Live-feed gateway** (`livefeed.py`): accepts signed RTIS/NTES/COA-style batches, protects against replays, map-matches positions, and turns late station events into disruptions for the controller. It is ready for authorised data.
-- **Simulation** (`simulate.py`): randomised operation sequences on both twins, with eight safety invariants checked after every operation. The main run checked 5,068,492 operations and found one last defect, now fixed. On the final code with real data and the learned forecast attached, 36,000 episodes (960,020 operations) ran with 0 violations, after the simulation caught one defect in the new forecast code. See [`seva2026/AUDIT_LOG.md`](seva2026/AUDIT_LOG.md).
+- **Simulation** (`simulate.py`): randomised operation sequences on both twins, with eight safety invariants checked after every operation. The main run checked 5,068,492 operations and found one last defect, now fixed. On the final code with real data and the learned forecast attached, 236,000 episodes (3,187,925 operations, 200,000 of them on the real national network) ran with 0 violations, after the simulation caught one defect in the new forecast code. All runs together: 9,868,852 checked operations. See [`seva2026/AUDIT_LOG.md`](seva2026/AUDIT_LOG.md).
 
 Security: role tokens, fail-closed production mode, strict request schemas, CSP, rate limits, and a signed feed. See [SECURITY.md](SECURITY.md). Compliance with the Railways Act / G&SR, RDSO and EN 50716, the IT Act, CERT-In, DPDP and the data licences is covered in [seva2026/COMPLIANCE_REGISTER.md](seva2026/COMPLIANCE_REGISTER.md). The full report is [seva2026/ClearPath_Nexus_RailGuard_Report.pdf](seva2026/ClearPath_Nexus_RailGuard_Report.pdf).
 

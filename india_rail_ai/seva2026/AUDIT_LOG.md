@@ -40,7 +40,9 @@ finding below was reproduced from its episode id, fixed, and re-checked with the
 The main run (160,000 episodes, 5,068,492 operations) therefore ended with 8 violations in the tabletop twin and
 0 in the national twin; all 8 episodes replay clean after fixes 14-15. Verification on the fixed, final code
 (`evidence/simulation/final_code_results.json`, code checksum 752bfcc1): 24,000 episodes, 1,201,001 operations,
-**0 violations**. All runs together: 6,680,927 checked operations.
+**0 violations**. After the real-data work (pass 6), the final code on real data ran 36,000 mixed episodes (960,020
+operations) and 200,000 national episodes on the real network (2,227,905 operations), both with 0 violations and
+code checksum 55bda851. All runs together: 9,868,852 checked operations.
 
 ## Pass 2 - Security (`tests/test_security.py`, `tests/test_attacks.py`, `tests/test_livefeed.py`)
 
