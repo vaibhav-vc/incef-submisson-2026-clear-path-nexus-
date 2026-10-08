@@ -22,6 +22,7 @@ import json
 import os
 import sys
 from collections import OrderedDict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -81,7 +82,8 @@ class AuditLog:
     def record(self, t: int, type_: str, actor: str, details: dict[str, Any]) -> dict[str, Any]:
         self.count += 1
         previous = self.events[-1]["hash"] if self.events else self.base_hash
-        event = {"seq": self.count, "t": t, "type": type_, "actor": actor, "details": details, "prev_hash": previous}
+        event = {"seq": self.count, "t": t, "at": _now_utc(), "type": type_, "actor": actor, "details": details,
+                 "prev_hash": previous}  # fmt: skip
         event["hash"] = checksum(event)
         if self.key:
             event["mac"] = _mac(self.key, event["hash"])
@@ -106,6 +108,7 @@ class AuditLog:
             "outputs_checksum": checksum(outputs),
         }
         snapshot["checksum"] = checksum({k: snapshot[k] for k in ("snapshot_id", "t", "inputs", "outputs")})
+        snapshot["at"] = _now_utc()  # wall clock, for matching across days and restarts (outside the replay checksum)
         self.snapshots[snapshot_id] = snapshot
         self._append(self.snapshots_path, snapshot)
         while len(self.snapshots) > MAX_SNAPSHOTS_IN_MEMORY:
@@ -115,6 +118,12 @@ class AuditLog:
     def verify_snapshot(self, snapshot_id: str) -> bool:
         snap = self.snapshots[snapshot_id]
         return snap["checksum"] == checksum({k: snap[k] for k in ("snapshot_id", "t", "inputs", "outputs")})
+
+
+def _now_utc() -> str:
+    """Wall-clock time of a record (UTC, NTP-synced host clock): the twin's own clock `t` restarts every day."""
+
+    return datetime.now(UTC).isoformat(timespec="milliseconds")
 
 
 def _last_record(path: Path) -> dict[str, Any] | None:

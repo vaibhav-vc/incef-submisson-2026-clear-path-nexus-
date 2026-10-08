@@ -17,7 +17,14 @@ must add: controllers' actual decisions, and IR's block-section and loop data.
 * Controllers work exactly as today. RailGuard's console is visible only to the trial team, or read-only to
   controllers if the Division agrees. Nothing is sent to drivers during the trial.
 * Each actual control decision (hold, precedence, diversion, continue) is logged with
-  `POST /railguard/national/shadow/actual` (by the trial team, or automatically from COA once mapped).
+  `POST /railguard/national/shadow/actual` (by the trial team), or in bulk from a CSV export of the Control Office
+  Application's decisions: `POST /railguard/national/shadow/import`, columns
+  `train_number,start_date,action,decided_at,station,hold_min,desk,note` (`decided_at` ISO 8601 with time zone;
+  bad rows are reported and skipped, never guessed at).
+* Every decision and recommendation carries its wall-clock time (UTC) in the hash-chained audit, so a decision is
+  matched only to a recommendation made before it, within 6 hours, across restarts and service days.
+* The weekly report covers the whole trial, read from the persisted audit files:
+  `python -m india_rail shadow-report --audit-dir <RAILGUARD_AUDIT_DIR> --out week.json`.
 
 ## Measures (from `GET /railguard/national/shadow/report`)
 * Top-1 agreement: the top recommendation matched the decision taken.

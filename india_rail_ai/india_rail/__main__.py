@@ -7,49 +7,32 @@ import json
 import sqlite3
 import sys
 
+# Commands with their own argument parsers: name -> (module, function)
+PASS_THROUGH = {
+    "official": ("india_rail.official", "main"),
+    "freight": ("india_rail.freight", "main"),
+    "accounts": ("india_rail.accounts", "main"),
+    "loadtest": ("india_rail.railguard.loadtest", "main"),
+    "advisor": ("india_rail.delay_advisor", "main"),
+    "gnss-verify": ("india_rail.railguard.gnss_verify", "main"),
+    "gnss": ("india_rail.railguard.gnss_agent", "main"),
+    "current": ("india_rail.current", "main"),
+    "real": ("india_rail.realdata", "main"),
+    "schedules": ("india_rail.schedules", "main"),
+    "shadow-report": ("india_rail.railguard.shadow", "main"),
+    "feed-conformance": ("india_rail.railguard.conformance", "main"),
+    "register": ("india_rail.railguard.register", "main"),
+    "audit-pack": ("india_rail.audit_pack", "main"),
+}
+
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    if argv[:1] == ["official"]:
-        from india_rail.official import main as official_main
+    if argv[:1] and argv[0] in PASS_THROUGH:
+        import importlib
 
-        return official_main(argv[1:])
-    if argv[:1] == ["freight"]:
-        from india_rail.freight import main as freight_main
-
-        return freight_main(argv[1:])
-    if argv[:1] == ["accounts"]:
-        from india_rail.accounts import main as accounts_main
-
-        return accounts_main(argv[1:])
-    if argv[:1] == ["loadtest"]:
-        from india_rail.railguard.loadtest import main as loadtest_main
-
-        return loadtest_main(argv[1:])
-    if argv[:1] == ["advisor"]:
-        from india_rail.delay_advisor import main as advisor_main
-
-        return advisor_main(argv[1:])
-    if argv[:1] == ["gnss-verify"]:
-        from india_rail.railguard.gnss_verify import main as gnss_verify_main
-
-        return gnss_verify_main(argv[1:])
-    if argv[:1] == ["gnss"]:
-        from india_rail.railguard.gnss_agent import main as gnss_main
-
-        return gnss_main(argv[1:])
-    if argv[:1] == ["current"]:
-        from india_rail.current import main as current_main
-
-        return current_main(argv[1:])
-    if argv[:1] == ["real"]:
-        from india_rail.realdata import main as real_main
-
-        return real_main(argv[1:])
-    if argv[:1] == ["schedules"]:
-        from india_rail.schedules import main as schedules_main
-
-        return schedules_main(argv[1:])
+        module, function = PASS_THROUGH[argv[0]]
+        return getattr(importlib.import_module(module), function)(argv[1:])
     parser = argparse.ArgumentParser(prog="india_rail", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -88,6 +71,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("advisor", help="delay-minimisation advisor: where delay is made on the real network (--help)")
     sub.add_parser("gnss-verify", help="verify GNSS tracking on the real network with simulated receivers")
     sub.add_parser("freight", help="Dedicated Freight Corridors: network and automated freight pathing (--help)")
+    sub.add_parser("shadow-report", help="shadow-trial agreement over the whole persisted audit (--help)")
+    sub.add_parser("feed-conformance", help="check a feed (CRIS side) or a receiver against the live-data contract")
+    sub.add_parser("register", help="loop and block-section register: OSM prefill, validate, apply (--help)")
+    sub.add_parser("audit-pack", help="build the CERT-In/STQC audit pack: SBOM, evidence index, controls (--help)")
 
     serve = sub.add_parser("serve", help="run the HTTP API")
     serve.add_argument("--host", default="127.0.0.1")

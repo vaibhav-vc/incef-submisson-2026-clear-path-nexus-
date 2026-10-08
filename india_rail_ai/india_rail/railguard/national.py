@@ -141,6 +141,10 @@ class NationalData:
     # local's): section -> (parts travelling from its first code, parts from its second), each part
     # (elementary section, start fraction, end fraction, the part's entry station)
     parts: dict[str, tuple[tuple[Part, ...], tuple[Part, ...]]] = field(default_factory=dict)
+    # Indian Railways' loop and block-section register when one is loaded (register.py): per-section headway
+    # (minutes) and loops per station, as built from IR documents
+    headway: dict[str, float] = field(default_factory=dict)
+    loops: dict[str, int] = field(default_factory=dict)
 
 
 Part = tuple[str, float, float, str]
@@ -245,10 +249,16 @@ def _section_id(a: str, b: str) -> str:
     return f"{a}-{b}" if a < b else f"{b}-{a}"
 
 
-def build_national(db_path: Path = DB_PATH, service_date: date | None = None, use_osm: bool = True) -> NationalData:
+def build_national(
+    db_path: Path = DB_PATH,
+    service_date: date | None = None,
+    use_osm: bool = True,
+    register: dict[str, Any] | None = None,
+) -> NationalData:
     """`service_date` is the calendar date of day 0 (default: today in India); it matters only for trains whose
     running days are known, which then run only on those weekdays. Others are treated as daily and flagged.
-    `use_osm=False` ignores mapped infrastructure (for measuring what the real track data changes)."""
+    `use_osm=False` ignores mapped infrastructure (for measuring what the real track data changes).
+    `register`: Indian Railways' loop and block-section register (register.load), which overrides inference."""
 
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     stations = {code: (lat, lon) for code, lat, lon in con.execute("SELECT code, lat, lon FROM stations")}
@@ -266,6 +276,18 @@ def build_national(db_path: Path = DB_PATH, service_date: date | None = None, us
     con.close()
 
     sections, by_train, inferred_multi = _build_sections(rows, official_km, osm_sections)
+    register = register or {}
+    for sid, row in register.get("sections", {}).items():
+        if sid in sections and row.get("tracks"):
+            sec = sections[sid]
+            quality = "|".join(
+                f"tracks:IR_REGISTER({row['source']})" if q.startswith("tracks:") else q
+                for q in sec.data_quality.split("|")
+            )
+            sections[sid] = replace(sec, tracks=int(row["tracks"]), data_quality=quality)
+    headway = {sid: float(r["headway_min"]) for sid, r in register.get("sections", {}).items()
+               if sid in sections and r.get("headway_min")}  # fmt: skip
+    loops = {c: int(r["loops"]) for c, r in register.get("stations", {}).items() if r.get("loops") is not None}
     nodes_used = {n for sid in sections for n in sid.split("-", 1)}
     neighbours: dict[str, set[str]] = defaultdict(set)
     for sid in sections:
@@ -305,16 +327,20 @@ def build_national(db_path: Path = DB_PATH, service_date: date | None = None, us
         "sections_over_shorter_sections": len(parts),
         "run_km_share_over_shorter_sections": round(composite_km / run_km, 3),
         "track_occupations_checked": sum(len(o.keys) for o in occupancy.values()),
+        "register": register.get("checksum", "none loaded"),
+        "register_sections": len(register.get("sections", {})),
+        "register_stations": len(register.get("stations", {})),
     }
     digest = checksum(
         {
             "sections": [(s.id, s.length_km, s.vmax_kmph, s.tracks) for s in sections.values()],
             "runs": [(r.key, r.sections, r.s_enter) for r in runs.values()],
             "parts": sorted(parts.items()),
+            "register": register.get("checksum"),
         }
     )
     infrastructure = {sid: osm_sections[sid] for sid in sections if sid in osm_sections}
-    return NationalData(network, runs, occupancy, stats, digest, passing, infrastructure, parts)
+    return NationalData(network, runs, occupancy, stats, digest, passing, infrastructure, parts, headway, loops)
 
 
 def _build_sections(
@@ -634,8 +660,13 @@ def timetable_source() -> tuple[str, Path]:
 
 @lru_cache(maxsize=1)
 def national_data() -> NationalData:
+    import os
+
+    from india_rail.railguard import register as ir_register
+
     name, path = timetable_source()
-    data = build_national(path)
+    spec = os.environ.get("RAILGUARD_REGISTER")
+    data = build_national(path, register=ir_register.load(Path(spec)) if spec else None)
     data.stats["timetable"] = name
     return data
 
@@ -860,7 +891,7 @@ class NationalTwin:
                 pe, px, pse, psx = _piece(e, x, plan.s_enter[i], plan.s_exit[i], f0, f1)
                 if px < self.now:
                     continue  # this piece is already behind the train
-                tracks = self.section(psid).tracks
+                tracks, h = self.section(psid).tracks, self.data.headway.get(psid, self.headway)
                 for okey, j, oe, ox, ofrm, ose, osx in self.occupants(psid, pe - 2 * h, px + 2 * h, exclude, overrides):
                     if ox + 2 * h < pe or oe - 2 * h > px or min(pe, oe) > limit:
                         continue
@@ -1010,6 +1041,17 @@ class NationalTwin:
 
     def _violations(self, plan: Plan, start: int, run: Run) -> list[str]:
         out = []
+        if self.data.loops:  # Indian Railways' register: no planned wait on single line where there is no loop
+            current = self.plan_of(run.key).sources
+            for i in range(start, len(plan.sections)):
+                code = plan.frm[i]
+                if self.data.loops.get(code, 1) > 0 or plan.sources.get(i, 0.0) <= current.get(i, 0.0) + 1e-6:
+                    continue
+                lines = [self.section(p).tracks for p, *_ in self.parts(plan.sections[i], code)[:1]]
+                if i:
+                    lines.append(self.section(self.parts(plan.sections[i - 1], plan.frm[i - 1])[-1][0]).tracks)
+                if min(lines) == 1:
+                    out.append(f"no loop at {code} to wait in on single line")
         for sid in plan.sections[start:]:
             sec = self.physical(sid)
             if not sec.available:
@@ -1136,7 +1178,7 @@ class NationalTwin:
                 need = 0.0
                 for psid, f0, f1, pfrm in pieces:  # every piece of track the section runs over
                     pe, px, pse, psx = _piece(e, x, se, sx, f0, f1)
-                    tracks = self.section(psid).tracks
+                    tracks, h = self.section(psid).tracks, self.data.headway.get(psid, self.headway)
                     for okey, _j, oe, ox, ofrm, ose, osx in self.occupants(
                         psid, pe - 2 * h, px + 2 * h, exclude, overrides
                     ):

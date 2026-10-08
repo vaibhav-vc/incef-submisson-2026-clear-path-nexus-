@@ -6,6 +6,7 @@ import json
 import logging
 import socketserver
 import threading
+import time
 from datetime import date, datetime
 
 import pytest
@@ -153,3 +154,61 @@ def test_json_access_log_has_route_template_and_no_query(caplog):
     line = json.loads(ops.JsonFormatter().format(record))
     assert line["route"] == "/railguard/national/trains/{number}" and line["status"] == 200
     assert "token" not in json.dumps(line).lower()
+
+
+# ---- clock (CERT-In: synchronised with NIC/NPL NTP) --------------------------------------------------------------
+def _fake_ntp(offset_s: float, echo: bool = True, stratum: int = 2, leap: int = 0):
+    """A one-shot SNTP server on localhost whose clock is `offset_s` ahead of ours."""
+
+    import socket as _socket
+    import threading as _threading
+
+    sock = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+    sock.bind(("127.0.0.1", 0))
+
+    def serve():
+        request, addr = sock.recvfrom(512)
+        now = time.time() + offset_s + ops.NTP_EPOCH_OFFSET
+        stamp = int(now).to_bytes(4, "big") + int((now % 1) * 2**32).to_bytes(4, "big")
+        reply = bytearray(48)
+        reply[0], reply[1] = (leap << 6) | (4 << 3) | 4, stratum
+        reply[24:32] = request[40:48] if echo else b"\x00" * 8
+        reply[32:40] = reply[40:48] = stamp
+        sock.sendto(bytes(reply), addr)
+        sock.close()
+
+    _threading.Thread(target=serve, daemon=True).start()
+    return sock.getsockname()[1]
+
+
+def test_sntp_measures_the_offset_and_refuses_forged_or_unsynchronised_replies():
+    assert abs(ops.sntp_offset("127.0.0.1", _fake_ntp(2.5)) - 2.5) < 0.2
+    with pytest.raises(OSError, match="echo"):
+        ops.sntp_offset("127.0.0.1", _fake_ntp(0.0, echo=False))
+    with pytest.raises(OSError, match="not synchronised"):
+        ops.sntp_offset("127.0.0.1", _fake_ntp(0.0, leap=3))
+    with pytest.raises(OSError, match="not synchronised"):
+        ops.sntp_offset("127.0.0.1", _fake_ntp(0.0, stratum=0))
+
+
+def test_a_drifting_clock_warns_every_console_and_fails_readiness(monkeypatch, data):  # noqa: F811
+    from india_rail.railguard.national import NationalTwin
+
+    twin = NationalTwin(data, start_min=615.0)
+    monkeypatch.setenv("RAILGUARD_NTP", "samay1.nic.in,time.nplindia.org")
+    sup = ops.reset()
+    sup.attach(twin, None)
+    sup.check_clock(measure=lambda host: 3.0)
+    assert sup.readiness()["checks"]["clock"] is False
+    assert any(t.type == "CLOCK_DRIFT" for t in twin.threats.active())
+    assert sup.gauges()[0]["clock_offset_seconds"] == 3.0
+    sup.check_clock(measure=lambda host: 0.05)
+    assert sup.readiness()["checks"]["clock"] is True
+    assert not any(t.type == "CLOCK_DRIFT" for t in twin.threats.active())
+
+    def unreachable(host):
+        raise OSError("timed out")
+
+    sup.check_clock(measure=unreachable)  # reported, but a last good reading keeps the service in
+    ready = sup.readiness()
+    assert ready["checks"]["clock"] is True and any("NTP unreachable" in n for n in ready["notes"])

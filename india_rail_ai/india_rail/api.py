@@ -44,6 +44,7 @@ def _warm_up() -> None:
         except ValueError:
             gateway = None  # feed keys malformed: the feed endpoint reports it; the twin still serves
         ops.OPS.attach(twin, gateway)
+        ops.OPS.check_clock()  # CERT-In: the clock against NIC/NPL NTP from the start (no-op when not configured)
     except Exception:
         ops.log.exception("national twin failed to load", extra={"event": "WARM_UP_FAILED"})
 

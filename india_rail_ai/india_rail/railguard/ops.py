@@ -27,6 +27,12 @@ feed events, active threats by type, power state, checkpoint age, live stream su
 
 Logs - RAILGUARD_LOG_JSON=1: one JSON object per request (time, request id, method, route template, status,
 milliseconds). Never tokens, bodies or query strings.
+
+Clock - RAILGUARD_NTP="samay1.nic.in,time.nplindia.org" (CERT-In Directions 2022: ICT clocks synchronised with
+the NTP servers of NIC or NPL). Every NTP_POLL_S the offset is measured (SNTP, RFC 4330; a reply must echo our
+transmit time, so an off-path forgery is refused). An offset above MAX_CLOCK_OFFSET_S raises CLOCK_DRIFT on every
+console and fails readiness: audit timestamps, feed freshness and evidence ageing all depend on the clock. An
+unreachable NTP server is reported (notes, metrics) but does not by itself take the service out.
 """
 
 from __future__ import annotations
@@ -55,6 +61,37 @@ CHECKPOINT_ON_BATTERY_S = 10.0
 MAX_RESTORE_AGE_S = 1800
 NUT_PORT = 3493
 LATENCY_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0)
+NTP_POLL_S = 300.0
+MAX_CLOCK_OFFSET_S = 1.0
+NTP_EPOCH_OFFSET = 2_208_988_800  # seconds from 1900-01-01 (NTP era 0) to 1970-01-01
+
+
+def sntp_offset(host: str, port: int = 123, timeout_s: float = 2.0, clock=time.time) -> float:
+    """Server clock minus local clock, in seconds (SNTP v4 client, RFC 4330)."""
+
+    def stamp(t: float) -> bytes:
+        secs = int(t) + NTP_EPOCH_OFFSET
+        return secs.to_bytes(4, "big") + int((t % 1) * 2**32).to_bytes(4, "big")
+
+    def read(b: bytes) -> float:
+        return int.from_bytes(b[:4], "big") - NTP_EPOCH_OFFSET + int.from_bytes(b[4:8], "big") / 2**32
+
+    t1 = clock()
+    request = bytes([0x23]) + bytes(39) + stamp(t1)  # LI 0, version 4, mode 3 (client); transmit time = t1
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.settimeout(timeout_s)
+        sock.sendto(request, (host, port))
+        reply, _addr = sock.recvfrom(512)
+    t4 = clock()
+    if len(reply) < 48:
+        raise OSError("NTP reply too short")
+    leap, mode, stratum = reply[0] >> 6, reply[0] & 0x7, reply[1]
+    if mode != 4 or leap == 3 or not 1 <= stratum <= 15:
+        raise OSError(f"NTP server not synchronised (mode {mode}, leap {leap}, stratum {stratum})")
+    if reply[24:32] != request[40:48]:
+        raise OSError("NTP reply does not echo our request (refused as a forgery or a stray reply)")
+    t2, t3 = read(reply[32:40]), read(reply[40:48])
+    return ((t2 - t1) + (t3 - t4)) / 2
 
 
 # ---- power -----------------------------------------------------------------------------------------
@@ -365,6 +402,10 @@ class Operations:
         self.stop = threading.Event()
         self.thread: threading.Thread | None = None
         self.subscribers = 0
+        self.ntp = [h.strip() for h in os.environ.get("RAILGUARD_NTP", "").split(",") if h.strip()]
+        self.clock_offset_s: float | None = None
+        self.clock_checked_at: float | None = None
+        self.clock_error: str | None = None
 
     @property
     def read_only(self) -> bool:
@@ -402,6 +443,37 @@ class Operations:
                 twin.system_alerts[alert[0]] = {"severity": alert[1], "detail": alert[2], "power": self.power.to_dict()}
             twin.refresh()
 
+    def check_clock(self, measure=sntp_offset) -> None:
+        """Measure the clock against the first NTP server that answers; raise CLOCK_DRIFT if it is off."""
+
+        if not self.ntp:
+            return
+        errors = []
+        for host in self.ntp:
+            try:
+                self.clock_offset_s, self.clock_checked_at, self.clock_error = measure(host), time.time(), None
+                break
+            except OSError as exc:
+                errors.append(f"{host}: {exc}"[:120])
+        else:
+            self.clock_error = "; ".join(errors)
+            self.metrics.inc("ntp_failures_total")
+            log.warning("NTP unreachable", extra={"event": "NTP_UNREACHABLE"})
+        if self.twin is not None:
+            drift = self.clock_offset_s is not None and abs(self.clock_offset_s) > MAX_CLOCK_OFFSET_S
+            with self.twin.lock:
+                had = "CLOCK_DRIFT" in self.twin.system_alerts
+                if drift:
+                    self.twin.system_alerts["CLOCK_DRIFT"] = {
+                        "severity": "WARNING",
+                        "detail": f"Server clock {self.clock_offset_s:+.1f} s from NTP: timestamps and data ageing "
+                        "are unreliable until it is corrected",
+                    }
+                else:
+                    self.twin.system_alerts.pop("CLOCK_DRIFT", None)
+                if drift != had:
+                    self.twin.refresh()
+
     def checkpoint(self, reason: str = "periodic") -> dict[str, Any] | None:
         if self.checkpointer is None or self.twin is None:
             return None
@@ -415,9 +487,12 @@ class Operations:
         return result
 
     def run(self) -> None:
-        last_checkpoint = time.time()
+        last_checkpoint, last_clock = time.time(), 0.0
         while not self.stop.wait(POLL_S):
             self.poll_power()
+            if time.time() - last_clock >= NTP_POLL_S:
+                self.check_clock()
+                last_clock = time.time()
             every = CHECKPOINT_ON_BATTERY_S if self.power.level in ("ON_BATTERY", "CRITICAL") else CHECKPOINT_S
             if time.time() - last_checkpoint >= every:
                 self.checkpoint()
@@ -442,8 +517,13 @@ class Operations:
             "power": self.power.level != "CRITICAL",
             "checkpoints": self.config_error is None
             and (self.checkpointer is None or self.checkpointer.last_error is None),
+            "clock": self.clock_offset_s is None or abs(self.clock_offset_s) <= MAX_CLOCK_OFFSET_S,
         }
         notes = []
+        if not self.ntp:
+            notes.append("clock not checked against NTP (RAILGUARD_NTP unset; CERT-In: use NIC/NPL servers)")
+        elif self.clock_error:
+            notes.append(f"NTP unreachable: {self.clock_error}")
         if self.nut is None:
             notes.append("power not monitored (RAILGUARD_UPS unset)")
         if self.config_error:
@@ -462,6 +542,8 @@ class Operations:
             gauges["ups_battery_charge_pct"] = self.power.charge_pct
         if self.checkpointer is not None and self.checkpointer.last_saved:
             gauges["checkpoint_age_seconds"] = time.time() - self.checkpointer.last_saved
+        if self.clock_offset_s is not None:
+            gauges["clock_offset_seconds"] = self.clock_offset_s
         threats: dict[str, float] = defaultdict(float)
         if self.twin is not None:
             gauges["twin_minute"] = self.twin.now

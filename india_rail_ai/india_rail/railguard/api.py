@@ -744,9 +744,34 @@ def national_shadow_actual(request: ShadowDecision, http: Request) -> dict[str, 
     return _run(trial.record, decision)
 
 
+class ShadowImport(StrictRequest):
+    csv: str = Field(min_length=10, max_length=60_000)
+    controller: str = Field(pattern=NAME)
+
+
+@router.post("/national/shadow/import", dependencies=CONTROL)
+def national_shadow_import(request: ShadowImport, http: Request) -> dict[str, Any]:
+    """Shadow trial: a CSV export of the control office's decisions (see railguard.shadow.CSV_COLUMNS)."""
+
+    from india_rail.railguard.eta import twin_service_date
+
+    trial = _shadow()
+    try:
+        return trial.import_csv(request.csv, _actor(http, request.controller), twin_service_date(trial.twin))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)[:200]) from exc
+
+
 @router.get("/national/shadow/report", dependencies=VIEW)
 def national_shadow_report() -> dict[str, Any]:
-    return _shadow().report()
+    """Agreement so far; over the whole persisted trial when the audit is kept on disk (RAILGUARD_AUDIT_DIR)."""
+
+    import os
+
+    from india_rail.railguard.shadow import report_from_audit_dir
+
+    folder = os.environ.get("RAILGUARD_AUDIT_DIR")
+    return report_from_audit_dir(Path(folder)) if folder else _shadow().report()
 
 
 @lru_cache(maxsize=1)

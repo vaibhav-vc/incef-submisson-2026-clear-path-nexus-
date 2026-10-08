@@ -51,6 +51,8 @@ Copy `india_rail_ai/railguard.env.example` to `railguard.env`. Never commit it. 
 | `RAILGUARD_CAB_KEY` | Key for run-scoped cab tokens. If unset, it is derived from the controller token, so rotating that token revokes all cab tokens. |
 | `RAILGUARD_FEED_KEYS` | `SOURCE:key_id:hex,...`: one key per feed and per cab GNSS unit. |
 | `RAILGUARD_UPS` | `<ups>@<host>[:3493]` for the NUT daemon. |
+| `RAILGUARD_NTP` | `samay1.nic.in,time.nplindia.org`: the clock is checked against NIC/NPL time every 5 minutes (CERT-In); more than 1 s off raises CLOCK_DRIFT on every console and fails readiness. |
+| `RAILGUARD_REGISTER` | Path of the loop and block-section register built from Indian Railways documents (`python -m india_rail register build`, [IR_HANDOVER.md](IR_HANDOVER.md) step 4). |
 | `RAILGUARD_ALLOWED_HOSTS` | Host names the service answers to. |
 | `RAILGUARD_LIVE_CLOCK=1`, `RAILGUARD_TIMETABLE=current` | Twin clock follows IST; real current timetable. |
 
