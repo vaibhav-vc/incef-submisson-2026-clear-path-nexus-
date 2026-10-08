@@ -1,0 +1,102 @@
+{
+  "generated_at": "2026-10-08T06:55:56+00:00",
+  "what": "Randomised software-in-the-loop simulation of the RailGuard twins with invariant checks",
+  "seed": 6161,
+  "workers": 4,
+  "platform": "CPython 3.13.16 on x86_64",
+  "code_checksum": "307a4057aace267fa31e0984059ca79c91c3cd2a4f5f35a3d7423608596f29b7",
+  "data": {
+    "timetable": "current",
+    "timetable_db": "current.sqlite",
+    "eta_model_sha256": "9a214c6b9fcdd0bed5edc8ac640672eae7dbe0fee442ba150701412d878ff0a0"
+  },
+  "target_episodes": 36000,
+  "completed_episodes": 36000,
+  "operations_checked": 957617,
+  "simulated_5s_steps": 9499733,
+  "wall_seconds": 757.4,
+  "twins": {
+    "demo": {
+      "episodes": 12000,
+      "violations_total": 0,
+      "violations_by_invariant": {},
+      "cpu_ms_per_episode": 140.413,
+      "stats": {
+        "approve_ok": 12322,
+        "approve_refused": 22746,
+        "completed": 10914,
+        "invalid_bad_section": 1645,
+        "invalid_bad_source": 1542,
+        "invalid_future": 1608,
+        "invalid_jump": 1625,
+        "invalid_nan": 1612,
+        "invalid_offset": 1662,
+        "invalid_old": 1354,
+        "invalid_replay": 355,
+        "invalid_speed": 1606,
+        "invalid_unknown_train": 1655,
+        "not_completed": 1086,
+        "op_ack": 6975,
+        "op_approve": 32726,
+        "op_approve_stale": 7102,
+        "op_fault": 14001,
+        "op_gnss": 9350,
+        "op_hold": 4658,
+        "op_preset": 4563,
+        "op_recommend": 32412,
+        "op_reject": 2392,
+        "op_section": 18878,
+        "op_sensor_invalid": 16226,
+        "op_sensor_valid": 7162,
+        "op_silence_hw": 2295,
+        "op_tick": 69812,
+        "ops": 689890,
+        "recommend_HOLD": 8015,
+        "recommend_NO_FEASIBLE_PLAN": 69541,
+        "recommend_REVIEW": 26047,
+        "recommend_REVIEWABLE": 29075,
+        "replays": 6689,
+        "sim_steps_5s": 9499733
+      },
+      "first_failures": []
+    },
+    "national": {
+      "episodes": 24000,
+      "violations_total": 1,
+      "violations_by_invariant": {
+        "GNSS_GATE": 1
+      },
+      "cpu_ms_per_episode": 32.075,
+      "stats": {
+        "approve_ok": 44297,
+        "approve_refused": 17010,
+        "gnss_genuine": 4659,
+        "gnss_genuine_accepted": 4658,
+        "no_run": 353,
+        "ops": 267727,
+        "recommend_HOLD": 8419,
+        "recommend_NO_FEASIBLE_PLAN": 532,
+        "recommend_PLANNING_ONLY": 42346,
+        "recommend_REVIEW": 904,
+        "recommend_REVIEWABLE": 9109,
+        "replays": 1190
+      },
+      "first_failures": [
+        {
+          "episode": "national:23648",
+          "invariant": "GNSS_GATE",
+          "detail": "jump fix accepted for 17308@0",
+          "trace": [
+            "now=1104.9 disrupt 31343@0 at AGP +11.9 min (feed, arrived 12.3 late)",
+            "now=1104.9 recommend 31343@0 -> PLANNING_ONLY (6 candidates)",
+            "now=1104.9 approve N2 OK",
+            "now=1104.9 disrupt 13031@0 at BHW +3.6 min",
+            "now=1104.9 recommend 13031@0 -> PLANNING_ONLY (1 candidates)",
+            "now=1104.9 approve N1 OK",
+            "now=1105.9 gnss 17308@0 genuine=True jump -> True "
+          ]
+        }
+      ]
+    }
+  }
+}

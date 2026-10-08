@@ -184,11 +184,11 @@ def test_a_track_that_doubles_back_keeps_every_plausible_place_until_fixes_resol
     t0 = datetime(2026, 10, 7, 5, 0, tzinfo=UTC)
     found = [gps.Match(0, "A-B", along / 1000, cross, gps.MAPPED_TRACK, False, along) for cross, along in places]
     best, track, problem = gps.locate(None, t0, found, 5.0, 60.0)
-    assert problem is None and track.upper_m is not None  # both passes kept: the train is in [first, second]
+    assert problem is None and len(track.all()) == 2  # both passes kept: the train is at one of them
     # 30 s later at 60 km/h the train is 500 m on; only the outbound place fits from the first pass.
     later = [gps.Match(0, "A-B", 1.5, 3.0, gps.MAPPED_TRACK, False, 1500.0)]
     best, narrowed, problem = gps.locate(track, t0 + timedelta(seconds=30), later, 5.0, 60.0)
-    assert problem is None and narrowed.upper_m is None and narrowed.chainage_m == 1500.0
+    assert problem is None and narrowed.all() == (1500.0,)
     # From the narrowed track, going back to the outbound middle is a backwards move, refused.
     _, _, problem = gps.locate(narrowed, t0 + timedelta(seconds=60), found[:1], 5.0, 60.0)
     assert "backwards" in problem
@@ -203,3 +203,18 @@ def test_reported_speed_picks_the_pass_where_the_train_should_be():
     assert best.section_id == "E-F"
     best, _, _ = gps.locate(prev, t0 + timedelta(seconds=60), found, 5.0, 12.0)  # crawling: 200 m
     assert best.section_id == "C-D"
+
+
+def test_a_fix_between_two_possible_places_is_not_plausible_from_either():
+    """Track shared by two passes of the route (e.g. through Solapur): the train is at one pass or the other,
+    never anywhere between them, so a spoofed fix 7 km on from the first pass is still a jump."""
+
+    t0 = datetime(2026, 10, 7, 5, 0, tzinfo=UTC)
+    prev = gps.Track(t0, 193_340.0, (193_340.0, 220_559.0))
+    jump = [gps.Match(7, "HG-SUR", 8.6, 5.0, gps.MAPPED_TRACK, False, 200_342.0),
+            gps.Match(8, "AKOR-SUR", 6.0, 0.0, gps.MAPPED_TRACK, False, 213_609.0)]  # fmt: skip
+    best, track, problem = gps.locate(prev, t0 + timedelta(seconds=60), jump, 5.0, 16.4)
+    assert best is None and track is None and ("jump" in problem or "backwards" in problem)
+    honest = [gps.Match(8, "AKOR-SUR", 0.3, 4.0, gps.MAPPED_TRACK, False, 220_830.0)]
+    best, track, problem = gps.locate(prev, t0 + timedelta(seconds=60), honest, 5.0, 16.4)
+    assert problem is None and track.all() == (220_830.0,)  # the second pass was the right one

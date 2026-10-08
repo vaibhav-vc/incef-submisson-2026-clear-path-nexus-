@@ -54,7 +54,10 @@ def main() -> int:
     raw = run([args.pip_audit, "-r", "requirements.txt", "--progress-spinner", "off", "-f", "json"])
     try:
         deps = json.JSONDecoder().raw_decode(raw[raw.index("{") :])[0]["dependencies"]
-        summary["pip_audit"] = {"packages": len(deps), "known_vulnerabilities": sum(len(d.get("vulns", [])) for d in deps)}
+        summary["pip_audit"] = {
+            "packages": len(deps),
+            "known_vulnerabilities": sum(len(d.get("vulns", [])) for d in deps),
+        }
     except (ValueError, KeyError):
         summary["pip_audit"] = {"error": raw[-300:]}
 
@@ -74,14 +77,20 @@ def main() -> int:
         summary["registry"] = {
             "trains_current": one("SELECT COUNT(*) FROM train_registry WHERE in_current_2026 = 1"),
             "trains_all_sources": one("SELECT COUNT(*) FROM train_registry"),
-            "by_operator": dict(con.execute("SELECT operator, COUNT(*) FROM train_registry WHERE in_current_2026 = 1 "
-                                            "GROUP BY operator ORDER BY 2 DESC")),  # fmt: skip
-            "trains_with_observed_running": one("SELECT COUNT(*) FROM train_registry WHERE in_current_2026 = 1 "
-                                                "AND real_running_observed = 1"),  # fmt: skip
+            "by_operator": dict(
+                con.execute(
+                    "SELECT operator, COUNT(*) FROM train_registry WHERE in_current_2026 = 1 "
+                    "GROUP BY operator ORDER BY 2 DESC"
+                )
+            ),  # fmt: skip
+            "trains_with_observed_running": one(
+                "SELECT COUNT(*) FROM train_registry WHERE in_current_2026 = 1 " "AND real_running_observed = 1"
+            ),  # fmt: skip
             "stations": one("SELECT COUNT(*) FROM stations"),
             "stations_with_pin": one("SELECT COUNT(*) FROM station_pin"),
-            "sections_with_mapped_track": one("SELECT COUNT(*) FROM osm_sections WHERE quality = 'ACCEPTED' "
-                                              "AND geometry IS NOT NULL"),  # fmt: skip
+            "sections_with_mapped_track": one(
+                "SELECT COUNT(*) FROM osm_sections WHERE quality = 'ACCEPTED' " "AND geometry IS NOT NULL"
+            ),  # fmt: skip
         }
         con.close()
     OUT.parent.mkdir(parents=True, exist_ok=True)

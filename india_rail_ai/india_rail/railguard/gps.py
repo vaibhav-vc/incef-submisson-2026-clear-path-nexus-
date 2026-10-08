@@ -322,17 +322,16 @@ def _project(line: list[tuple[float, float]], lon: float, lat: float) -> tuple[f
 class Track:
     """The last accepted position of one run (for plausibility of the next fix).
 
-    Where the fix fitted more than one place on the route (track passing the same spot twice), the train is
-    somewhere in [chainage_m, upper_m]; the next fixes narrow it down."""
+    Where the fix fitted more than one place on the route (track passing the same spot twice), the train is at
+    one of `places` - each a point, never the stretch between them - and the next fixes tell which."""
 
     when: datetime
-    chainage_m: float
-    upper_m: float | None = None
-    first_index: int = 0  # plan section of the earliest place the train may be (where the next match starts)
+    chainage_m: float  # the earliest place
+    places: tuple[float, ...] = ()  # every place the train may be, when more than one
+    first_index: int = 0  # plan section of the earliest place (where the next match starts)
 
-    @property
-    def upper(self) -> float:
-        return self.chainage_m if self.upper_m is None else self.upper_m
+    def all(self) -> tuple[float, ...]:
+        return self.places or (self.chainage_m,)
 
 
 def chainage_m(twin: Any, key: str, index: int, offset_km: float) -> float:
@@ -356,16 +355,17 @@ def plausibility_problem(
     if prev is None:
         return None
     dt = (when - prev.when).total_seconds()
-    moved = position_m - prev.chainage_m
-    allowance = max(BACKWARD_ALLOWANCE_M, 3 * accuracy_m, STATION_YARD_M if in_station_zone else 0.0)
     if dt <= 0:
         return "fix not newer than the last accepted one"
-    if moved < -allowance:
+    allowance = max(BACKWARD_ALLOWANCE_M, 3 * accuracy_m, STATION_YARD_M if in_station_zone else 0.0)
+    reach = MAX_SPEED_KMPH / 3.6 * dt + allowance
+    moves = [position_m - place for place in prev.all()]
+    if any(-allowance <= moved <= reach for moved in moves):
+        return None  # a plausible move from one of the places the train may have been
+    moved = min(moves, key=abs)
+    if moved < 0:
         return f"moved {-moved:.0f} m backwards along the route"
-    ahead = position_m - prev.upper
-    if ahead - allowance > MAX_SPEED_KMPH / 3.6 * dt:
-        return f"implied speed {ahead / dt * 3.6:.0f} km/h over {dt:.0f} s: a jump, not a move"
-    return None
+    return f"implied speed {moved / dt * 3.6:.0f} km/h over {dt:.0f} s: a jump, not a move"
 
 
 def locate(
@@ -389,11 +389,12 @@ def locate(
     if prev is None:
         best = min(plausible, key=lambda m: m.cross_track_m)
     else:
-        expected = prev.chainage_m + max(speed_kmph, 0.0) / 3.6 * (when - prev.when).total_seconds()
-        best = min(plausible, key=lambda m: (abs(m.chainage_m - expected), m.cross_track_m))
+        step = max(speed_kmph, 0.0) / 3.6 * (when - prev.when).total_seconds()
+        expected = [place + step for place in prev.all()]
+        best = min(plausible, key=lambda m: (min(abs(m.chainage_m - e) for e in expected), m.cross_track_m))
     earliest = min(plausible, key=lambda m: m.chainage_m)
-    lo, hi = earliest.chainage_m, max(m.chainage_m for m in plausible)
-    return best, Track(when, lo, hi if hi > lo else None, earliest.index), None
+    places = tuple(sorted({round(m.chainage_m, 1) for m in plausible}))
+    return best, Track(when, earliest.chainage_m, places if len(places) > 1 else (), earliest.index), None
 
 
 def nmea_sentence(kind: str, fix: GpsFix, talker: str = "GN") -> str:

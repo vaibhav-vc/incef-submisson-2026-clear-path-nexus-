@@ -507,22 +507,36 @@ def production_section(audit: dict[str, Any]) -> list[Any]:
         out += [
             p("Every train and the track it follows", "h2"),
             table(
-                [["Measure", "Value"],
-                 ["Trains in the current all-India timetable (valid 30 Aug-30 Sep 2026)", f"{reg['trains_current']:,}"],
-                 ["Train numbers known across all sources (current, 2024, 2016)", f"{reg['trains_all_sources']:,}"],
-                 ["Operated by IRCTC (private), Bharat Gaurav, luxury tourist, parcel, rapid rail",
-                  ", ".join(f"{k}: {v}" for k, v in ops.items() if k != "Indian Railways")],
-                 ["Current trains with observed real running (for forecasts)",
-                  f"{reg['trains_with_observed_running']:,} ({100 * reg['trains_with_observed_running'] / reg['trains_current']:.0f}%)"],
-                 ["Stations / with a PIN code (approximate, OpenStreetMap postcodes)",
-                  f"{reg['stations']:,} / {reg['stations_with_pin']:,}"],
-                 ["Sections with the real mapped track geometry", f"{reg['sections_with_mapped_track']:,}"]],
+                [
+                    ["Measure", "Value"],
+                    [
+                        "Trains in the current all-India timetable (valid 30 Aug-30 Sep 2026)",
+                        f"{reg['trains_current']:,}",
+                    ],
+                    ["Train numbers known across all sources (current, 2024, 2016)", f"{reg['trains_all_sources']:,}"],
+                    [
+                        "Operated by IRCTC (private), Bharat Gaurav, luxury tourist, parcel, rapid rail",
+                        ", ".join(f"{k}: {v}" for k, v in ops.items() if k != "Indian Railways"),
+                    ],
+                    [
+                        "Current trains with observed real running (for forecasts)",
+                        f"{reg['trains_with_observed_running']:,} ({100 * reg['trains_with_observed_running'] / reg['trains_current']:.0f}%)",
+                    ],
+                    [
+                        "Stations / with a PIN code (approximate, OpenStreetMap postcodes)",
+                        f"{reg['stations']:,} / {reg['stations_with_pin']:,}",
+                    ],
+                    ["Sections with the real mapped track geometry", f"{reg['sections_with_mapped_track']:,}"],
+                ],
                 [110, 60],
             ),  # fmt: skip
-            p("Each train's route is returned as a line along the mapped track (GeoJSON), with the kilometres on "
-              "mapped track, on single line and electrified, and every section without a mapped path labelled as "
-              "drawn straight. Passenger booking records (PNR) are personal data held by IRCTC/CRIS and are not "
-              "collected.", "small"),
+            p(
+                "Each train's route is returned as a line along the mapped track (GeoJSON), with the kilometres on "
+                "mapped track, on single line and electrified, and every section without a mapped path labelled as "
+                "drawn straight. Passenger booking records (PNR) are personal data held by IRCTC/CRIS and are not "
+                "collected.",
+                "small",
+            ),
         ]
     if gnss:
         g, a = gnss["genuine_fixes"], gnss["attacks"]
@@ -530,21 +544,30 @@ def production_section(audit: dict[str, Any]) -> list[Any]:
         alarms = sum(v for k, v in g["refused"].items() if "alarm" in k and "no alarm" not in k)
         out += [
             p("GNSS tracking on the real network", "h2"),
-            p("Every train running at 10:00 on the current timetable reported a fix each minute for ten minutes, from "
-              "simulated receivers (HDOP 0.6-2.5, 2% multipath of 30-80 m) on the real mapped track; 5% of fixes "
-              "were replaced by attacks. The receivers are simulated because no live GNSS feed is available; the "
-              "network, timetable and track are real."),
+            p(
+                "Every train running at 10:00 on the current timetable reported a fix each minute for ten minutes, from "
+                "simulated receivers (HDOP 0.6-2.5, 2% multipath of 30-80 m) on the real mapped track; 5% of fixes "
+                "were replaced by attacks. The receivers are simulated because no live GNSS feed is available; the "
+                "network, timetable and track are real."
+            ),
             table(
-                [["Measure", "Result"],
-                 ["Genuine fixes accepted", f"{g['accepted']:,} of {g['sent']:,} ({g['accepted_pct']}%)"],
-                 ["Matched to mapped track (rest: sections without mapping)", f"{g['on_mapped_track_pct']}%"],
-                 ["Genuine fixes refused quietly (multipath, no alarm) / raising an alarm",
-                  f"{quiet} / {alarms} ({100 * alarms / g['sent']:.2f}%)"],
-                 ["Jumps of 15 km in 60 s refused", f"{a['jump_15km_in_60s']['refused_pct']}%"],
-                 ["Teleports refused", f"{a['teleport']['refused_pct']}%"],
-                 ["Fixes 500 m off the track refused", f"{a['off_track_500m']['refused_pct']}% (the rest lie beside "
-                                                        "sections without mapped track, matched with 3 km slack)"],
-                 ["Gateway throughput", f"{gnss['throughput']['events_per_second']:,} fixes per second"]],
+                [
+                    ["Measure", "Result"],
+                    ["Genuine fixes accepted", f"{g['accepted']:,} of {g['sent']:,} ({g['accepted_pct']}%)"],
+                    ["Matched to mapped track (rest: sections without mapping)", f"{g['on_mapped_track_pct']}%"],
+                    [
+                        "Genuine fixes refused quietly (multipath, no alarm) / raising an alarm",
+                        f"{quiet} / {alarms} ({100 * alarms / g['sent']:.2f}%)",
+                    ],
+                    ["Jumps of 15 km in 60 s refused", f"{a['jump_15km_in_60s']['refused_pct']}%"],
+                    ["Teleports refused", f"{a['teleport']['refused_pct']}%"],
+                    [
+                        "Fixes 500 m off the track refused",
+                        f"{a['off_track_500m']['refused_pct']}% (the rest lie beside "
+                        "sections without mapped track, matched with 3 km slack)",
+                    ],
+                    ["Gateway throughput", f"{gnss['throughput']['events_per_second']:,} fixes per second"],
+                ],
                 [100, 70],
             ),  # fmt: skip
         ]
@@ -552,14 +575,20 @@ def production_section(audit: dict[str, Any]) -> list[Any]:
         out += [
             p("Live, one-to-one push", "h2"),
             table(
-                [["Measure", "Result"],
-                 ["Concurrent streams held (control screens + cab units, own tokens)",
-                  f"{lt['consoles']} + {lt['cab_streams']}; dropped {lt['streams_dropped']}, refused {lt['streams_refused']}"],
-                 ["Controller decision to the affected cab (push latency)",
-                  f"p50 {lt['push_latency_ms']['p50']:.0f} ms, p95 {lt['push_latency_ms']['p95']:.0f} ms (n={lt['push_latency_ms']['n']})"],
-                 ["First event after connecting", f"p50 {lt['first_event_ms']['p50']:.0f} ms"],
-                 ["Signed feed batch of 250 fixes, while streaming", f"p50 {lt['feed_batch_ms']['p50']:.0f} ms"],
-                 ["Network", f"{lt['running_trains']:,} trains running; {lt['cpus']} CPUs; {lt.get('server', '')}"]],
+                [
+                    ["Measure", "Result"],
+                    [
+                        "Concurrent streams held (control screens + cab units, own tokens)",
+                        f"{lt['consoles']} + {lt['cab_streams']}; dropped {lt['streams_dropped']}, refused {lt['streams_refused']}",
+                    ],
+                    [
+                        "Controller decision to the affected cab (push latency)",
+                        f"p50 {lt['push_latency_ms']['p50']:.0f} ms, p95 {lt['push_latency_ms']['p95']:.0f} ms (n={lt['push_latency_ms']['n']})",
+                    ],
+                    ["First event after connecting", f"p50 {lt['first_event_ms']['p50']:.0f} ms"],
+                    ["Signed feed batch of 250 fixes, while streaming", f"p50 {lt['feed_batch_ms']['p50']:.0f} ms"],
+                    ["Network", f"{lt['running_trains']:,} trains running; {lt['cpus']} CPUs; {lt.get('server', '')}"],
+                ],
                 [100, 70],
             ),  # fmt: skip
         ]
@@ -567,22 +596,39 @@ def production_section(audit: dict[str, Any]) -> list[Any]:
         s = advisor["summary"]
         out += [
             p("Delay-minimisation advisor", "h2"),
-            p(f"From real running ({s['data']['observed_days']} days, {s['data']['traversals']:,} station-to-station "
-              f"traversals): the network loses {s['network_lost_min_per_day']:,} train-minutes a day and recovers "
-              f"{s['network_recovered_min_per_day']:,}. Findings are made on 1-15 September and must recur on 16-30 "
-              f"September: {s['persistence']['sections']['top_50_found_again_in_top_100_pct']}% of the worst 50 "
-              f"sections and {s['persistence']['stations']['top_50_found_again_in_top_100_pct']}% of the worst 50 "
-              "stations do. Incidents over 3 hours and schedules that do not describe a train's running are counted "
-              "apart, not mixed into the patterns."),
+            p(
+                f"From real running ({s['data']['observed_days']} days, {s['data']['traversals']:,} station-to-station "
+                f"traversals): the network loses {s['network_lost_min_per_day']:,} train-minutes a day and recovers "
+                f"{s['network_recovered_min_per_day']:,}. Findings are made on 1-15 September and must recur on 16-30 "
+                f"September: {s['persistence']['sections']['top_50_found_again_in_top_100_pct']}% of the worst 50 "
+                f"sections and {s['persistence']['stations']['top_50_found_again_in_top_100_pct']}% of the worst 50 "
+                "stations do. Incidents over 3 hours and schedules that do not describe a train's running are counted "
+                "apart, not mixed into the patterns."
+            ),
             table(
-                [["Finding", "Count", "Lever"],
-                 ["Chronic section losses (top 200)", s["chronic_sections_in_top_200"],
-                  "Single line: crossing loops / doubling; double line: restrictions, block spacing, precedence"],
-                 ["Trains starting late on most days", s["late_starting_trains"], "Rake links, pit-line slots, crew booking"],
-                 ["Timings no train achieves (loses 5+ min on 3 days in 4)", s["timetable_points_not_achievable"],
-                  "Re-time, moving allowance from where the train always recovers"],
-                 ["Chronically late trains (on time on fewer than half the days)", s["chronically_late_trains"],
-                  "The train's own list: worst sections and start"]],
+                [
+                    ["Finding", "Count", "Lever"],
+                    [
+                        "Chronic section losses (top 200)",
+                        s["chronic_sections_in_top_200"],
+                        "Single line: crossing loops / doubling; double line: restrictions, block spacing, precedence",
+                    ],
+                    [
+                        "Trains starting late on most days",
+                        s["late_starting_trains"],
+                        "Rake links, pit-line slots, crew booking",
+                    ],
+                    [
+                        "Timings no train achieves (loses 5+ min on 3 days in 4)",
+                        s["timetable_points_not_achievable"],
+                        "Re-time, moving allowance from where the train always recovers",
+                    ],
+                    [
+                        "Chronically late trains (on time on fewer than half the days)",
+                        s["chronically_late_trains"],
+                        "The train's own list: worst sections and start",
+                    ],
+                ],
                 [70, 18, 82],
             ),  # fmt: skip
         ]
@@ -591,43 +637,65 @@ def production_section(audit: dict[str, Any]) -> list[Any]:
         st = scen["summary"]["stress"]
         out += [
             p("Forecasts under different situations", "h2"),
-            p(f"Retrained in {len(scen['rounds'])} rolling-origin rounds (each learns only from days before its "
-              "origin and is scored on the next four). Average error: persistence "
-              f"{o['persistence']['mean']} min, the twin's rule {o['twin_rule']['mean']}, learned {o['learned']['mean']}. "
-              f"The learned forecast beats both baselines in {scen['summary']['situations_where_learned_network_beats_both_baselines']} "
-              "situations (time of day, weekday, current delay, train class, line type, horizon, zone, network "
-              f"disruption, history). With all history removed (a new train) it scores {st['cold_start_all_history_removed']['learned_network']} "
-              f"min against {st['cold_start_all_history_removed']['persistence']} for persistence, and reported delays off "
-              f"by +/-3 min cost it {st['feed_noise_pm3_min']['learned'] - o['learned']['mean']:.2f} min. The deployed "
-              "model is trained with that cold-start case. Fog and monsoon are not in a September sample."),
+            p(
+                f"Retrained in {len(scen['rounds'])} rolling-origin rounds (each learns only from days before its "
+                "origin and is scored on the next four). Average error: persistence "
+                f"{o['persistence']['mean']} min, the twin's rule {o['twin_rule']['mean']}, learned {o['learned']['mean']}. "
+                f"The learned forecast beats both baselines in {scen['summary']['situations_where_learned_network_beats_both_baselines']} "
+                "situations (time of day, weekday, current delay, train class, line type, horizon, zone, network "
+                f"disruption, history). With all history removed (a new train) it scores {st['cold_start_all_history_removed']['learned_network']} "
+                f"min against {st['cold_start_all_history_removed']['persistence']} for persistence, and reported delays off "
+                f"by +/-3 min cost it {st['feed_noise_pm3_min']['learned'] - o['learned']['mean']:.2f} min. The deployed "
+                "model is trained with that cold-start case. Fog and monsoon are not in a September sample."
+            ),
         ]
     if freight:
         out += [
             p("Dedicated Freight Corridors", "h2"),
             table(
-                [["Corridor", "Random days planned", "Trains", "Conflicts in independent check",
-                  "At published daily volume: mean wait / on free path"]]
-                + [[k, v["plans"], f"{v['trains']:,}", v["violations"],
-                    f"{v['day_at_published_volume']['mean_delay_min']} min / {v['day_at_published_volume']['on_free_path_pct']}%"]
-                   for k, v in freight.items() if isinstance(v, dict) and "plans" in v],
+                [
+                    [
+                        "Corridor",
+                        "Random days planned",
+                        "Trains",
+                        "Conflicts in independent check",
+                        "At published daily volume: mean wait / on free path",
+                    ]
+                ]
+                + [
+                    [
+                        k,
+                        v["plans"],
+                        f"{v['trains']:,}",
+                        v["violations"],
+                        f"{v['day_at_published_volume']['mean_delay_min']} min / {v['day_at_published_volume']['on_free_path_pct']}%",
+                    ]
+                    for k, v in freight.items()
+                    if isinstance(v, dict) and "plans" in v
+                ],
                 [24, 30, 22, 40, 54],
             ),  # fmt: skip
-            p("Random demand is uniform along the corridor, which loads the Eastern corridor's single-line stretch "
-              "(Ludhiana-Khurja) harder than real traffic; DFCCIL block and loop data and FOIS demand replace it.", "small"),
+            p(
+                "Random demand is uniform along the corridor, which loads the Eastern corridor's single-line stretch "
+                "(Ludhiana-Khurja) harder than real traffic; DFCCIL block and loop data and FOIS demand replace it.",
+                "small",
+            ),
         ]
     out += [
         p("Operations", "h2"),
-        *bullets([
-            "Power: a UPS watched through Network UPS Tools. On battery every console shows POWER_ON_BATTERY and state is "
-            "checkpointed every 10 s; on low battery approvals pause and readiness fails so users move to the standby.",
-            "State: signed, atomic checkpoints, restored on start only if authentic, of the same data and recent; the "
-            "container restored its state after a restart.",
-            "Health and monitoring: /health/live, /health/ready, Prometheus /metrics; JSON access logs carry the route "
-            "template only, never secrets (checked on a production container).",
-            "People: named accounts with lockout and hashed sessions; every decision records the signed-in person.",
-            "Container: non-root, read-only root filesystem, capabilities dropped, digest-pinned base image; "
-            "deployment guide in seva2026/railway_readiness/DEPLOYMENT.md.",
-        ]),  # fmt: skip
+        *bullets(
+            [
+                "Power: a UPS watched through Network UPS Tools. On battery every console shows POWER_ON_BATTERY and state is "
+                "checkpointed every 10 s; on low battery approvals pause and readiness fails so users move to the standby.",
+                "State: signed, atomic checkpoints, restored on start only if authentic, of the same data and recent; the "
+                "container restored its state after a restart.",
+                "Health and monitoring: /health/live, /health/ready, Prometheus /metrics; JSON access logs carry the route "
+                "template only, never secrets (checked on a production container).",
+                "People: named accounts with lockout and hashed sessions; every decision records the signed-in person.",
+                "Container: non-root, read-only root filesystem, capabilities dropped, digest-pinned base image; "
+                "deployment guide in seva2026/railway_readiness/DEPLOYMENT.md.",
+            ]
+        ),  # fmt: skip
     ]
     return out
 
@@ -639,6 +707,7 @@ def build(out: Path) -> Path:
     real_final = load(EVIDENCE / "simulation" / "real_data_final_results.json")
     real_national = load(EVIDENCE / "simulation" / "real_data_national_results.json")
     prod_final = load(EVIDENCE / "simulation" / "production_final_results.json")
+    prod_found = load(EVIDENCE / "simulation" / "production_found_gnss_defect_results.json")
     tlog = load(ROOT / "models" / "training_log.json")
     model = load(ROOT / "models" / "runtime_model_metrics.json")
     audit = load(EVIDENCE / "audit" / "audit_summary.json")
@@ -692,7 +761,10 @@ def build(out: Path) -> Path:
                 ("stations in the twin", f"{nat_stats.get('stations_total', 8990):,}"),
                 ("junctions", f"{nat_stats.get('junctions', 1454):,}"),
                 ("sections between stops", f"{nat_stats.get('sections', 8738):,}"),
-                ("trains in the current all-India timetable", f"{audit.get('registry', {}).get('trains_current', 0):,}"),
+                (
+                    "trains in the current all-India timetable",
+                    f"{audit.get('registry', {}).get('trains_current', 0):,}",
+                ),
                 ("operations checked in simulation", f"{sim_ops:,}"),
                 ("invariant violations on the final code", f"{final_viol}"),
                 ("automated tests passing", f"{audit.get('tests_passed', '-')}"),
@@ -1148,7 +1220,7 @@ def build(out: Path) -> Path:
 
     # ---- 7. simulation -------------------------------------------------------------------------------------
     twins = sim.get("twins", {})
-    every = (sim, reg, final, real_final, real_national, prod_final)
+    every = (sim, reg, final, real_final, real_national, prod_found, prod_final)
     total_ops = sum(r.get("operations_checked", 0) for r in every if r)
     story += [
         p(f"7. Simulation: {total_ops / 1e6:.1f} million checked operations", "h1"),
@@ -1193,6 +1265,7 @@ def build(out: Path) -> Path:
         ("Run on the code before real data", final),
         ("Final code on real data with the learned forecast", real_final),
         ("Final code, national twin on the real network", real_national),
+        ("Production build, first run: the new GNSS_GATE invariant found one defect (fixed, section 9)", prod_found),
         ("Production build: final code, both twins, GNSS fixes through the signed gateway", prod_final),
     )
     for label, run in runs:
@@ -1235,9 +1308,12 @@ def build(out: Path) -> Path:
                     "winner first; yields never re-route a train",
                 ],
                 ["REPLAY", "Snapshots verify and replay to the same ranking; the audit chain verifies"],
-                ["GNSS_GATE", "Through the signed gateway, a GNSS fix that jumps along the route faster than any train, "
-                              "lies far off the route or has too few satellites is never accepted and never changes the "
-                              "train's position evidence"],
+                [
+                    "GNSS_GATE",
+                    "Through the signed gateway, a GNSS fix that jumps along the route faster than any train, "
+                    "lies far off the route or has too few satellites is never accepted and never changes the "
+                    "train's position evidence",
+                ],
                 ["NO_CRASH / LIVENESS", "No unexpected exception; every episode completes within 60 s"],
             ],
             [36, 134],
@@ -1523,13 +1599,13 @@ AUDITS = [
     [
         "7",
         "Production build",
-        "12 findings fixed (section 3): GNSS matched to the wrong pass of curving or reversing track (implausible "
+        "13 findings fixed (section 3; one found by the simulation): GNSS matched to the wrong pass of curving or reversing track (implausible "
         "refusals 99 -> 4), stopped trains drawn on the station pin off the track, straight-line slack swallowing "
         "off-track fixes, one multipath fix raising an alarm, silent live streams, per-stream polling (push p50 "
         "0.96 -> 0.35 s), a lint auto-fix breaking a pandas group-by, rate-limit state leaking between tests, "
         "trains off their timetable distorting the advisor (persistence 78% -> 92%), forecasts weak for trains "
         "without history (72% of current trains), image build behind a TLS-inspecting proxy, scanner findings "
-        "in the load-test harness",
+        "in the load-test harness, a fix between two possible places on shared track accepted (GNSS_GATE)",
         "gnss_verification.json, loadtest.json, scenario_ml.json, GNSS_GATE",
     ],
 ]

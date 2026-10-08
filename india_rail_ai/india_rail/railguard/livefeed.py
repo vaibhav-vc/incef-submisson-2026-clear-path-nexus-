@@ -267,8 +267,8 @@ class FeedGateway:
             self.off_route.pop(key, None)
         out = {**result, "run": key, "section_id": match.section_id, "cross_track_m": match.cross_track_m,
                "matched_to": match.method}  # fmt: skip
-        if track.upper_m is not None:
-            out["ambiguous_m"] = round(track.upper_m - track.chainage_m)
+        if track.places:
+            out["possible_places"] = len(track.places)
         return out
 
     @staticmethod
@@ -320,7 +320,7 @@ class FeedGateway:
         )
         if result.get("accepted"):
             self.last_index[key] = i
-            self.tracks[key] = gps.Track(_when(event["observed_at"]), gps.chainage_m(twin, key, i, offset), None, i)
+            self.tracks[key] = gps.Track(_when(event["observed_at"]), gps.chainage_m(twin, key, i, offset), (), i)
         out = {**result, "run": key, "late_min": round(late, 1)}
         if recorded:
             out["disruption_recorded"] = recorded
