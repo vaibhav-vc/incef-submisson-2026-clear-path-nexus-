@@ -50,3 +50,17 @@ Each row links a claim to the code that implements it, the automated test that c
 | Forecast projections stay physically possible and never override a controller | `eta.forecast_plan`, `national.disrupt` | `test_forecast_plans_never_overlap_*`, `test_a_forecast_never_replaces_*` | - | RANKING invariant clean on the final code (see simulation evidence) | - |
 | Conflict warnings precede real time loss | `realval.conflict_replay` | `test_flag_scores_compare_*` | 4 unseen days x 6 snapshots, ~88,000 scored traversals | Give-way trains lost 5+ min in 29.4% of warnings vs 23.9% for comparable trains (1.23x) | Needs IR block-section and loop data |
 | The signed gateway handles a real morning's reports | `livefeed.FeedGateway`, `realval.feed_replay` | `test_reports_are_matched_from_the_last_observation_*`, `test_a_feed_batch_re_evaluates_threats_once` | 7,979 real arrivals, 06:00-10:00 | 96.6% accepted (the rest out of order or unknown runs); ~0.1-0.2 s per one-minute batch | Recorded data, not the live CRIS feed |
+
+## Production build (current timetable, GNSS, live push, operations, accounts, advisor, freight)
+
+| Claim | Code path | Test | Data or scenario | Measured | Limitation |
+|---|---|---|---|---|---|
+| Every current train with its route on real track | `current.build`, `registry.route` | `test_build_takes_every_train_*`, `test_registry_serves_trains_routes_and_stations` | Real current timetable | 10,594 trains; 90% of sections on mapped track; 5,073 stations with a PIN | Community GTFS until CRIS supplies the timetable; PINs approximate |
+| GNSS fixes placed on the real track; spoofing refused | `gps.TrackMatcher`, `gps.locate`, `livefeed._position` | `tests/test_gps.py`, invariant GNSS_GATE | Every train running at 10:00, 10 minutes, simulated receivers | 99.66% genuine accepted; 100% jumps/teleports refused; 0.02% false alarms | Receivers simulated; field units needed |
+| Live push to each cab | `live.Broadcaster`, `/national/cab/{run}/stream` | `tests/test_live.py`, `tests/test_attacks_live.py` | 50 consoles + 500 cabs, real network | push p50 0.35 s; 0 streams dropped | One 4-CPU machine; clients on the same host |
+| Power loss handled | `ops.Operations`, `/health/ready` | `tests/test_ops.py` (fake NUT server) | On battery, low battery, restore | Alert + checkpoint; approvals paused at low battery | Needs the site UPS on NUT |
+| State survives a restart | `ops.Checkpointer`, `ops.restore` | `test_checkpoint_restores_state_*`, `test_a_tampered_*` | Production container restart | STATE_RESTORED in the audit chain; tampered/old/foreign refused | Shared storage for the standby is the site's |
+| Decisions carry the person | `accounts`, `security.authorised`, `_actor` | `tests/test_accounts.py` | Login, lockout, roles, first-password change | Audit actor "R. Sharma (sharma.r)" | IR SSO not connected |
+| Where delay is made, persistently | `delay_advisor.build` | `tests/test_advisor.py` | Real running, Sep 2024 | 92% of the worst 50 sections recur on held-out days | One month; IR's own running data next |
+| Forecasts hold up across situations | `scenario_ml.run`, `realval.forecast` | rolling-origin rounds | 5 rounds x 4 days | Beats both baselines in 44/44 situations; cold start 15.4 min | No fog/monsoon in a September sample |
+| Freight paths never conflict | `freight.FreightPlanner`, `freight.check` | `tests/test_freight.py` | 200 random days on both DFCs | 0 conflicts in 33,475 trains | Uniform demand; DFCCIL block data needed |

@@ -38,6 +38,7 @@ Tests run offline on a hand-made three-station network: `python -m pytest -q`.
 | [DataMeet `trains.json`](https://github.com/datameet/railways) | 5,208 trains with type, zone, classes, distance and route geometry | CC0 | Ingested, SHA-256 pinned |
 | [DataMeet `schedules.json`](https://github.com/datameet/railways) | 417,080 stop rows (arrival, departure, day) | CC0 | Ingested, SHA-256 pinned |
 | **September 2024 timetable and actual running** (IIT Kharagpur research dataset, IEEE T-ITS 2026) | 3,892 trains; 1.28M *actual* arrival times over 57,485 real train runs | No licence; research use with citation | `python -m india_rail real fetch && ... real build`: SHA-256 pinned, kept in git-ignored `data/`, never redistributed. Used for real running days and to verify the system |
+| **Current all-India timetable** (community GTFS by P. Radha Krishna, valid 30 Aug–30 Sep 2026) | 10,594 trains with every halt, time, running days and validity dates; IRCTC-operated, Bharat Gaurav, tourist and parcel trains flagged | No licence stated | `python -m india_rail current fetch && ... current build`: SHA-256 pinned, kept in git-ignored `data/`, never redistributed. The national twin's default timetable; replaced by the CRIS timetable when authorised |
 | **OpenStreetMap India extract** (`download.openstreetmap.fr`, MD5-verified) | 101,805 mapped running-line ways, 10,314 stations (93% with their IR code) | ODbL | `python -m india_rail real osm --pbf ...`: real line count, electrification, gauge, speed limits and station positions per section |
 | NTES / COA / FOIS / ICMS | Live running, control charts, freight, crew | Indian Railways (no open API) | Needs an authorised data-sharing agreement. Not scraped |
 
@@ -132,6 +133,21 @@ The parts:
 Security: role tokens, fail-closed production mode, strict request schemas, CSP, rate limits, and a signed feed. See [SECURITY.md](SECURITY.md). Compliance with the Railways Act / G&SR, RDSO and EN 50716, the IT Act, CERT-In, DPDP and the data licences is covered in [seva2026/COMPLIANCE_REGISTER.md](seva2026/COMPLIANCE_REGISTER.md). The full report is [seva2026/ClearPath_Nexus_RailGuard_Report.pdf](seva2026/ClearPath_Nexus_RailGuard_Report.pdf).
 
 Start with [seva2026/START_HERE.md](seva2026/START_HERE.md). The tabletop ESP32 node is in [hardware/twintrack_esp32](hardware/twintrack_esp32/README.md); it is written but not yet bench-tested.
+
+## Production build (October 2026)
+
+| Capability | What it does | Evidence |
+|---|---|---|
+| **Every train, every track** | Registry of 10,594 current trains: number, name, operator (IRCTC private, Bharat Gaurav, tourist, parcel), running days, validity, every halt with its station PIN code (5,073 stations, approximate from OSM postcodes), and each train's route drawn along the mapped track (GeoJSON). `GET /railguard/national/trains?q=`, `/trains/{n}`, `/trains/{n}/route`, `/stations/{code}`, `/operators` | `tests/test_current.py` |
+| **Freight corridors** | Eastern and Western DFC from OpenStreetMap; conflict-free freight pathing (headway, loops, single-line crossings, blocks) with an independent checker. `POST /railguard/freight/plan` | 0 violations in 200 randomised days (33,475 trains): `seva2026/evidence/freight/` |
+| **GNSS tracking** | NMEA from any GPS/NavIC receiver, quality gates, map-matching onto mapped track (yards, horseshoe curves), spoof/jump rejection (`GNSS_IMPLAUSIBLE`), device agent signing batches: `python -m india_rail gnss` | Real network, every running train, simulated receivers: 99.66% of genuine fixes accepted, 0.02% false alarms, 100% of jumps and teleports refused: `seva2026/evidence/gnss/` |
+| **Delay advisor** | Where delay is made, from real running: chronic section losses with the lever (capacity on single line, operations on double), junction congestion by hour, late starts, timings no train achieves, chronically late trains. `GET /railguard/national/advisor/...` | Findings persist on held-out days (92% of the worst 50 sections recur): `seva2026/evidence/real_data/delay_advisor_summary.json` |
+| **Forecasts under different situations** | Rolling-origin retraining (5 rounds), scored by time of day, weekday, current delay, class, line type, horizon, zone, network state, cold start and feed noise; deployed model trained for cold start (72% of current trains have no observed history) | Beats both baselines in 44/44 situations: `seva2026/evidence/real_data/scenario_ml.json` |
+| **Power (UPS)** | Network UPS Tools: on battery warn + checkpoint every 10 s; low battery pause approvals and fail readiness | `tests/test_ops.py` (fake NUT server) |
+| **Checkpoints, health, metrics, logs** | Signed atomic checkpoints restored on start; `/health/live`, `/health/ready`, Prometheus `/metrics`; JSON access logs without secrets | Container restart restores state: [DEPLOYMENT.md](seva2026/railway_readiness/DEPLOYMENT.md) |
+| **Live one-to-one** | Server-sent event streams: console picture and each cab's own advisory, pushed on change; run-scoped cab capability tokens | 550 concurrent streams on the real network, push p50 0.35 s: `seva2026/evidence/live/loadtest.json` |
+| **Named accounts** | scrypt passwords, lockout, hashed sessions, roles (viewer/controller/admin); decisions record the signed-in person; `RAILGUARD_REQUIRE_ACCOUNTS=1` | `tests/test_accounts.py`, `tests/test_attacks_live.py` |
+| **Container** | Non-root, read-only root filesystem, digest-pinned base, health check: `Dockerfile`, `docker-compose.railguard.yml` | Built and run in production mode |
 
 ## Real-life data and verification
 

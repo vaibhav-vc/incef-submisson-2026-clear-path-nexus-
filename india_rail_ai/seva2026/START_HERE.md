@@ -28,6 +28,21 @@ export RAILGUARD_FEED_TOKEN=...         # required on hardware/live feed reports
 
 **Verify:** `python -m pytest -q`, then `python -m india_rail.railguard.metrics --out seva2026/evidence/metrics/railguard_metrics.json`.
 
+## Production build (national network)
+
+`python -m india_rail serve`, then **http://localhost:8100/control/national**. Sign in with a named account
+(`python -m india_rail accounts add ...`). The console shows:
+
+* the live map, pushed as it changes;
+* every train with its PIN codes and its route on the real track;
+* the delay advisor;
+* freight corridor pathing;
+* power status.
+
+To deploy it: [railway_readiness/DEPLOYMENT.md](railway_readiness/DEPLOYMENT.md) covers the container, UPS, checkpoints,
+monitoring, cab GNSS units and accounts. What each piece achieved is listed in
+[../README.md](../README.md#production-build-october-2026).
+
 ## What is built, and how far each claim goes
 
 | Capability | Status | Where |

@@ -122,3 +122,30 @@ re-checked on the same data.
 | 8 | A forecast could have replaced a plan already shaped by a controller's decision (a hold) | A forecast only replaces a projection; once a controller decision shapes the plan, a new delay is added on top of it | `test_a_forecast_never_replaces_a_controller_decision` |
 | 9 | Simulation workers stalled: model inference threads in every worker spun against each other (OpenMP) | One inference thread per simulation worker | 600 episodes in 35 s (was over 10 minutes) |
 | 10 | The twin's data label still said the network was inferred from the open timetable | The label states the timetable used and how many sections have mapped track data | `recommend()` output |
+
+## Pass 7 - Production build (every train, GNSS, live push, operations, accounts, advisor, freight)
+
+New surfaces: the current all-India timetable and registry, freight corridors, GNSS tracking and the cab agent,
+live event streams, UPS/checkpoints/health/metrics, named accounts, the delay advisor and scenario training. Each
+was run on the real network or real running data, attacked, and load-tested; the findings below were found that
+way and fixed.
+
+| # | Finding | Fix | Evidence |
+|---|---|---|---|
+| 1 | GNSS fixes on track that curves back on itself, or at reversal stations (Jalandhar City), matched the wrong pass, so 99 genuine fixes in 21,851 looked like jumps | Every pass of the track near the fix is kept; the one nearest where the train should be (last position + reported speed) is reported, and all of them bound the train's position until later fixes narrow it | `test_a_track_that_doubles_back_*`, `test_reported_speed_picks_*`; implausible refusals 99 -> 4 (the rest are timetable entries implying 220-240 km/h) |
+| 2 | A train standing at a station was drawn on the station's map pin, up to 700 m off the track, so its first fix after departure looked like a backward move | Stopped trains are placed on the track at the station; the backward allowance widens to the yard width in station zones | `gnss_verification.json` |
+| 3 | The 3 km slack beside unmapped sections also applied beyond their ends, swallowing off-track fixes near a junction | Beyond a straight section's ends only the station zone (1.5 km) applies | `test_a_fix_on_the_straight_line_but_off_the_mapped_track_is_a_deviation` |
+| 4 | One multipath fix raised a route-deviation alarm (a nuisance alarm is a hazard of its own) | A fix under 1 km off is refused quietly; the second in a row, or any fix 1 km+ off, raises the alarm | 66 quiet refusals, 4 alarms (0.02%) in 21,851 genuine fixes |
+| 5 | A live stream whose advisory did not change sent nothing at all, so proxies would drop it and clients could not tell it was alive | Heartbeat after 15 s of silence, whatever the tick rate | `test_a_quiet_stream_still_sends_heartbeats`; found when the load test hung |
+| 6 | Every stream recomputed its own picture each second (500 thread hops a second competing for the twin lock) | One broadcaster per event loop recomputes when the twin changes (checked every 50 ms) and wakes every stream together | Load test, server in its own process: push p50 0.96 s -> 0.35 s, feed batch p50 0.43 s -> 0.16 s |
+| 7 | A lint auto-fix (`--unsafe-fixes`, C416) turned a pandas group-by comprehension into `dict(groupby)`, which raises | Restored; caught by `test_current.py` before commit | Full suite |
+| 8 | Rate-limit buckets leaked between tests, so later tests saw 429 | Each test starts with fresh buckets (`conftest.py`) | 214 tests pass in any order |
+| 9 | Special trains running hours away from their published 2024 timings ("527-minute loss") distorted the advisor's rankings | Changes over 3 h are counted as incidents, recurring losses over 90 min as schedules that do not describe the train, both kept out of the patterns | Section persistence 78% -> 92% |
+| 10 | 72% of current trains have no observed running, and the forecast was trained only on trains with history | Training withholds the history from 15% of rows; cold-start error is measured (15.4 min) | `scenario_ml.json`, `real_validation.json` |
+| 11 | The image would not build behind a TLS-inspecting proxy (common on railway networks) | The proxy's CA can be passed as a build secret; verification is never disabled | `Dockerfile` |
+| 12 | Bandit flagged the load-test harness (subprocess, URL open) | Fixed arguments, loopback URL, no shell; each suppression states why | Bandit 0 findings on 13,554 lines |
+
+Verification after the pass: 214 tests, ruff 0.8.6 lint and format, Bandit 0, pip-audit 0; the randomised
+simulation re-run on the final code with the new GNSS_GATE invariant (`evidence/simulation/production_final_results.json`);
+the production container built, run, restarted and checked for secrets in its logs; the console driven in Chromium
+with no console errors or CSP violations.
