@@ -226,7 +226,7 @@ SOFTWARE_READINESS = [
     ("Decision core (twin, planner, gates, cab)", 100,
      "Built; runs on the current all-India timetable with mapped track; final code verified by simulation"),
     ("Verification (tests, simulation, real data)", 97,
-     "214 tests; 9 invariants incl. GNSS_GATE; 56,395 real train runs; formal V&V plan needs IR"),
+     "215 tests; 9 invariants incl. GNSS_GATE; 56,395 real train runs; formal V&V plan needs IR"),
     ("Security engineering", 96,
      "Named accounts, cab capabilities, hardened container, 41 attack tests, SAST/SCA clean; external audit pending"),
     ("Every train and its route", 96,
@@ -1274,9 +1274,10 @@ def build(out: Path) -> Path:
                            f"{run.get('operations_checked', 0):,} operations, "
                            f"{sum(t.get('violations_total', 0) for t in run.get('twins', {}).values())} violations "
                            f"(code checksum {str(run.get('code_checksum', ''))[:16]}…).", "small"))  # fmt: skip
-    story.append(p(f"<b>All runs together: {total_ops:,} checked operations, "
-                   f"{sum(t.get('violations_total', 0) for r in every if r for t in r.get('twins', {}).values())} "
-                   "violations.</b>", "body"))  # fmt: skip
+    found = sum(t.get("violations_total", 0) for r in every if r for t in r.get("twins", {}).values())
+    story.append(p(f"<b>All runs together: {total_ops:,} checked operations. Each of the {found} violations was "
+                   "traced to a defect (or, once, a harness error), fixed and replayed clean; the final code has "
+                   f"{final_viol}.</b>", "body"))  # fmt: skip
     story += [
         p("Invariants", "h2"),
         table(

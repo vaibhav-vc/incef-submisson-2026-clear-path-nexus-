@@ -1,9 +1,9 @@
 {
-  "tests_passed": 214,
+  "tests_passed": 215,
   "tests_failed": 0,
   "attack_tests": 41,
   "bandit_findings": 0,
-  "bandit_lines_scanned": 13554,
+  "bandit_lines_scanned": 13555,
   "bandit_reviewed_suppressions": 18,
   "pip_audit": {
     "packages": 49,

@@ -139,14 +139,14 @@ way and fixed.
 | 5 | A live stream whose advisory did not change sent nothing at all, so proxies would drop it and clients could not tell it was alive | Heartbeat after 15 s of silence, whatever the tick rate | `test_a_quiet_stream_still_sends_heartbeats`; found when the load test hung |
 | 6 | Every stream recomputed its own picture each second (500 thread hops a second competing for the twin lock) | One broadcaster per event loop recomputes when the twin changes (checked every 50 ms) and wakes every stream together | Load test, server in its own process: push p50 0.96 s -> 0.35 s, feed batch p50 0.43 s -> 0.16 s |
 | 7 | A lint auto-fix (`--unsafe-fixes`, C416) turned a pandas group-by comprehension into `dict(groupby)`, which raises | Restored; caught by `test_current.py` before commit | Full suite |
-| 8 | Rate-limit buckets leaked between tests, so later tests saw 429 | Each test starts with fresh buckets (`conftest.py`) | 214 tests pass in any order |
+| 8 | Rate-limit buckets leaked between tests, so later tests saw 429 | Each test starts with fresh buckets (`conftest.py`) | 215 tests pass in any order |
 | 9 | Special trains running hours away from their published 2024 timings ("527-minute loss") distorted the advisor's rankings | Changes over 3 h are counted as incidents, recurring losses over 90 min as schedules that do not describe the train, both kept out of the patterns | Section persistence 78% -> 92% |
 | 10 | 72% of current trains have no observed running, and the forecast was trained only on trains with history | Training withholds the history from 15% of rows; cold-start error is measured (15.4 min) | `scenario_ml.json`, `real_validation.json` |
 | 11 | The image would not build behind a TLS-inspecting proxy (common on railway networks) | The proxy's CA can be passed as a build secret; verification is never disabled | `Dockerfile` |
-| 12 | Bandit flagged the load-test harness (subprocess, URL open) | Fixed arguments, loopback URL, no shell; each suppression states why | Bandit 0 findings on 13,554 lines |
+| 12 | Bandit flagged the load-test harness (subprocess, URL open) | Fixed arguments, loopback URL, no shell; each suppression states why | Bandit 0 findings on 13,555 lines |
 | 13 | Found by the randomised simulation's new GNSS_GATE invariant (1 episode in 24,000, national:23648, seed 6161): where the route uses the same track twice (through Solapur, arriving from Hotgi and leaving for Akkalkot Road) a genuine fix matched both passes, and the train was then tracked as being anywhere *between* them, so a spoofed fix 7 km on was accepted | The train is tracked at each candidate place as a point; a new fix must be a plausible move from one of them | `test_a_fix_between_two_possible_places_is_not_plausible_from_either`; the episode replays clean; run that found it: `evidence/simulation/production_found_gnss_defect_results.json` |
 
-Verification after the pass: 214 tests, ruff 0.8.6 lint and format, Bandit 0, pip-audit 0; the randomised
+Verification after the pass: 215 tests, ruff 0.8.6 lint and format, Bandit 0, pip-audit 0; the randomised
 simulation re-run on the final code with the new GNSS_GATE invariant (`evidence/simulation/production_final_results.json`);
 the production container built, run, restarted and checked for secrets in its logs; the console driven in Chromium
 with no console errors or CSP violations.

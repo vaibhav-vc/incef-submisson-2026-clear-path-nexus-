@@ -10,7 +10,7 @@
   "genuine_fixes": {
     "sent": 21851,
     "accepted": 21777,
-    "on_mapped_track": 19795,
+    "on_mapped_track": 19800,
     "refused": {
       "off track once: refused quietly (multipath), no alarm": 66,
       "off route: route-deviation alarm": 4,
@@ -38,8 +38,8 @@
   },
   "throughput": {
     "events": 22764,
-    "seconds": 8.23,
-    "events_per_second": 2765
+    "seconds": 8.15,
+    "events_per_second": 2792
   },
   "labels": [
     "Receivers simulated (no live GNSS access); network, timetable and track geometry are real.",

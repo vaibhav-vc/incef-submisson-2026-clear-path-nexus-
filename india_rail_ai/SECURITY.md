@@ -18,7 +18,7 @@
 | Secrets leaking into logs | JSON access log carries the route template, never the path's query string, headers or body; uvicorn's own access log is off in the container; secret values checked absent from a production container's logs | `test_cab_tokens_never_reach_logs_or_the_audit_chain`, DEPLOYMENT.md |
 | Exhausting live streams | At most 1,000 streams per process (refused beyond, not queued), heavy-class rate limit on opening one, one shared computation per tick, heartbeats so dead clients are noticed | `test_stream_capacity_is_bounded`, load test |
 | Vulnerable dependencies | Pinned versions; `pip-audit` reports 0 known vulnerabilities (FastAPI 0.142.2 / Starlette 1.7.0 / pytest 9.0.3) | CI + `seva2026/AUDIT_LOG.md` |
-| Insecure code patterns | Bandit: 0 findings over 13,554 lines (each suppression justified in the code); ruff lint | `seva2026/AUDIT_LOG.md` |
+| Insecure code patterns | Bandit: 0 findings over 13,555 lines (each suppression justified in the code); ruff lint | `seva2026/AUDIT_LOG.md` |
 | Container escape / tampering with the image | Non-root user, read-only root filesystem, all capabilities dropped, no-new-privileges, digest-pinned base image, no data or secrets in the image | `Dockerfile`, `docker-compose.railguard.yml` |
 
 ## Deployment checklist (production)
