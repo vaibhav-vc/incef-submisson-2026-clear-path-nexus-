@@ -20,7 +20,11 @@
 ## For loco pilots (Nexus Cab)
 * The cab view shows only the controller-approved plan, as **advice**. **Signals, Kavach/ATP, caution orders
   and your rules always take precedence.**
-* `DATA UNAVAILABLE` or `HOLD-FOR-CONTROLLER` means: no advice; follow signals and the controller.
+* `DATA UNAVAILABLE` or `HOLD-FOR-CONTROLLER` means: no advice; follow signals and the controller. The screen
+  shows `DATA UNAVAILABLE` by itself when it has heard nothing from Nexus for 25 seconds.
+* The cab unit is opened with a link the controller issues for this train only (**Issue cab link** on the
+  console, valid up to 24 h). If the screen says the link is not valid for this train, ask the controller for
+  a new one; never reuse another train's link.
 * The speed band is a target range for smooth running, never a permission.
 
 ## Training modules (half a day each)

@@ -19,6 +19,7 @@ feed replaces the projection; a stale live feed fails closed to HOLD.
 from __future__ import annotations
 
 import heapq
+import math
 import sqlite3
 import statistics
 import threading
@@ -121,6 +122,8 @@ class SectionOccupancy:
     exit: list[float]
     frm: list[str]
     max_duration: float
+    f0: list[float] = field(default_factory=list)  # where on the run's own section this piece of track starts
+    f1: list[float] = field(default_factory=list)  # ...and ends (fractions; 0-1 unless it is over shorter ones)
 
 
 @dataclass
@@ -134,6 +137,108 @@ class NationalData:
     passing_points: dict[str, list[tuple[str, float]]] = field(default_factory=dict)
     # Real infrastructure per section from OpenStreetMap (lines, electrification, gauge), where mapped
     infrastructure: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Sections that are the same track as a chain of shorter sections (an express's stop-to-stop section over a
+    # local's): section -> (parts travelling from its first code, parts from its second), each part
+    # (elementary section, start fraction, end fraction, the part's entry station)
+    parts: dict[str, tuple[tuple[Part, ...], tuple[Part, ...]]] = field(default_factory=dict)
+
+
+Part = tuple[str, float, float, str]
+COMPOSITE_SLACK = 0.05  # a chain of shorter sections within 5% (+1 km) of a section's length is that section's track
+COMPOSITE_OFFSET_KM = 2.0  # ...if every station on the chain lies within max(2 km, 8% of the length) of its line
+
+
+def _decompose(
+    sections: dict[str, Section], nodes: dict[str, tuple[float, float]], located: set[str] | None = None
+) -> dict[str, tuple]:
+    """Split every section that physically is a chain of shorter sections into its elementary sections.
+
+    Trains with different stopping patterns share track: an express's section A-D is the local's A-B, B-C, C-D.
+    Separation must be checked where they meet, on the elementary sections, or the express and the local are
+    never compared. A chain is accepted when it is the shortest other path from A to D, its length is within
+    COMPOSITE_SLACK of the section's and every station on it lies along the A-D line. `located`: stations with
+    real coordinates (a station placed at its neighbours' mean would always seem to lie on the line)."""
+
+    located = set(nodes) if located is None else located
+
+    adj: dict[str, list[tuple[str, float, str]]] = defaultdict(list)
+    for sid in sorted(sections):
+        a, b = sid.split("-", 1)
+        adj[a].append((b, sections[sid].length_km, sid))
+        adj[b].append((a, sections[sid].length_km, sid))
+    chains: dict[str, list[tuple[str, str]]] = {}
+    for sid in sorted(sections):
+        a, b = sid.split("-", 1)
+        length = sections[sid].length_km
+        limit = length * (1 + COMPOSITE_SLACK) + 1.0
+        best: dict[str, tuple[float, str | None, str | None]] = {a: (0.0, None, None)}
+        heap = [(0.0, a)]
+        reached = None
+        while heap:
+            d, u = heapq.heappop(heap)
+            if d > best[u][0] or d > limit:
+                continue
+            if u == b:
+                reached = d
+                break
+            for v, w, esid in adj[u]:
+                if esid != sid and d + w <= limit and (v not in best or d + w < best[v][0]):
+                    best[v] = (d + w, u, esid)
+                    heapq.heappush(heap, (d + w, v))
+        if reached is None or abs(reached - length) > COMPOSITE_SLACK * length + 1.0:
+            continue
+        chain, u = [], b
+        while best[u][1] is not None:
+            chain.append((best[u][2], best[u][1]))  # (section, the station it is entered from)
+            u = best[u][1]
+        chain.reverse()
+        stations = [frm for _s, frm in chain[1:]]
+        if len(chain) < 2 or not {a, b} <= located:
+            continue
+        tolerance = max(COMPOSITE_OFFSET_KM, 0.08 * length)
+        if all(c in located and _offset_km(nodes[c], nodes[a], nodes[b]) <= tolerance for c in stations):
+            chains[sid] = chain
+
+    def expand(sid: str, frm: str, depth: int = 0) -> list[tuple[str, str]]:
+        if sid not in chains or depth > 8:
+            return [(sid, frm)]
+        a = sid.split("-", 1)[0]
+        chain = chains[sid] if frm == a else [(s, sections[s].other(f)) for s, f in reversed(chains[sid])]
+        return [leaf for s, f in chain for leaf in expand(s, f, depth + 1)]
+
+    out: dict[str, tuple] = {}
+    for sid in chains:
+        oriented = []
+        for frm in sid.split("-", 1):
+            leaves = expand(sid, frm)
+            total = sum(sections[s].length_km for s, _f in leaves) or 1.0
+            run, parts = 0.0, []
+            for s, f in leaves:
+                share = sections[s].length_km / total
+                parts.append((s, round(run, 6), round(min(run + share, 1.0), 6), f))
+                run += share
+            oriented.append(tuple(parts))
+        out[sid] = (oriented[0], oriented[1])
+    return out
+
+
+def _offset_km(p: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Distance (km) from point p to the segment a-b, all (lon, lat)."""
+
+    k = 111.32 * math.cos(math.radians((a[1] + b[1]) / 2))
+    px, py, dx, dy = (p[0] - a[0]) * k, (p[1] - a[1]) * 110.57, (b[0] - a[0]) * k, (b[1] - a[1]) * 110.57
+    span = dx * dx + dy * dy
+    t = 0.0 if span == 0 else min(max((px * dx + py * dy) / span, 0.0), 1.0)
+    return math.hypot(px - t * dx, py - t * dy)
+
+
+def _oriented(parts: dict[str, tuple], sid: str, frm: str) -> tuple[Part, ...]:
+    """Elementary sections of `sid` in the direction of travel from `frm` (just the section itself if none)."""
+
+    p = parts.get(sid)
+    if p is None:
+        return ((sid, 0.0, 1.0, frm),)
+    return p[0] if sid.split("-", 1)[0] == frm else p[1]
 
 
 def _section_id(a: str, b: str) -> str:
@@ -168,10 +273,13 @@ def build_national(db_path: Path = DB_PATH, service_date: date | None = None, us
         neighbours[a].add(b)
         neighbours[b].add(a)
     network = Network(nodes=_place_nodes(stations, nodes_used, neighbours), sections=sections)
-    runs, index = _build_runs(by_train, trains, running_days, service_date, validity)
-    occupancy = _build_occupancy(runs, index)
-
     own = {n for n in nodes_used if stations.get(n, (None,))[0] is not None}
+    parts = _decompose(sections, network.nodes, own)
+    runs, index = _build_runs(by_train, trains, running_days, service_date, validity)
+    occupancy = _build_occupancy(runs, index, parts)
+    run_km = sum(sections[sid].length_km for r in runs.values() for sid in r.sections) or 1.0
+    composite_km = sum(sections[sid].length_km for r in runs.values() for sid in r.sections if sid in parts)
+
     passing, unplaced = _place_passing_points(stations, nodes_used, sections, network.nodes, own)
     stats = {
         "stations_total": len(stations),
@@ -194,15 +302,19 @@ def build_national(db_path: Path = DB_PATH, service_date: date | None = None, us
         "service_date": service_date.isoformat(),
         "runs_in_window": len(runs),
         "occupations": sum(len(v) for v in index.values()),
+        "sections_over_shorter_sections": len(parts),
+        "run_km_share_over_shorter_sections": round(composite_km / run_km, 3),
+        "track_occupations_checked": sum(len(o.keys) for o in occupancy.values()),
     }
     digest = checksum(
         {
             "sections": [(s.id, s.length_km, s.vmax_kmph, s.tracks) for s in sections.values()],
             "runs": [(r.key, r.sections, r.s_enter) for r in runs.values()],
+            "parts": sorted(parts.items()),
         }
     )
     infrastructure = {sid: osm_sections[sid] for sid in sections if sid in osm_sections}
-    return NationalData(network, runs, occupancy, stats, digest, passing, infrastructure)
+    return NationalData(network, runs, occupancy, stats, digest, passing, infrastructure, parts)
 
 
 def _build_sections(
@@ -344,18 +456,32 @@ def _build_runs(
     return runs, index
 
 
-def _build_occupancy(runs: dict[str, Run], index: dict[str, list[tuple[str, int]]]) -> dict[str, SectionOccupancy]:
-    occupancy = {}
+def _build_occupancy(
+    runs: dict[str, Run], index: dict[str, list[tuple[str, int]]], parts: dict[str, tuple] | None = None
+) -> dict[str, SectionOccupancy]:
+    """Occupations of every piece of track: a run's section over shorter sections occupies each of them in turn
+    (times by length share), so trains with different stopping patterns are compared where they share track."""
+
+    parts = parts or {}
+    track: dict[str, list[tuple]] = defaultdict(list)
     for sid, entries in index.items():
-        entries.sort(key=lambda e: runs[e[0]].s_enter[e[1]])
-        rows_ = [(k, i, runs[k].s_enter[i], runs[k].s_exit[i], runs[k].frm[i]) for k, i in entries]
-        occupancy[sid] = SectionOccupancy(
-            [r[0] for r in rows_],
-            [r[1] for r in rows_],
+        for k, i in entries:
+            run = runs[k]
+            e, x = run.s_enter[i], run.s_exit[i]
+            for psid, f0, f1, pfrm in _oriented(parts, sid, run.frm[i]):
+                track[psid].append((e + f0 * (x - e), e + f1 * (x - e), k, i, pfrm, f0, f1))
+    occupancy = {}
+    for psid, rows_ in track.items():
+        rows_.sort()
+        occupancy[psid] = SectionOccupancy(
             [r[2] for r in rows_],
             [r[3] for r in rows_],
+            [r[0] for r in rows_],
+            [r[1] for r in rows_],
             [r[4] for r in rows_],
-            max((r[3] - r[2] for r in rows_), default=0.0),
+            max((r[1] - r[0] for r in rows_), default=0.0),
+            [r[5] for r in rows_],
+            [r[6] for r in rows_],
         )
     return occupancy
 
@@ -530,6 +656,17 @@ def gap(tracks: int, same_direction: bool, ae: float, ax: float, be: float, bx: 
     return min(abs(ae - be), abs(ax - bx))
 
 
+def _piece(
+    e: float, x: float, se: float | None, sx: float | None, f0: float, f1: float
+) -> tuple[float, float, float | None, float | None]:
+    """Entry and exit times (planned and timetabled) of the piece [f0, f1] of a section entered at e, left at x."""
+
+    if f0 == 0.0 and f1 == 1.0:
+        return e, x, se, sx
+    timetabled = (None, None) if se is None or sx is None else (se + f0 * (sx - se), se + f1 * (sx - se))
+    return e + f0 * (x - e), e + f1 * (x - e), *timetabled
+
+
 # ---- the dynamic twin ---------------------------------------------------------------------------
 class NationalTwin:
     def __init__(self, data: NationalData | None = None, start_min: float = 480.0, headway: float = 3.0):
@@ -539,6 +676,8 @@ class NationalTwin:
         self.headway = headway
         self.lock = threading.RLock()
         self.start_min = start_min
+        # Sections over shorter sections -> the pieces of track they run on
+        self.members = {sid: frozenset(p[0] for p in fwd) for sid, (fwd, _rev) in self.data.parts.items()}
         self.track = gps.TrackMatcher(self)  # mapped track geometry (OpenStreetMap) for positions on the map
         self.eta = None  # optional EtaForecaster (railguard/eta.py): projects live-reported late trains
         self.reset()
@@ -548,7 +687,8 @@ class NationalTwin:
         self.now = self.start_min
         self.version = 0  # bumped by every state change; an approval must match the version it was ranked on
         self.plans: dict[str, Plan] = {}  # changed runs only
-        self.changed_index: dict[str, list[tuple[str, int]]] = defaultdict(list)  # occupations of changed runs
+        # Occupations of changed runs per piece of track: (run, section index, from fraction, to fraction, entry)
+        self.changed_index: dict[str, list[tuple[str, int, float, float, str]]] = defaultdict(list)
         self.section_overrides: dict[str, Section] = {}
         self.evidence = EvidenceStore()  # live-feed positions only; absence = PROJECTED
         self.threats = ThreatRegistry()
@@ -571,6 +711,40 @@ class NationalTwin:
 
     def section(self, sid: str) -> Section:
         return self.section_overrides.get(sid) or self.net.sections[sid]
+
+    def parts(self, sid: str, frm: str) -> tuple[Part, ...]:
+        """The pieces of track a run on `sid` from `frm` occupies, in order (just `sid` unless it runs over
+        shorter sections): (piece, from fraction, to fraction, entry station)."""
+
+        return _oriented(self.data.parts, sid, frm)
+
+    def physical(self, sid: str) -> Section:
+        """The section as the track it runs on: closed, obstructed or restricted wherever any piece of it is.
+
+        A section over shorter sections takes its state from those pieces (a change reported for the section
+        itself was passed on to every piece by `update_section`), so reopening every piece reopens it."""
+
+        sec = self.section(sid)
+        members = self.members.get(sid)
+        if not members or not self.section_overrides or not any(m in self.section_overrides for m in members):
+            return sec
+        pieces = [self.section(m) for m in sorted(members)]
+        restrictions = [s.temp_restriction_kmph for s in pieces if s.temp_restriction_kmph]
+        return replace(
+            sec,
+            available=all(s.available for s in pieces),
+            obstacle=any(s.obstacle for s in pieces),
+            condition=min(s.condition for s in pieces),
+            temp_restriction_kmph=min(restrictions) if restrictions else None,
+            weather_alert=next((s.weather_alert for s in pieces if s.weather_alert), None),
+        )
+
+    def piece_at(self, sid: str, frm: str, offset_km: float) -> str:
+        """The piece of track `offset_km` along `sid` from `frm`."""
+
+        fraction = offset_km / max(self.section(sid).length_km, 1e-6)
+        pieces = self.parts(sid, frm)
+        return next((p[0] for p in pieces if fraction < p[2]), pieces[-1][0])
 
     def plan_of(self, key: str) -> Plan:
         plan = self.plans.get(key)
@@ -596,7 +770,8 @@ class NationalTwin:
         exclude: frozenset[str] = frozenset(),
         overrides: dict[str, Plan] | None = None,
     ):
-        """Occupations of `sid` that may overlap [lo, hi]: (run, index, enter, exit, from, s_enter, s_exit).
+        """Occupations of the piece of track `sid` that may overlap [lo, hi]:
+        (run, section index, enter, exit, entry station, s_enter, s_exit), for this piece of the run's section.
 
         Timetabled runs come from the sorted static arrays (binary-searched window);
         changed runs and trial overrides come from their current plans.
@@ -610,15 +785,20 @@ class NationalTwin:
                 if key in self.plans or key in overrides or key in exclude:
                     continue
                 yield key, occ.idx[n], occ.enter[n], occ.exit[n], occ.frm[n], occ.enter[n], occ.exit[n]
-        for key, j in self.changed_index.get(sid, ()):
+        for key, j, f0, f1, pfrm in self.changed_index.get(sid, ()):
             if key not in overrides and key not in exclude:
                 p = self.plans[key]
-                yield key, j, p.enter[j], p.exit[j], p.frm[j], p.s_enter[j], p.s_exit[j]
+                e, x, se, sx = _piece(p.enter[j], p.exit[j], p.s_enter[j], p.s_exit[j], f0, f1)
+                yield key, j, e, x, pfrm, se, sx
         for key, p in overrides.items():
             if key not in exclude:
                 for j, other_sid in enumerate(p.sections):
-                    if other_sid == sid:
-                        yield key, j, p.enter[j], p.exit[j], p.frm[j], p.s_enter[j], p.s_exit[j]
+                    if other_sid != sid and sid not in self.members.get(other_sid, ()):
+                        continue
+                    for psid, f0, f1, pfrm in self.parts(other_sid, p.frm[j]):
+                        if psid == sid:
+                            e, x, se, sx = _piece(p.enter[j], p.exit[j], p.s_enter[j], p.s_exit[j], f0, f1)
+                            yield key, j, e, x, pfrm, se, sx
 
     # ---- timelines --------------------------------------------------------------------------
     @staticmethod
@@ -653,7 +833,11 @@ class NationalTwin:
         ignore: frozenset[str] = frozenset(),
         overrides: dict[str, Plan] | None = None,
     ) -> list[dict[str, Any]]:
-        """Occupation conflicts and near misses of `plan` (from index `start`) against every other run."""
+        """Occupation conflicts and near misses of `plan` (from index `start`) against every other run.
+
+        Checked on each piece of track the plan's sections run over, so an express is compared with the local
+        whose shorter sections it shares; one entry per pair of occupations (the closest piece), whose
+        `section_id` is that piece of track."""
 
         found = []
         h = self.headway
@@ -666,31 +850,38 @@ class NationalTwin:
                 break
             if x < self.now:
                 continue
-            sid, frm = plan.sections[i], plan.frm[i]
-            tracks = self.section(sid).tracks
-            for okey, j, oe, ox, ofrm, ose, osx in self.occupants(sid, e - 2 * h, x + 2 * h, exclude, overrides):
-                if ox + 2 * h < e or oe - 2 * h > x or min(e, oe) > limit:
-                    continue
-                same = ofrm == frm
-                g = gap(tracks, same, e, x, oe, ox)
-                if g is None or g >= 2 * h:
-                    continue
-                se, sx = plan.s_enter[i], plan.s_exit[i]
-                planned = gap(tracks, same, se, sx, ose, osx) if None not in (se, sx, ose, osx) else None
-                required = h if planned is None else min(h, planned)
-                found.append(
-                    {
-                        "section_id": sid,
-                        "index": i,
-                        "other": okey,
-                        "other_index": j,
-                        "gap_min": round(g, 2),
-                        "required_min": round(required, 2),
-                        "is_conflict": g < required - 1e-6,
-                        "opposing": not same,
-                        "single_line": tracks == 1,
-                    }
-                )
+            closest: dict[tuple[str, int], tuple[float, dict[str, Any]]] = {}
+            for psid, f0, f1, pfrm in self.parts(plan.sections[i], plan.frm[i]):
+                pe, px, pse, psx = _piece(e, x, plan.s_enter[i], plan.s_exit[i], f0, f1)
+                if px < self.now:
+                    continue  # this piece is already behind the train
+                tracks = self.section(psid).tracks
+                for okey, j, oe, ox, ofrm, ose, osx in self.occupants(psid, pe - 2 * h, px + 2 * h, exclude, overrides):
+                    if ox + 2 * h < pe or oe - 2 * h > px or min(pe, oe) > limit:
+                        continue
+                    same = ofrm == pfrm
+                    g = gap(tracks, same, pe, px, oe, ox)
+                    if g is None or g >= 2 * h:
+                        continue
+                    planned = gap(tracks, same, pse, psx, ose, osx) if None not in (pse, psx, ose, osx) else None
+                    required = h if planned is None else min(h, planned)
+                    if (okey, j) in closest and closest[(okey, j)][0] <= g - required:
+                        continue
+                    closest[(okey, j)] = (
+                        g - required,
+                        {
+                            "section_id": psid,
+                            "index": i,
+                            "other": okey,
+                            "other_index": j,
+                            "gap_min": round(g, 2),
+                            "required_min": round(required, 2),
+                            "is_conflict": g < required - 1e-6,
+                            "opposing": not same,
+                            "single_line": tracks == 1,
+                        },
+                    )
+            found.extend(c for _margin, c in closest.values())
         return found
 
     # ---- positions ---------------------------------------------------------------------------
@@ -794,20 +985,25 @@ class NationalTwin:
                 "conflicts": [c for c in self.conflicts(key, self.plans[key], k) if c["is_conflict"]],
             }
 
+    def _track_entries(self, key: str, plan: Plan):
+        for i, sid in enumerate(plan.sections):
+            for psid, f0, f1, pfrm in self.parts(sid, plan.frm[i]):
+                yield psid, (key, i, f0, f1, pfrm)
+
     def _set_plan(self, key: str, plan: Plan) -> None:
         old = self.plans.get(key)
         if old is not None:
-            for i, sid in enumerate(old.sections):
-                self.changed_index[sid].remove((key, i))
+            for psid, entry in self._track_entries(key, old):
+                self.changed_index[psid].remove(entry)
         self.plans[key] = plan
-        for i, sid in enumerate(plan.sections):
+        for psid, entry in self._track_entries(key, plan):
             # Kept sorted, so conflict search (and therefore ranking) never depends on the order of decisions.
-            insort(self.changed_index[sid], (key, i))
+            insort(self.changed_index[psid], entry)
 
     def _violations(self, plan: Plan, start: int, run: Run) -> list[str]:
         out = []
         for sid in plan.sections[start:]:
-            sec = self.section(sid)
+            sec = self.physical(sid)
             if not sec.available:
                 out.append(f"{sid} closed")
             if sec.obstacle:
@@ -834,8 +1030,14 @@ class NationalTwin:
                 if cost > budget or cost > best[node][0]:
                     continue
                 for sid in adj[node]:
-                    sec = self.section(sid)
-                    if sid in banned or not sec.available or sec.obstacle or run.axle_load_t > sec.axle_limit_t:
+                    sec = self.physical(sid)
+                    if (
+                        sid in banned
+                        or banned & self.members.get(sid, frozenset())
+                        or not sec.available
+                        or sec.obstacle
+                        or run.axle_load_t > sec.axle_limit_t
+                    ):
                         continue
                     nxt, nc = sec.other(node), cost + sec.length_km / min(run.vmax_kmph, sec.vmax_kmph) * 60
                     if nc < best.get(nxt, (1e18,))[0]:
@@ -920,26 +1122,31 @@ class NationalTwin:
             if e <= self.now or e > limit + HORIZON_SCAN_MARGIN_MIN:
                 enter[i], exit_[i] = e, x
                 continue
-            sid, frm, tracks = plan.sections[i], plan.frm[i], self.section(plan.sections[i]).tracks
+            pieces = self.parts(plan.sections[i], plan.frm[i])
             se, sx = plan.s_enter[i], plan.s_exit[i]
             for _attempt in range(30):
                 need = 0.0
-                for okey, _j, oe, ox, ofrm, ose, osx in self.occupants(sid, e - 2 * h, x + 2 * h, exclude, overrides):
-                    if min(e, oe) > limit:
-                        continue  # both beyond the horizon: planned when they come into view
-                    if max_priority is not None and self.runs[okey].priority > max_priority:
-                        continue  # lower-priority traffic will be re-pathed around this train
-                    same = ofrm == frm
-                    g = gap(tracks, same, e, x, oe, ox)
-                    if g is None:
-                        continue
-                    planned = gap(tracks, same, se, sx, ose, osx) if None not in (se, sx, ose, osx) else None
-                    required = h if planned is None else min(h, planned)
-                    if g < required - 1e-6:
-                        # Follow the other train: enter after it clears (single line) or keep headway
-                        # without overtaking (multi-track, same direction).
-                        shift = ox + required - e if tracks == 1 else max(oe + required - e, ox + required - x)
-                        need = max(need, shift)
+                for psid, f0, f1, pfrm in pieces:  # every piece of track the section runs over
+                    pe, px, pse, psx = _piece(e, x, se, sx, f0, f1)
+                    tracks = self.section(psid).tracks
+                    for okey, _j, oe, ox, ofrm, ose, osx in self.occupants(
+                        psid, pe - 2 * h, px + 2 * h, exclude, overrides
+                    ):
+                        if min(pe, oe) > limit:
+                            continue  # both beyond the horizon: planned when they come into view
+                        if max_priority is not None and self.runs[okey].priority > max_priority:
+                            continue  # lower-priority traffic will be re-pathed around this train
+                        same = ofrm == pfrm
+                        g = gap(tracks, same, pe, px, oe, ox)
+                        if g is None:
+                            continue
+                        planned = gap(tracks, same, pse, psx, ose, osx) if None not in (pse, psx, ose, osx) else None
+                        required = h if planned is None else min(h, planned)
+                        if g < required - 1e-6:
+                            # Follow the other train: enter after it clears (single line) or keep headway
+                            # without overtaking (multi-track, same direction). The whole section moves with it.
+                            shift = ox + required - pe if tracks == 1 else max(oe + required - pe, ox + required - px)
+                            need = max(need, shift)
                 if need <= 1e-6:
                     break
                 e, x, extra = e + need, x + need, extra + need
@@ -1054,12 +1261,15 @@ class NationalTwin:
             if pathed is not None:
                 waits = sum(1 for i, v in pathed.sources.items() if v > base.sources.get(i, 0.0))
                 options.append((f"PATH {pathed.note}", pathed, waits))
+        # Banned pieces of track: the first conflict's, and every closed or obstructed one ahead
         banned = {first["section_id"]} if first and first["index"] >= start else set()
-        banned |= {
-            sid for sid in base.sections[start:] if not self.section(sid).available or self.section(sid).obstacle
-        }
+        for sid in base.sections[start:]:
+            for piece in self.members.get(sid, (sid,)):
+                if not self.section(piece).available or self.section(piece).obstacle:
+                    banned.add(piece)
         if banned:
-            bad = min(i for i in range(start, len(base.sections)) if base.sections[i] in banned)
+            hit = lambda sid: sid in banned or bool(banned & self.members.get(sid, frozenset()))  # noqa: E731
+            bad = min(i for i in range(start, len(base.sections)) if hit(base.sections[i]))
             for detour in self._detours(key, base, start, bad, banned):
                 options.append((f"REROUTE {detour.note}", detour, 0))
         out = []
@@ -1114,7 +1324,7 @@ class NationalTwin:
             delay += orun.delay_weight * (final(oplan, orun) - final(self.plan_of(okey), orun))
         stress = energy = threat = 0.0
         for i in range(start, len(plan.sections)):
-            sec = self.section(plan.sections[i])
+            sec = self.physical(plan.sections[i])
             speed = min(run.vmax_kmph, sec.vmax_kmph)
             stress += section_stress(run, sec, speed)["stress"]
             energy += section_energy(run, sec, speed)
@@ -1378,6 +1588,8 @@ class NationalTwin:
             if set(changes) - allowed:
                 raise ValueError(f"fields {sorted(set(changes) - allowed)} cannot be changed")
             self.section_overrides[sid] = replace(self.section(sid), **changes)
+            for piece in sorted(self.members.get(sid, ())):  # it is the track of those shorter sections too
+                self.section_overrides[piece] = replace(self.section(piece), **changes)
             self.audit.record(int(self.now * 60), "SECTION_UPDATED", source, {"section": sid, **changes})
             self.refresh()
             return self.section_overrides[sid]
@@ -1476,14 +1688,17 @@ class NationalTwin:
                             flag.get("detail", "Live observation not on the planned route."),
                         )
                     )
-        flagged = {
+        flagged = {  # pieces of track: a section over shorter ones passes its changes on to them
             sid: sec
             for sid, sec in self.section_overrides.items()
-            if sec.obstacle
-            or not sec.available
-            or sec.condition < 0.5
-            or sec.weather_alert
-            or sec.temp_restriction_kmph
+            if sid not in self.members
+            and (
+                sec.obstacle
+                or not sec.available
+                or sec.condition < 0.5
+                or sec.weather_alert
+                or sec.temp_restriction_kmph
+            )
         }
         for sid, sec in flagged.items():
             for key, _i, e, _x, *_rest in self.occupants(sid, self.now, self.now + 60):
@@ -1548,8 +1763,12 @@ class NationalTwin:
         occupied: dict[str, list[tuple[str, str]]] = defaultdict(list)
         for key in self.plans:  # timetabled runs cannot meet head-on (the timetable is feasible); changed ones can
             pos = self.position(key)
-            if pos["state"] == "RUNNING" and self.section(pos["section_id"]).tracks == 1:
-                occupied[pos["section_id"]].append((key, pos["from_node"]))
+            if pos["state"] != "RUNNING":
+                continue
+            piece = self.piece_at(pos["section_id"], pos["from_node"], pos["offset_km"])
+            if self.section(piece).tracks == 1:
+                pfrm = next(p[3] for p in self.parts(pos["section_id"], pos["from_node"]) if p[0] == piece)
+                occupied[piece].append((key, pfrm))
         for sid, here in occupied.items():
             for okey, _j, e, x, frm, *_rest in self.occupants(sid, self.now, self.now, frozenset(self.plans)):
                 if e <= self.now < x:
@@ -1607,14 +1826,15 @@ class NationalTwin:
                 status = "NORMAL"
             i = pos["index"]
             ahead = plan.sections[i : i + 6]
-            sec = self.section(plan.sections[min(i, len(plan.sections) - 1)])
+            sec = self.physical(plan.sections[min(i, len(plan.sections) - 1)])
             band = None
             if status in ("NORMAL", "CAUTION") and pos["state"] == "RUNNING":
                 v = min(run.vmax_kmph, sec.vmax_kmph, sec.temp_restriction_kmph or 1e9)
                 band = [round(v * 0.9), round(v)]
             nearby = []
             if pos["section_id"]:
-                for okey, _j, e, x, *_rest in self.occupants(pos["section_id"], self.now, self.now, frozenset({key})):
+                piece = self.piece_at(pos["section_id"], pos["from_node"], pos["offset_km"])
+                for okey, _j, e, x, *_rest in self.occupants(piece, self.now, self.now, frozenset({key})):
                     if e <= self.now < x:
                         nearby.append(
                             {

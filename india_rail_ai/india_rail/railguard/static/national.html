@@ -84,7 +84,10 @@
       <div class="row">Run <b id="selRun">—</b> late from <select id="station"></select> by
         <input id="delay" type="number" min="1" max="720" value="30" size="4"> min
         <button id="disrupt">Record</button></div>
-      <div class="row"><a id="cabLink" class="link-a" href="#">Open this train's cab view</a></div>
+      <div class="row"><a id="cabLink" class="link-a" href="#">Open this train's cab view</a>
+        <button id="issueCab">Issue cab link (12 h)</button></div>
+      <div class="row" id="cabIssued" hidden><input id="cabUrl" readonly size="34" aria-label="Cab link for this train">
+        <span class="muted" id="cabExpiry"></span></div>
     </section>
     <section class="panel">
       <h2>3 · Rank alternatives</h2>

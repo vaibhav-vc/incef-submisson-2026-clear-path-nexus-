@@ -606,6 +606,8 @@ class NationalEpisode:
         else:
             pool = sorted(tw.net.sections)
         sid = rng.choice(pool)
+        if sid in tw.members and rng.random() < 0.5:  # a piece of the track an express section runs over
+            sid = rng.choice(sorted(tw.members[sid]))
         changes = rng.choice(
             (
                 {"condition": round(rng.uniform(0.2, 0.9), 2)},
@@ -756,7 +758,7 @@ class NationalEpisode:
             if plan.enter[i] < tw.now:
                 continue  # already on it: the run must clear the section it occupies
             sid = plan.sections[i]
-            sec = tw.section(sid)
+            sec = tw.physical(sid)  # blocked if any piece of track it runs over is
             check(sec.available and not sec.obstacle, "RANKING", f"{label} routes {key} over blocked {sid}")
             check(run.axle_load_t <= sec.axle_limit_t, "RANKING", f"{label} {key} axle limit on {sid}")
         bad = [c for c in tw.conflicts(key, plan, idx, ignore, overrides) if c["is_conflict"]]
@@ -787,7 +789,7 @@ class NationalEpisode:
         if full is not None:
             plan = full["plan"]
             for i in range(tw.position(key)["index"], len(plan.sections)):
-                sec = tw.section(plan.sections[i])
+                sec = tw.physical(plan.sections[i])
                 if plan.enter[i] >= tw.now and (sec.obstacle or not sec.available):
                     blocked.append(sec.id)
         stale = tw.position_state(key) == STALE
@@ -834,8 +836,13 @@ class NationalEpisode:
 
     def check_index(self) -> None:
         tw = self.tw
-        expected = sorted((sid, k, i) for k, p in tw.plans.items() for i, sid in enumerate(p.sections))
-        actual = sorted((sid, k, i) for sid, entries in tw.changed_index.items() for k, i in entries)
+        expected = sorted(
+            (piece, k, i, f0, f1, pfrm)
+            for k, p in tw.plans.items()
+            for i, sid in enumerate(p.sections)
+            for piece, f0, f1, pfrm in tw.parts(sid, p.frm[i])
+        )
+        actual = sorted((piece, *entry) for piece, entries in tw.changed_index.items() for entry in entries)
         check(expected == actual, "NO_CRASH", "changed-run index out of sync with plans")
 
     def check_cab(self, key: str) -> None:

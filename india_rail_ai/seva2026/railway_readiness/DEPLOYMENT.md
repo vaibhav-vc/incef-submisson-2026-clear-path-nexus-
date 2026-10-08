@@ -106,8 +106,15 @@ Set `RAILGUARD_UPS=ups@host.docker.internal`. Reads need no NUT account (`GET VA
   * refused as spoofing or multipath if they jump or run backwards;
   * dropped if older than 3 minutes.
 * **Cab displays.** A controller issues each unit a capability for its own run, valid 1–24 h:
-  `POST /railguard/national/cab/{run}/token`. The unit then holds `GET /railguard/national/cab/{run}/stream`, a
-  server-sent event stream that delivers that train's advisory the moment it changes.
+  `POST /railguard/national/cab/{run}/token`, or **Issue cab link** in the national console. The unit then holds
+  `GET /railguard/national/cab/{run}/stream`, a server-sent event stream that delivers that train's advisory the
+  moment it changes.
+  * The console's link is `/cab?run=<run>#cab=<capability>`. The capability travels in the URL fragment, which
+    browsers never send to a server. The cab page moves it out of the address bar into the tab's session storage.
+  * The cab screen holds no viewer or controller token: it can read its own train's advisory and nothing else.
+  * If the stream goes silent for 25 s (the server speaks at least every 15 s), the screen shows
+    `DATA UNAVAILABLE` and clears the speed band until the link is back. An expired or wrong link shows a
+    message asking for a new one.
 
 ## 7. Monitoring and logs
 

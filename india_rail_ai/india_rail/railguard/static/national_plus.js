@@ -78,6 +78,19 @@ async function liveLoop() {
   }
 }
 
+// ---- cab link: a capability for one train's advisory, handed to that train's cab unit ---------------------
+async function issueCab() {
+  if (!selected) throw new Error("Select a train run first");
+  const r = await api(`/cab/${encodeURIComponent(selected)}/token`, {issued_by: who(), hours: 12});
+  const box = document.getElementById("cabUrl");
+  // The capability travels in the fragment: browsers never send it to a server, and the cab page removes it.
+  box.value = `${location.origin}/cab?run=${encodeURIComponent(r.run)}#cab=${r.token}`;
+  document.getElementById("cabExpiry").textContent =
+    `valid until ${new Date(r.expires_at * 1000).toLocaleString()} · for ${r.run}'s cab unit only`;
+  document.getElementById("cabIssued").hidden = false;
+  box.select();
+}
+
 // ---- power and readiness ------------------------------------------------------------------------------
 async function health() {
   const b = document.getElementById("powerBadge");
@@ -211,6 +224,7 @@ async function startPlus() {
   document.getElementById("tq").addEventListener("keydown", (e) => { if (e.key === "Enter") act(searchTrains); });
   document.getElementById("akind").onchange = () => act(loadAdvice);
   document.getElementById("fplan").onclick = () => act(planFreight);
+  document.getElementById("issueCab").onclick = () => act(issueCab);
   document.getElementById("showDfc").onchange = () => draw();
   await restoreSession();
   try {

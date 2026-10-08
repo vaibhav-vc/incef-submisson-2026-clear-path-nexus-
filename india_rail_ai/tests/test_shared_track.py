@@ -1,0 +1,184 @@
+"""Trains with different stopping patterns share track: separation is checked on the pieces they share.
+
+Line A-B-C-D (single line) with a bypass B-X-C. 12951 (Rajdhani) runs A->D non-stop, so its one section A-D is
+the track of the locals' A-B, B-C and C-D. 59001 follows it A->D stopping everywhere, 59002 and 59004 run D->A,
+19001 uses the bypass (a different track, longer than B-C, so B-C is not split).
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from india_rail.ingest import build_database
+from india_rail.railguard.national import NationalTwin, build_national
+
+STATIONS = {"A": (77.0, 28.0), "B": (77.1, 28.0), "C": (77.2, 28.0), "D": (77.3, 28.0), "X": (77.15, 28.06)}
+TRAINS = {
+    "12951": ("Raj", [("A", "None", "10:00"), ("D", "10:24", "None")]),
+    "59001": (
+        "Pass",
+        [("A", "None", "10:30"), ("B", "10:42", "10:43"), ("C", "10:55", "10:56"), ("D", "11:08", "None")],
+    ),
+    "59002": (
+        "Pass",
+        [("D", "None", "09:00"), ("C", "09:12", "09:13"), ("B", "09:25", "09:26"), ("A", "09:38", "None")],
+    ),
+    "59004": (
+        "Pass",
+        [("D", "None", "11:30"), ("C", "11:42", "11:43"), ("B", "11:55", "11:56"), ("A", "12:08", "None")],
+    ),
+    "19001": ("Exp", [("B", "None", "08:00"), ("X", "08:08", "08:09"), ("C", "08:20", "None")]),
+}
+RAJ, LOCAL, OPPOSING = "12951@0", "59001@0", "59004@0"
+
+
+@pytest.fixture(scope="module")
+def data(tmp_path_factory):
+    tmp: Path = tmp_path_factory.mktemp("shared")
+    stations = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": list(xy)},
+                "properties": {"code": c, "name": f"Station {c}", "zone": "NR", "state": "Delhi"},
+            }
+            for c, xy in STATIONS.items()
+        ],
+    }
+    trains = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": None,
+                "properties": {
+                    "number": n,
+                    "name": f"Train {n}",
+                    "type": t,
+                    "zone": "NR",
+                    "distance": 30,
+                    "return_train": "",
+                },
+            }  # fmt: skip
+            for n, (t, _stops) in TRAINS.items()
+        ],
+    }
+    schedules, row_id = [], 1
+    for number, (_t, stops) in TRAINS.items():
+        for code, arr, dep in stops:
+            schedules.append(
+                {
+                    "id": row_id,
+                    "train_number": number,
+                    "train_name": number,
+                    "station_code": code,
+                    "station_name": code,
+                    "arrival": arr if arr == "None" else arr + ":00",
+                    "departure": dep if dep == "None" else dep + ":00",
+                    "day": 1,
+                }
+            )
+            row_id += 1
+    paths = {}
+    for key, payload in {"stations": stations, "trains": trains, "schedules": schedules}.items():
+        paths[key] = tmp / f"{key}.json"
+        paths[key].write_text(json.dumps(payload))
+    build_database(paths, tmp / "rail.sqlite")
+    return build_national(tmp / "rail.sqlite")
+
+
+@pytest.fixture()
+def twin(data) -> NationalTwin:
+    return NationalTwin(data, start_min=590.0)
+
+
+def test_a_section_over_shorter_sections_is_split_into_them(data):
+    forward, backward = data.parts["A-D"]
+    assert [(p[0], p[3]) for p in forward] == [("A-B", "A"), ("B-C", "B"), ("C-D", "C")]
+    assert [(p[0], p[3]) for p in backward] == [("C-D", "D"), ("B-C", "C"), ("A-B", "B")]
+    assert forward[0][1] == 0.0 and forward[-1][2] == 1.0
+    assert "B-C" not in data.parts  # the bypass via X is other track, and much longer
+    assert data.stats["sections_over_shorter_sections"] == 1
+    # The Rajdhani occupies each piece in turn; nothing is registered on its stop-to-stop section itself.
+    assert RAJ in data.occupancy["B-C"].keys and "A-D" not in data.occupancy
+
+
+def test_the_timetable_is_clear_on_shared_track(twin):
+    for key in twin.runs:
+        assert not [c for c in twin.conflicts(key, twin.plan_of(key), 0) if c["is_conflict"]]
+
+
+def test_a_late_express_conflicts_with_the_local_on_the_track_they_share(twin):
+    result = twin.disrupt(RAJ, "A", 30)
+    shared = {c["section_id"] for c in result["conflicts"] if c["other"] == LOCAL}
+    assert "A-B" in shared  # A-B is not one of the Rajdhani's own sections: invisible before
+    # Seen from the local too: the changed run is indexed on the pieces of track it runs over.
+    seen = twin.conflicts(LOCAL, twin.plan_of(LOCAL), 0)
+    assert any(c["other"] == RAJ and c["section_id"] == "A-B" and c["is_conflict"] for c in seen)
+    assert any(t.type == "CONVERGING_PATH" and t.section_id == "A-B" for t in twin.threats.active())
+    assert any(entry[0] == RAJ for entry in twin.changed_index["C-D"])
+
+
+def test_every_ranked_plan_is_clear_on_shared_track(twin):
+    twin.disrupt(RAJ, "A", 30)
+    rec = twin.recommend(RAJ)
+    assert rec["ranking"]["state"] == "RANKED"
+    for (key, _cid), cand in twin._cache.items():
+        overrides = {k: p for k, (p, _hold) in cand["yields"].items()}
+        found = twin.conflicts(key, cand["plan"], twin.position(key)["index"], overrides=overrides)
+        assert not [c for c in found if c["is_conflict"]], cand["label"]
+
+
+def test_path_through_waits_for_the_local_on_every_piece(twin):
+    twin.disrupt(RAJ, "A", 30)
+    pathed = twin._path_through(RAJ, twin.plan_of(RAJ), 0)
+    assert pathed is not None and pathed.enter[0] > twin.plan_of(RAJ).enter[0]
+    assert not [c for c in twin.conflicts(RAJ, pathed, 0) if c["is_conflict"]]
+
+
+def test_closing_a_piece_closes_the_express_section_and_reopening_reopens_it(twin):
+    twin.update_section("B-C", available=False)
+    assert not twin.physical("A-D").available
+    run = twin.runs[RAJ]
+    assert "A-D closed" in twin._violations(twin.plan_of(RAJ), 0, run)
+    rec = twin.recommend(RAJ)
+    assert rec["ranking"]["state"] == "RANKED"
+    for cand in rec["ranking"]["candidates"]:
+        assert "A-D" not in cand["route_ahead"] and "B-C" not in cand["route_ahead"]
+        assert "C-X" in cand["route_ahead"]  # round the closure by the bypass
+    twin.update_section("B-C", available=True)
+    assert twin.physical("A-D").available
+
+
+def test_a_closure_of_the_express_section_reaches_every_local_on_it(twin):
+    twin.update_section("A-D", obstacle=True)
+    assert all(twin.section(p).obstacle for p in ("A-B", "B-C", "C-D"))
+    blocked = {(t.section_id, *t.train_ids) for t in twin.threats.active() if t.type == "OBSTACLE"}
+    assert ("A-B", RAJ) in blocked and ("A-B", LOCAL) in blocked
+    assert all(sid != "A-D" for sid, *_ in blocked)  # reported on the pieces, once each
+
+
+def test_opposing_trains_on_one_single_line_piece_are_critical(twin):
+    twin.disrupt(RAJ, "A", 80)  # now meets 59004 head-on between C and D
+    twin.tick(108)  # 11:38: the Rajdhani is on its A-D section, on the C-D piece; 59004 is on C-D too
+    assert twin.position(RAJ)["section_id"] == "A-D"
+    head_on = [t for t in twin.threats.active() if t.type == "OPPOSING_SAME_SECTION"]
+    assert head_on and head_on[0].section_id == "C-D" and set(head_on[0].train_ids) == {RAJ, OPPOSING}
+    assert OPPOSING in {n["run"] for n in twin.cab(RAJ)["nearby_trains"]}
+
+
+def test_the_changed_run_index_follows_the_plans(twin):
+    twin.disrupt(RAJ, "A", 30)
+    twin.disrupt(LOCAL, "B", 10)
+    expected = sorted(
+        (piece, k, i, f0, f1, pfrm)
+        for k, p in twin.plans.items()
+        for i, sid in enumerate(p.sections)
+        for piece, f0, f1, pfrm in twin.parts(sid, p.frm[i])
+    )
+    actual = sorted((piece, *e) for piece, entries in twin.changed_index.items() for e in entries)
+    assert expected == actual

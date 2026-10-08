@@ -112,6 +112,7 @@ async function selectRun(r) {
   const station = document.getElementById("station");
   station.replaceChildren(...r.next_departures.map(d => el("option", {value: d.station}, `${d.station} (${d.time})`)));
   document.getElementById("cabLink").href = `/cab?run=${encodeURIComponent(r.run)}`;
+  document.getElementById("cabIssued").hidden = true;  // a link issued for the previous train
   planCoords = (await api(`/plan/${encodeURIComponent(r.run)}`)).coords;
   fit(planCoords);
   await findTrain();
