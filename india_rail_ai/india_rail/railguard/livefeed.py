@@ -12,9 +12,13 @@ so that only credentials and the field mapping of the authorised interface remai
   `sent_at` outside +/-MAX_SKEW_S of the server clock, a nonce already seen,
   a sequence number not above the last one, more than MAX_EVENTS events.
 * Events:
-  POSITION {train_number, start_date, lat, lon, speed_kmph, observed_at} - a GNSS
-    fix (e.g. RTIS), map-matched onto the train's *planned* route within
-    MATCH_KM; anything else is a route deviation, never silently accepted.
+  POSITION {train_number, start_date, lat, lon, speed_kmph, observed_at, [satellites, hdop]} - a GNSS
+    fix (e.g. RTIS or a cab unit, see `gps`). A fix with too few satellites or poor geometry (HDOP) is
+    refused. It is map-matched onto the *mapped track* (OpenStreetMap) of the train's planned sections,
+    within max(50 m, 3 x accuracy), 300 m inside station yards; unmapped sections use the straight
+    station line within MATCH_KM. A fix off the route is a route deviation, never silently accepted.
+    A fix that implies running backwards or faster than any line speed since the run's last accepted
+    position is a jump (spoofing, multipath, wrong train number): refused and flagged GNSS_IMPLAUSIBLE.
   STATION {train_number, start_date, station_code, event ARR|DEP|PASS, observed_at}
     - a station event (e.g. NTES/COA). Lateness of AUTO_DISRUPTION_MIN or more is
     recorded as a disruption for the controller to decide on; the feed never
@@ -38,10 +42,15 @@ from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+from india_rail.railguard import gps
+
 IST = timezone(timedelta(hours=5, minutes=30))
 MAX_SKEW_S = 120
 MAX_EVENTS = 250
-MATCH_KM = 3.0  # GNSS fix to straight-line section geometry (station coordinates); curves need slack
+MATCH_KM = gps.STRAIGHT_LINE_TOLERANCE_M / 1000  # unmapped sections: straight station line, curves need slack
+DEFAULT_ACCURACY_M = 30.0  # a feed that does not state HDOP: assume a modest receiver
+DEVIATION_NOW_M = 1000.0  # a fix this far from the route raises a route deviation at once; nearer, only the second
+# off-route fix in a row does (one multipath fix must not become a nuisance alarm)
 AUTO_DISRUPTION_MIN = 5.0
 MIN_SECRET_BYTES = 32
 NONCES_KEPT = 100_000
@@ -107,6 +116,10 @@ class FeedGateway:
         # Section index of each run's last accepted observation: a real report is matched from there on, not
         # from the projection (a late train not yet reported is projected ahead of where it really is).
         self.last_index: dict[str, int] = {}
+        # Each run's last accepted position along its route, for the plausibility of the next fix.
+        self.tracks: dict[str, gps.Track] = {}
+        self.off_route: dict[str, int] = {}  # consecutive off-route fixes per run
+        self.matcher = gps.TrackMatcher(twin)
 
     # ---- envelope ----------------------------------------------------------------------------------
     def receive(self, envelope: dict[str, Any]) -> dict[str, Any]:
@@ -207,6 +220,7 @@ class FeedGateway:
         if f"position:{key}" in self.twin.evidence.records:
             return self.last_index.get(key, default)
         self.last_index.pop(key, None)
+        self.tracks.pop(key, None)
         return default
 
     def _minutes(self, when: datetime) -> float:
@@ -220,31 +234,56 @@ class FeedGateway:
         speed = float(event.get("speed_kmph", 0.0))
         if not 0 <= speed <= 250:
             raise ValueError("speed outside 0-250 km/h")
+        accuracy = self._gnss_accuracy(event)
+        when = _when(event["observed_at"])
         twin = self.twin
-        plan = twin.plan_of(key)
         here = twin.position(key)["index"]
         start = self._observed_from(key, max(here - 3, 0))
-        best = None
-        for i in range(start, min(max(here, start) + 8, len(plan.sections))):
-            (ax, ay), (bx, by) = twin.net.nodes[plan.frm[i]], twin.net.nodes[plan.to[i]]
-            kx = 111.32 * math.cos(math.radians(lat))
-            px, py, dx, dy = (lon - ax) * kx, (lat - ay) * 110.57, (bx - ax) * kx, (by - ay) * 110.57
-            frac = min(max((px * dx + py * dy) / max(dx * dx + dy * dy, 1e-9), 0.0), 1.0)
-            dist = math.hypot(px - frac * dx, py - frac * dy)
-            if best is None or dist < best[0]:
-                best = (dist, i, frac)
-        if best is None or best[0] > MATCH_KM:
+        found, nearest = self.matcher.candidates(key, lon, lat, accuracy, range(start, max(here, start) + 8))
+        if not found:
+            streak = self.off_route[key] = self.off_route.get(key, 0) + 1
+            reason = f"fix {nearest / 1000:.2f} km from the planned route's track"
+            if nearest < DEVIATION_NOW_M and streak < 2:
+                return {
+                    "accepted": False,
+                    "run": key,
+                    "reason": f"{reason} (refused; a second in a row is a deviation)",
+                }
             result = twin.ingest_position(key, "UNMATCHED", 0.0, source=f"FEED_{source}", refresh=False)
-            off = best[0] if best else math.inf
-            return {**result, "run": key, "reason": f"fix {off:.1f} km from the planned route"}
-        _dist, i, frac = best
-        sid = plan.sections[i]
-        result = twin.ingest_position(
-            key, sid, round(frac * twin.section(sid).length_km, 3), source=f"FEED_{source}", refresh=False
-        )
+            return {**result, "run": key, "reason": reason}
+        match, track, problem = gps.locate(self.tracks.get(key), when, found, accuracy, speed)
+        if match is None or track is None:
+            sid = min(found, key=lambda m: m.cross_track_m).section_id
+            twin.flags[key] = [f for f in twin.flags[key] if f["type"] != "GNSS_IMPLAUSIBLE"] + [
+                {"type": "GNSS_IMPLAUSIBLE", "until": twin.now + 5, "section": sid,
+                 "title": "GNSS position implausible - controller review",
+                 "detail": f"Fix refused: {problem}. Possible spoofing, multipath or a wrong train number.",
+                 "action": "Confirm the train's position through authorised means before relying on it."}]  # fmt: skip
+            return {"accepted": False, "run": key, "reason": f"implausible: {problem}"}
+        result = twin.ingest_position(key, match.section_id, match.offset_km, source=f"FEED_{source}", refresh=False)
         if result.get("accepted"):
-            self.last_index[key] = i
-        return {**result, "run": key, "section_id": sid, "match_km": round(best[0], 2)}
+            self.last_index[key] = track.first_index
+            self.tracks[key] = track
+            self.off_route.pop(key, None)
+        out = {**result, "run": key, "section_id": match.section_id, "cross_track_m": match.cross_track_m,
+               "matched_to": match.method}  # fmt: skip
+        if track.upper_m is not None:
+            out["ambiguous_m"] = round(track.upper_m - track.chainage_m)
+        return out
+
+    @staticmethod
+    def _gnss_accuracy(event: dict[str, Any]) -> float:
+        """Estimated horizontal accuracy (m); refuses a fix whose stated quality is too poor to place a train."""
+
+        sats, hdop = event.get("satellites"), event.get("hdop")
+        if sats is not None and (type(sats) is not int or sats < gps.MIN_SATELLITES):
+            raise ValueError(f"GNSS: {sats} satellites (minimum {gps.MIN_SATELLITES})")
+        if hdop is None:
+            return DEFAULT_ACCURACY_M
+        hdop = float(hdop)
+        if not 0 < hdop <= gps.MAX_HDOP:
+            raise ValueError(f"GNSS: HDOP {hdop} outside 0-{gps.MAX_HDOP}")
+        return hdop * gps.UERE_M
 
     def _station(self, source: str, key: str, event: dict[str, Any], minute: float) -> dict[str, Any]:
         station, what = event.get("station_code"), event.get("event")
@@ -281,6 +320,7 @@ class FeedGateway:
         )
         if result.get("accepted"):
             self.last_index[key] = i
+            self.tracks[key] = gps.Track(_when(event["observed_at"]), gps.chainage_m(twin, key, i, offset), None, i)
         out = {**result, "run": key, "late_min": round(late, 1)}
         if recorded:
             out["disruption_recorded"] = recorded
@@ -311,14 +351,18 @@ class FeedSimulator:
         env["signature"] = sign(env, self.secret)
         return env
 
-    def position_event(self, key: str, noise_km: float = 0.2) -> dict[str, Any] | None:
+    def position_event(
+        self, key: str, noise_m: float = 10.0, hdop: float = 1.2, satellites: int = 12
+    ) -> dict[str, Any] | None:
+        """A fix on the run's projected position along the mapped track, with receiver noise (metres, 1 sigma)."""
+
         twin, gw = self.gateway.twin, self.gateway
         lonlat = twin.lonlat(key)
         if lonlat is None:
             return None
         lon, lat = lonlat
-        lat += self.rng.gauss(0, noise_km / 110.57)
-        lon += self.rng.gauss(0, noise_km / (111.32 * math.cos(math.radians(lat))))
+        lat += self.rng.gauss(0, noise_m / 110574.0)
+        lon += self.rng.gauss(0, noise_m / (111320.0 * math.cos(math.radians(lat))))
         number, day = key.split("@")
         midnight = datetime.combine(gw.service_date, datetime.min.time(), IST)
         return {
@@ -328,5 +372,7 @@ class FeedSimulator:
             "lat": round(lat, 6),
             "lon": round(lon, 6),
             "speed_kmph": round(twin.position(key).get("speed_kmph", 0.0), 1),
+            "satellites": satellites,
+            "hdop": hdop,
             "observed_at": (midnight + timedelta(minutes=twin.now)).isoformat(),
         }

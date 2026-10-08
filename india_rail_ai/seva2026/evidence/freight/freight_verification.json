@@ -1,0 +1,58 @@
+{
+  "Eastern": {
+    "plans": 100,
+    "trains": 18002,
+    "violations": 0,
+    "not_planned": 38,
+    "blocked_cases": 34,
+    "published_daily_volume": 209,
+    "day_at_published_volume": {
+      "corridor": "Eastern",
+      "trains": 209,
+      "planned": 209,
+      "not_planned": [],
+      "mean_delay_min": 295.3,
+      "max_delay_min": 1697.0,
+      "on_free_path_pct": 24.4,
+      "violations": [],
+      "capacity": {
+        "busiest_segment": {
+          "segment": 29,
+          "lines": 1,
+          "km": 25.0,
+          "trains": 117,
+          "occupied_pct_of_day": 120.2
+        },
+        "segments_over_70pct": 9
+      }
+    }
+  },
+  "Western": {
+    "plans": 100,
+    "trains": 15473,
+    "violations": 0,
+    "not_planned": 0,
+    "blocked_cases": 34,
+    "published_daily_volume": 182,
+    "day_at_published_volume": {
+      "corridor": "Western",
+      "trains": 182,
+      "planned": 182,
+      "not_planned": [],
+      "mean_delay_min": 14.1,
+      "max_delay_min": 155.0,
+      "on_free_path_pct": 63.2,
+      "violations": [],
+      "capacity": {
+        "busiest_segment": {
+          "segment": 29,
+          "lines": 2,
+          "km": 25.0,
+          "trains": 111,
+          "occupied_pct_of_day": 60.6
+        },
+        "segments_over_70pct": 0
+      }
+    }
+  }
+}

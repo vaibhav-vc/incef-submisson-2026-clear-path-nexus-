@@ -21,15 +21,19 @@ from india_rail.realdata import REAL_DB_PATH
 
 
 class EtaForecaster:
-    def __init__(self, model_path: Path | None = None, db: Path = REAL_DB_PATH, history_until: str | None = None):
+    def __init__(self, model_path: Path | None = None, db: Path | None = None, history_until: str | None = None):
+        """`db`: the timetable the twin runs on (default: the one it is configured for). History comes from the
+        observed running (data/real.sqlite), keyed by train and station."""
+
         import joblib
 
         from india_rail import realval
+        from india_rail.railguard.national import timetable_source
 
         bundle = joblib.load(model_path or realval.ETA_MODEL_PATH)  # nosec B301 - model file produced by this project
         self.median, self.p10, self.p90 = bundle["median"], bundle["p10"], bundle["p90"]
         self.features = bundle["features"]
-        data = realval.load(db)
+        data = realval.load(db or timetable_source()[1], obs_db=REAL_DB_PATH)
         # In operation the history is every real day available; validation passes the training cut-off.
         self.lookups = realval.Lookups(data, history_until=history_until or max(data["obs"].date))
         self.source = bundle.get("trained_on", "")

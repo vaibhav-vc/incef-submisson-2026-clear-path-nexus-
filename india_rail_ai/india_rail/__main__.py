@@ -14,6 +14,26 @@ def main(argv: list[str] | None = None) -> int:
         from india_rail.official import main as official_main
 
         return official_main(argv[1:])
+    if argv[:1] == ["freight"]:
+        from india_rail.freight import main as freight_main
+
+        return freight_main(argv[1:])
+    if argv[:1] == ["advisor"]:
+        from india_rail.delay_advisor import main as advisor_main
+
+        return advisor_main(argv[1:])
+    if argv[:1] == ["gnss-verify"]:
+        from india_rail.railguard.gnss_verify import main as gnss_verify_main
+
+        return gnss_verify_main(argv[1:])
+    if argv[:1] == ["gnss"]:
+        from india_rail.railguard.gnss_agent import main as gnss_main
+
+        return gnss_main(argv[1:])
+    if argv[:1] == ["current"]:
+        from india_rail.current import main as current_main
+
+        return current_main(argv[1:])
     if argv[:1] == ["real"]:
         from india_rail.realdata import main as real_main
 
@@ -53,6 +73,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("official", help="register/ingest official Government of India railway data (--help for options)")
     sub.add_parser("schedules", help="working schedule, metrics and completeness audit of every train (--help)")
     sub.add_parser("real", help="real-life data: observed running, real track data, validation (--help)")
+    sub.add_parser("current", help="every train running now: current timetable, registry, PIN codes (--help)")
+    sub.add_parser("gnss", help="GNSS device agent for a loco/cab unit: NMEA in, signed position batches out (--help)")
+    sub.add_parser("advisor", help="delay-minimisation advisor: where delay is made on the real network (--help)")
+    sub.add_parser("gnss-verify", help="verify GNSS tracking on the real network with simulated receivers")
+    sub.add_parser("freight", help="Dedicated Freight Corridors: network and automated freight pathing (--help)")
 
     serve = sub.add_parser("serve", help="run the HTTP API")
     serve.add_argument("--host", default="127.0.0.1")

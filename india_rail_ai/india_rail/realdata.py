@@ -325,17 +325,27 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("build", help="build data/real.sqlite")
     osm = sub.add_parser("osm", help="add real infrastructure from an OpenStreetMap extract")
     osm.add_argument("--pbf", type=Path, required=True)
+    osm.add_argument("--db", choices=("real", "current"), default="real", help="timetable database to enrich")
     validate = sub.add_parser("validate", help="verify the system against the real running data")
     validate.add_argument("--out", type=Path, default=None)
+    scen = sub.add_parser("scenarios", help="retrain and score forecasts by situation in rolling-origin rounds")
+    scen.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
     if args.command == "fetch":
         print(fetch())
     elif args.command == "build":
         print(json.dumps(build(fetch()), indent=2, default=str))
     elif args.command == "osm":
+        from india_rail.current import CURRENT_DB_PATH
         from india_rail.osm_infra import apply_to_database
 
-        print(json.dumps(apply_to_database(args.pbf, REAL_DB_PATH), indent=2))
+        target = CURRENT_DB_PATH if args.db == "current" else REAL_DB_PATH
+        print(json.dumps(apply_to_database(args.pbf, target), indent=2))
+    elif args.command == "scenarios":
+        from india_rail import scenario_ml
+
+        report = scenario_ml.run(args.out or scenario_ml.EVIDENCE)
+        print(json.dumps(report["summary"]["overall_mae_min"], indent=2))
     else:
         from india_rail.realval import validate_all
 

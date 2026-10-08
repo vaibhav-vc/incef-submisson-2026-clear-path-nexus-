@@ -50,6 +50,7 @@ SAME_LINE_OFFSET_M = 2.0
 SNAP_REF_KM = 1.5
 SNAP_COORD_KM = 1.0
 CELL_DEG = 0.005
+GEOMETRY_TOLERANCE_M = 15.0
 
 
 def _gauge(value: str | None) -> int | None:
@@ -344,7 +345,32 @@ def _path_attributes(graph, src, dst, dist, pred, crow_km, timetable_km) -> dict
         "maxspeed_kmph": float(speeds[speeds > 0].min()) if (speeds > 0).any() else None,
         "maxspeed_share": round(float(seg_km[speeds > 0].sum() / length), 3) if length else None,
         "service_share": round(float(seg_km[service].sum() / length), 3) if length else None,
+        "geometry": json.dumps(simplify(lon, lat)),  # the real track path, from the first to the second station
     }
+
+
+def simplify(lon: np.ndarray, lat: np.ndarray, tolerance_m: float = GEOMETRY_TOLERANCE_M) -> list[list[float]]:
+    """Douglas-Peucker simplification of a track path (kept within `tolerance_m` of the mapped line)."""
+
+    if len(lon) <= 2:
+        return [[round(float(x), 5), round(float(y), 5)] for x, y in zip(lon, lat, strict=True)]
+    mx = 111320.0 * math.cos(math.radians(float(np.mean(lat))))
+    x, y = (lon - lon[0]) * mx, (lat - lat[0]) * 110574.0
+    keep = np.zeros(len(lon), dtype=bool)
+    keep[[0, -1]] = True
+    stack = [(0, len(lon) - 1)]
+    while stack:
+        i, j = stack.pop()
+        if j <= i + 1:
+            continue
+        dx, dy = x[j] - x[i], y[j] - y[i]
+        norm = math.hypot(dx, dy) or 1e-9
+        d = np.abs(dy * (x[i + 1 : j] - x[i]) - dx * (y[i + 1 : j] - y[i])) / norm
+        k = int(np.argmax(d))
+        if d[k] > tolerance_m:
+            keep[i + 1 + k] = True
+            stack += [(i, i + 1 + k), (i + 1 + k, j)]
+    return [[round(float(a), 5), round(float(b), 5)] for a, b in zip(lon[keep], lat[keep], strict=True)]
 
 
 def _single_stretches(lines: list[int]) -> tuple[float, float]:
@@ -408,7 +434,7 @@ def apply_to_database(pbf: Path, db_path: Path) -> dict[str, Any]:
         CREATE TABLE osm_sections (edge TEXT PRIMARY KEY, quality TEXT, osm_km REAL, lines INTEGER,
             lines_median REAL, single_share REAL, longest_single_km REAL, samples INTEGER, electrified_share REAL,
             electrification_known_share REAL, gauge_mm INTEGER, maxspeed_kmph REAL, maxspeed_share REAL,
-            service_share REAL);
+            service_share REAL, geometry TEXT);
         """
     )
     con.executemany(
@@ -417,10 +443,11 @@ def apply_to_database(pbf: Path, db_path: Path) -> dict[str, Any]:
     )
     cols = ("quality", "osm_km", "lines", "lines_median", "single_share", "longest_single_km", "samples",
             "electrified_share",
-            "electrification_known_share", "gauge_mm", "maxspeed_kmph", "maxspeed_share", "service_share")  # fmt: skip
-    # edge + the 13 columns above (sqlite refuses a row whose length does not match)
+            "electrification_known_share", "gauge_mm", "maxspeed_kmph", "maxspeed_share", "service_share",
+            "geometry")  # fmt: skip
+    # edge + the 14 columns above (sqlite refuses a row whose length does not match)
     con.executemany(
-        "INSERT INTO osm_sections VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO osm_sections VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [(e, *(a.get(c) for c in cols)) for e, a in attrs.items()],
     )
     accepted = [a for a in attrs.values() if a["quality"] == "ACCEPTED"]

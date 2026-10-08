@@ -32,7 +32,7 @@ from typing import Any
 
 from india_rail.ingest import DATA_DIR, DB_PATH
 from india_rail.network import DEFAULT_PRIORITY, UNKNOWN_PRIORITY, clock
-from india_rail.railguard import scoring
+from india_rail.railguard import gps, scoring
 from india_rail.railguard.audit import AuditLog
 from india_rail.railguard.evidence import AGING, FRESH, STALE, EvidenceStore, checksum
 from india_rail.railguard.model import AUTHORITY, CAB_FOOTER, Network, Section
@@ -151,6 +151,7 @@ def build_national(db_path: Path = DB_PATH, service_date: date | None = None, us
     stations.update(osm_stations)  # mapped station positions (located by their Indian Railways code) win
     official_km = _official_section_km(con)
     running_days = _running_days(con)
+    validity = _validity(con)
     service_date = service_date or datetime.now(timezone(timedelta(hours=5, minutes=30))).date()
     trains = {row[0]: row[1:] for row in con.execute("SELECT number, name, type FROM trains")}
     rows = con.execute(
@@ -167,7 +168,7 @@ def build_national(db_path: Path = DB_PATH, service_date: date | None = None, us
         neighbours[a].add(b)
         neighbours[b].add(a)
     network = Network(nodes=_place_nodes(stations, nodes_used, neighbours), sections=sections)
-    runs, index = _build_runs(by_train, trains, running_days, service_date)
+    runs, index = _build_runs(by_train, trains, running_days, service_date, validity)
     occupancy = _build_occupancy(runs, index)
 
     own = {n for n in nodes_used if stations.get(n, (None,))[0] is not None}
@@ -189,6 +190,7 @@ def build_national(db_path: Path = DB_PATH, service_date: date | None = None, us
         "stations_placed_from_neighbours": len(nodes_used - own),
         "train_numbers": len(by_train),
         "trains_with_known_running_days": sum(1 for n in by_train if n in running_days),
+        "trains_with_validity_dates": sum(1 for n in by_train if n in validity),
         "service_date": service_date.isoformat(),
         "runs_in_window": len(runs),
         "occupations": sum(len(v) for v in index.values()),
@@ -292,10 +294,16 @@ def _place_nodes(
 
 
 def _build_runs(
-    by_train: dict[str, list[tuple]], trains: dict[str, tuple], running_days: dict[str, set[int]], service_date: date
+    by_train: dict[str, list[tuple]],
+    trains: dict[str, tuple],
+    running_days: dict[str, set[int]],
+    service_date: date,
+    validity: dict[str, tuple[str | None, str | None]] | None = None,
 ) -> tuple[dict[str, Run], dict]:
-    """One run per train number and start day that touches the two-day window (and on which the train runs)."""
+    """One run per train number and start day that touches the two-day window, on which the train runs and
+    within its timetable validity (e.g. a festival special that ended is not run)."""
 
+    validity = validity or {}
     runs: dict[str, Run] = {}
     index: dict[str, list[tuple[str, int]]] = defaultdict(list)
     for number, legs in by_train.items():
@@ -307,9 +315,13 @@ def _build_runs(
             off = day * 1440
             if legs[-1][4] + off < 0 or legs[0][3] + off > WINDOW_MIN:
                 continue
+            start = service_date + timedelta(days=day)
             days = running_days.get(number)
-            if days is not None and (service_date + timedelta(days=day)).weekday() not in days:
+            if days is not None and start.weekday() not in days:
                 continue  # does not run on that start date
+            first, last = validity.get(number, (None, None))
+            if (first and start.strftime("%Y%m%d") < first) or (last and start.strftime("%Y%m%d") > last):
+                continue  # outside the timetable validity of this train
             key = f"{number}@{day}"
             runs[key] = Run(
                 key,
@@ -363,6 +375,16 @@ def _running_days(con: sqlite3.Connection) -> dict[str, set[int]]:
     for number, days in rows:
         out[number] = set(range(7)) if days == "Daily" else {names.index(d) for d in days.split(",") if d in names}
     return out
+
+
+def _validity(con: sqlite3.Connection) -> dict[str, tuple[str | None, str | None]]:
+    """First and last valid start dates (YYYYMMDD) per train, where the timetable states them."""
+
+    try:
+        rows = con.execute("SELECT number, valid_from, valid_to FROM train_registry WHERE in_twin = 1")
+        return {n: (a, b) for n, a, b in rows if a or b}
+    except sqlite3.OperationalError:
+        return {}
 
 
 def _official_section_km(con: sqlite3.Connection) -> dict[str, float]:
@@ -451,30 +473,37 @@ def _opposing_overlap(occ: list[tuple[float, float, bool]]) -> bool:
     return False
 
 
-REAL_DB_PATH = DATA_DIR / "real.sqlite"  # built by `python -m india_rail real build` (and `real osm`)
+REAL_DB_PATH = DATA_DIR / "real.sqlite"  # September 2024 timetable + observed running (`india_rail real build`)
+CURRENT_DB_PATH = DATA_DIR / "current.sqlite"  # every train running now (`india_rail current build`)
+TIMETABLES = {"current": CURRENT_DB_PATH, "2024": REAL_DB_PATH, "real": REAL_DB_PATH, "open": DB_PATH}
+REAL_TIMETABLES = {"current", "2024", "real"}
 
 
 def timetable_source() -> tuple[str, Path]:
     """Which timetable the national twin runs on.
 
-    `real`: the September 2024 timetable with real running days (from observed running) and real track data
-    (OpenStreetMap), built by `python -m india_rail real build|osm`. `open`: the 2016 community timetable.
-    RAILGUARD_TIMETABLE selects one; by default the real one is used whenever it has been built. A production
-    deployment (RAILGUARD_MODE=production) refuses to start on anything but the real timetable.
+    `current`: every train in the current all-India timetable (10,594 trains), with real track data.
+    `2024` (alias `real`): the September 2024 timetable that the observed running verifies, with real track data.
+    `open`: the 2016 community timetable. RAILGUARD_TIMETABLE selects one; by default the most current real one
+    that has been built. A production deployment (RAILGUARD_MODE=production) refuses the open 2016 data.
     """
 
     import os
 
     from india_rail.security import production
 
-    wanted = os.environ.get("RAILGUARD_TIMETABLE", "real" if REAL_DB_PATH.exists() else "open").lower()
-    if production() and wanted != "real":
-        raise RuntimeError("production mode runs only on real timetable data (RAILGUARD_TIMETABLE=real)")
-    if wanted == "real":
-        if not REAL_DB_PATH.exists():
-            raise RuntimeError("real timetable not built: run python -m india_rail real fetch && ... real build")
-        return "real", REAL_DB_PATH
-    return "open", DB_PATH
+    default = next((k for k in ("current", "2024") if TIMETABLES[k].exists()), "open")
+    wanted = os.environ.get("RAILGUARD_TIMETABLE", default).lower()
+    if wanted not in TIMETABLES:
+        raise RuntimeError(f"unknown timetable {wanted!r}; choose one of {sorted(TIMETABLES)}")
+    if production() and wanted not in REAL_TIMETABLES:
+        raise RuntimeError("production mode runs only on real timetable data (RAILGUARD_TIMETABLE=current or 2024)")
+    path = TIMETABLES[wanted]
+    if wanted in REAL_TIMETABLES and not path.exists():
+        raise RuntimeError(
+            f"real timetable not built: run python -m india_rail {'current' if wanted == 'current' else 'real'} build"
+        )
+    return ("2024" if wanted == "real" else wanted), path
 
 
 @lru_cache(maxsize=1)
@@ -510,6 +539,7 @@ class NationalTwin:
         self.headway = headway
         self.lock = threading.RLock()
         self.start_min = start_min
+        self.track = gps.TrackMatcher(self)  # mapped track geometry (OpenStreetMap) for positions on the map
         self.eta = None  # optional EtaForecaster (railguard/eta.py): projects live-reported late trains
         self.reset()
 
@@ -1439,9 +1469,9 @@ class NationalTwin:
                             flag.get("section"),
                             [f"feed:{key}"],
                             0.3,
-                            "Re-plan: train observed outside its plan.",
-                            "Off plan - controller review",
-                            "Live observation not on the planned route.",
+                            flag.get("action", "Re-plan: train observed outside its plan."),
+                            flag.get("title", "Off plan - controller review"),
+                            flag.get("detail", "Live observation not on the planned route."),
                         )
                     )
         flagged = {
@@ -1611,13 +1641,19 @@ class NationalTwin:
             return threat.to_dict()
 
     def lonlat(self, key: str) -> tuple[float, float] | None:
+        """Where the run is on the map: on its section's mapped track (OpenStreetMap) where mapped, at a stop on
+        the track at the station (not the station's map pin, which can lie off the track)."""
+
         pos = self.position(key)
-        nodes = self.net.nodes
         if pos["section_id"] is None:
-            return nodes.get(pos["node"])
-        (x1, y1), (x2, y2) = nodes[pos["from_node"]], nodes[pos["to_node"]]
+            plan = self.plan_of(key)
+            i = min(pos["index"], len(plan.sections) - 1)
+            end = 1.0 if pos["state"] == "ARRIVED" else 0.0
+            lon, lat = self.track.lonlat(plan.frm[i], plan.to[i], plan.sections[i], end)
+            return round(lon, 5), round(lat, 5)
         f = min(pos["offset_km"] / max(self.section(pos["section_id"]).length_km, 1e-6), 1.0)
-        return round(x1 + (x2 - x1) * f, 4), round(y1 + (y2 - y1) * f, 4)
+        lon, lat = self.track.lonlat(pos["from_node"], pos["to_node"], pos["section_id"], f)  # along mapped track
+        return round(lon, 5), round(lat, 5)
 
     def positions(self) -> list[list[Any]]:
         """Compact live picture: [run, lon, lat, priority, changed, position evidence] for running runs."""

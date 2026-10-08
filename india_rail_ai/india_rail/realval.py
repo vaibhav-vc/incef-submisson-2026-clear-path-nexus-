@@ -48,13 +48,17 @@ SUBURBAN_TYPES = {"Pass", "MEMU", "DEMU"}
 
 
 # ---- loading ---------------------------------------------------------------------------------------
-def load(db: Path = REAL_DB_PATH) -> dict[str, pd.DataFrame]:
-    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+def load(db: Path = REAL_DB_PATH, obs_db: Path | None = None) -> dict[str, pd.DataFrame]:
+    """Route tables of the timetable in `db`, and observed running from `obs_db` (default: the same database)."""
+
+    ocon = sqlite3.connect(f"file:{obs_db or db}?mode=ro", uri=True)
     obs = pd.read_sql(
         "SELECT train_number AS train, run_date AS date, seq, station_code AS station, sch_arr_min AS sch, "
         "act_arr_min AS act, delay_min AS delay FROM observed_stops ORDER BY train_number, run_date, seq",
-        con,
+        ocon,
     )
+    ocon.close()
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     stops = pd.read_sql(
         "SELECT train_number AS train, seq, station_code AS station, arr_min, dep_min, dwell_min FROM stops", con
     )
@@ -163,7 +167,10 @@ def section_running(d: dict[str, pd.DataFrame]) -> dict[str, Any]:
 
 # ---- 4. arrival-delay forecasting -------------------------------------------------------------------
 class Lookups:
-    """Per (train, stop) route facts used as forecast features, plus delay history from training dates."""
+    """Per (train, stop) route facts used as forecast features, plus delay history from training dates.
+
+    Route facts come from the timetable the forecast is used on; delay history is keyed by (train, station), so
+    the history observed in 2024 serves the same train at the same station in a newer timetable."""
 
     def __init__(self, d: dict[str, pd.DataFrame], history_until: str = SPLIT_DATE):
         stops, sections, trains, obs = d["stops"], d["sections"], d["trains"], d["obs"]
@@ -180,9 +187,10 @@ class Lookups:
         cum_r = np.maximum(st.dwell_min - 2, 0).groupby(st.train).cumsum()
         self.cum_r = {(t, s): c for t, s, c in zip(st.train, st.seq, cum_r, strict=True)}
         self.sch = {(t, s): a for t, s, a in zip(st.train, st.seq, st.arr_min, strict=True)}
+        self.station = {(t, s): c for t, s, c in zip(st.train, st.seq, st.station, strict=True)}
         self.priority = dict(zip(trains.train, trains.priority, strict=True))
         hist = obs[(obs.date <= history_until) & (obs.delay <= EXTREME_DELAY_MIN)]
-        agg = hist.groupby(["train", "seq"]).delay.agg(["sum", "count"])
+        agg = hist.groupby(["train", "station"]).delay.agg(["sum", "count"])
         self.hist_sum = agg["sum"].to_dict()
         self.hist_n = agg["count"].to_dict()
 
@@ -196,7 +204,8 @@ class Lookups:
         leave_out = own if (own is not None and day <= self.history_until) else {}
 
         def hist(seq: int) -> tuple[float, int]:
-            total, n = self.hist_sum.get((train, seq), 0.0), self.hist_n.get((train, seq), 0)
+            code = self.station.get((train, seq))
+            total, n = self.hist_sum.get((train, code), 0.0), self.hist_n.get((train, code), 0)
             if seq in leave_out:
                 total, n = total - leave_out[seq], n - 1
             return (total / n if n > 0 else np.nan), n
@@ -241,6 +250,7 @@ def forecast_rows(d: dict[str, pd.DataFrame], lookups: Lookups | None = None) ->
             qs = sorted(q for q in {p + 1, p + 3, p + 6, n - 1} if p < q < n)
             block = lk.rows(train, day, int(seq[p]), float(delay[p]), [int(seq[q]) for q in qs], own)
             block["d_tgt"] = [float(delay[q]) for q in qs]
+            block["now_seq"] = [int(seq[p])] * len(qs)
             block["run"], block["date"] = [run] * len(qs), [day] * len(qs)
             for k, v in block.items():
                 columns.setdefault(k, []).extend(v)
@@ -600,7 +610,7 @@ def validate_all(out: Path | None = None, conflict_dates: int = 4) -> dict[str, 
     picked = test_dates[1 :: max(len(test_dates) // conflict_dates, 1)][:conflict_dates]
     scores, models = forecast(d)
     learned = {"projection": "learned", "model": models["median"], "lookups": lookups}
-    eta = EtaForecaster(history_until=SPLIT_DATE)  # the model just trained, with history up to the split only
+    eta = EtaForecaster(db=REAL_DB_PATH, history_until=SPLIT_DATE)  # just trained; history to the split only
     result = {
         "source": OBSERVED,
         **build_metadata(),

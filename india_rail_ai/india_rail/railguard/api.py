@@ -14,7 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi import Path as PathParam
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import Field
@@ -47,6 +47,7 @@ ENGINE = RailGuardEngine()
 
 TRAIN = r"^[A-Z0-9]{1,10}$"
 RUN = r"^[0-9A-Z]{1,10}@-?[0-3]$"
+NUMBER = r"^[0-9A-Z]{1,10}$"
 CODE = r"^[A-Z0-9]{1,8}$"
 SECTION = r"^[A-Z0-9]{1,8}(-[A-Z0-9]{1,8})?$"
 NAME = r"^[\w .@-]{1,80}$"
@@ -352,6 +353,169 @@ def national_plan(run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
 @router.get("/national/cab/{run}", dependencies=VIEW)
 def national_cab(run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
     return _run(national().cab, run)
+
+
+# ---- every train and station (registry of the current timetable) ----------------------------------------------
+def _registry():
+    from india_rail.registry import registry
+
+    try:
+        return registry()
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=503, detail="Train registry not built: run python -m india_rail current build"
+        ) from exc
+
+
+@router.get("/national/trains", dependencies=VIEW)
+def national_trains(
+    q: Annotated[str, Query(max_length=40, pattern=r"^[0-9A-Za-z .()/-]*$")] = "",
+    operator: Annotated[str | None, Query(max_length=60)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+) -> dict[str, Any]:
+    """Search every train by number or name (optionally one operator, e.g. 'IRCTC (private operation)')."""
+
+    return {"trains": _registry().search(q, operator, limit)}
+
+
+@router.get("/national/operators", dependencies=VIEW)
+def national_operators() -> dict[str, Any]:
+    return _registry().operators()
+
+
+@router.get("/national/trains/{number}", dependencies=VIEW)
+def national_train(number: str = PathParam(pattern=NUMBER)) -> dict[str, Any]:
+    """Number, name, type, operator, running days, validity, every stop with times and PIN, route summary."""
+
+    found = _registry().train(number)
+    if found is None:
+        raise HTTPException(status_code=404, detail="Unknown train")
+    return found
+
+
+@router.get("/national/trains/{number}/route", dependencies=VIEW_HEAVY)
+def national_train_route(number: str = PathParam(pattern=NUMBER)) -> dict[str, Any]:
+    """GeoJSON of the track the train follows (real mapped track; unmapped sections drawn straight and flagged)."""
+
+    route = _registry().route(number)
+    if route is None:
+        raise HTTPException(status_code=404, detail="Unknown train or no route")
+    return route
+
+
+@router.get("/national/stations/{code}", dependencies=VIEW)
+def national_station(code: str = PathParam(pattern=CODE)) -> dict[str, Any]:
+    found = _registry().station(code)
+    if found is None:
+        raise HTTPException(status_code=404, detail="Unknown station")
+    return found
+
+
+# ---- Dedicated Freight Corridors -----------------------------------------------------------------------------
+class FreightDemand(StrictRequest):
+    id: str = Field(pattern=r"^[A-Z0-9-]{1,16}$")
+    origin_km: float = Field(ge=0, le=2000)
+    destination_km: float = Field(ge=0, le=2000)
+    ready_min: float = Field(ge=0, le=2880)
+    priority: int = Field(3, ge=1, le=5)
+
+
+class FreightBlock(StrictRequest):
+    segment: int = Field(ge=0, le=500)
+    start_min: float = Field(ge=0, le=4320)
+    end_min: float = Field(ge=0, le=4320)
+
+
+class FreightPlanRequest(StrictRequest):
+    corridor: str = Field(pattern="^(Eastern|Western)$")
+    headway_min: float = Field(10.0, ge=4, le=30)
+    loops: int = Field(3, ge=1, le=8)
+    trains: list[FreightDemand] = Field(min_length=1, max_length=600)
+    blocks: list[FreightBlock] = Field(default_factory=list, max_length=50)
+
+
+def _corridors() -> dict[str, Any]:
+    from india_rail.freight import load_corridors
+
+    try:
+        return load_corridors()
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=503, detail="Freight corridors not built: run python -m india_rail freight build"
+        ) from exc
+
+
+# ---- delay-minimisation advisor (research from real running; advice for people, never an action) ------------
+ADVISOR_KINDS = "^(sections|stations|late_starts|timetable|trains)$"
+
+
+def _advisor() -> dict[str, Any]:
+    from india_rail.delay_advisor import registry as advisor
+
+    try:
+        return advisor()
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=503, detail="Delay advisor not built: run python -m india_rail advisor build"
+        ) from exc
+
+
+@router.get("/national/advisor", dependencies=VIEW)
+def advisor_summary() -> dict[str, Any]:
+    """Where delay is made on the network, measured from real running, and how persistent each finding is."""
+
+    adv = _advisor()
+    return {k: adv[k] for k in ("what", "method", "summary")}
+
+
+@router.get("/national/advisor/{kind}", dependencies=VIEW)
+def advisor_findings(
+    kind: Annotated[str, PathParam(pattern=ADVISOR_KINDS)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    chronic_only: bool = False,
+) -> dict[str, Any]:
+    rows = _advisor()[kind]
+    if chronic_only:
+        rows = [r for r in rows if r.get("chronic", True)]
+    return {"kind": kind, "findings": rows[:limit]}
+
+
+@router.get("/national/advisor/train/{number}", dependencies=VIEW)
+def advisor_train(number: Annotated[str, PathParam(pattern=NUMBER)]) -> dict[str, Any]:
+    from india_rail.delay_advisor import for_train
+
+    _advisor()
+    return for_train(number)
+
+
+@router.get("/freight/corridors", dependencies=VIEW)
+def freight_corridors() -> dict[str, Any]:
+    """The Eastern and Western DFC as mapped: length, single/double line, segments, published operating figures."""
+
+    return _corridors()
+
+
+@router.post("/freight/plan", dependencies=CONTROL_HEAVY)
+def freight_plan(request: FreightPlanRequest) -> dict[str, Any]:
+    """Conflict-free paths for the given freight trains (demand from FOIS). Advice for the DFC control office."""
+
+    from india_rail.freight import FreightPlanner, FreightTrain, plan_to_dict
+
+    corridor = _corridors()["corridors"].get(request.corridor)
+    if corridor is None:
+        raise HTTPException(status_code=404, detail="Corridor not mapped")
+    planner = FreightPlanner(corridor, request.corridor, request.headway_min, request.loops)
+    for b in request.blocks:
+        if b.end_min <= b.start_min or b.segment >= len(corridor["segments"]):
+            raise HTTPException(status_code=422, detail="Invalid block")
+        planner.block(b.segment, b.start_min, b.end_min)
+    trains = [FreightTrain(t.id, t.origin_km, t.destination_km, t.ready_min, t.priority) for t in request.trains]
+    if len({t.id for t in trains}) != len(trains):
+        raise HTTPException(status_code=422, detail="Train ids must be unique")
+    summary = planner.plan(trains)
+    if summary["violations"]:  # the independent check failed: never hand out an unsafe plan
+        raise HTTPException(status_code=500, detail="Plan failed its safety check; not issued")
+    return {**summary, "authority": "ADVISORY_ONLY", "plans": [plan_to_dict(p) for p in planner.plans.values()]}
 
 
 @router.get("/national/eta/{run}", dependencies=VIEW)
