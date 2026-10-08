@@ -68,14 +68,15 @@ All figures are controlled software experiments on the tabletop twin. None of th
 
 | Capability | Status | Where |
 |---|---|---|
-| National twin: all 8,990 stations (7,679 halts + 914 non-halt stations placed), 1,454 junctions, 8,738 sections, 7,580 train runs | WORKING ON OPEN DATA (attributes inferred and labelled) | `railguard/national.py`, `/control/national` |
+| National twin on **real data**: September 2024 timetable (3,549 trains, 9,065 sections between halts), running days observed for every train, station positions and single/double line from OpenStreetMap on 90% of sections | WORKING ON REAL DATA (each attribute labelled with its evidence; production refuses anything else) | `railguard/national.py`, `india_rail/realdata.py`, `osm_infra.py` |
+| **Verified against real running**: 56,395 real train runs, 1.26M actual arrivals | Credibility vs Ministry punctuality; forecasts scored on unseen days; conflict warnings vs real time loss; a real morning through the signed gateway; 10 defects found and fixed | `railway_readiness/REAL_DATA_VALIDATION.md`, `evidence/real_data/` |
 | Randomised simulation with 8 safety invariants after every operation | **5,068,492 operations in the main run**; 14 defects found and fixed in total, the last by this run; **final code: 1,201,001 operations, 0 violations** | `railguard/simulate.py`, `evidence/simulation/` |
-| Security: roles, fail-closed production, strict schemas, CSP, rate limits, signed feed | 115 tests incl. 32 attack tests; Bandit 0; pip-audit 0 | `SECURITY.md`, `evidence/audit/` |
+| Security: roles, fail-closed production, strict schemas, CSP, rate limits, signed feed | 158 tests incl. 32 attack tests; Bandit 0; pip-audit 0 | `SECURITY.md`, `evidence/audit/` |
 | Run-time ML after measured training rounds | 1.38 min vs 1.96 baseline on a locked test (−30%) | `models/training_log.json` |
 | Live-feed gateway (RTIS/NTES/COA-style, signed) | READY - needs CRIS specification and keys | `railguard/livefeed.py` |
 | Official data pipeline (data.gov.in, GODL) | READY - file must be downloaded from India | `india_rail/official.py` |
 | Legal / safety / data compliance register | Engineering register; needs IR legal and safety review | `COMPLIANCE_REGISTER.md` |
-| Five audit passes | Done | `AUDIT_LOG.md` |
+| Six audit passes (the sixth on real-life data) | Done | `AUDIT_LOG.md` |
 
 | All-train working schedules and completeness audit (5,208 trains) | WORKING: stop matrix, metrics, flags; running days honoured when official data supplies them | `india_rail/schedules.py`, `evidence/schedules/` |
 | Railway-readiness packs: hazard log, safety case, live-data interface contract, ASVS checklist, shadow-trial plan and tooling, operator guide | DRAFTS FOR IR REVIEW | `railway_readiness/` |

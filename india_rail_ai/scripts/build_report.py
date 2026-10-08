@@ -226,12 +226,12 @@ SOFTWARE_READINESS = [
     (
         "Decision core (twin, planner, gates, cab)",
         100,
-        "Built; 6.7M checked operations, last defect fixed, final code clean",
+        "Built; runs on the real 2024 timetable; final code and data verified by simulation (section 6)",
     ),
     (
-        "Verification (tests + simulation)",
-        96,
-        "Unit, API and attack tests; 8 invariants; regression on final code; formal V&V plan needs IR",
+        "Verification (tests, simulation, real data)",
+        97,
+        "159 tests; 8 invariants; verified on 56,395 real train runs; formal V&V plan needs IR",
     ),
     (
         "Security engineering",
@@ -240,46 +240,278 @@ SOFTWARE_READINESS = [
     ),
     (
         "Docs, compliance, readiness packs",
-        95,
-        "Register, hazard log, safety case, interface contract, trial plan, guide",
+        96,
+        "Register, 14-hazard log, safety case, real-data report, contract, guide",
     ),
     (
         "Whole-network coverage",
-        93,
-        "All 8,990 stations; 914 non-halt placed; 105 stations with suspect coordinates named",
+        95,
+        "9,229 stations, 2,272 junctions, 9,065 sections; 8,224 stations placed from the map",
     ),
-    ("Live-data integration", 90, "Signed gateway, contract with test vector, IST clock; CRIS field mapping remains"),
+    (
+        "Live-data integration",
+        93,
+        "A real morning replayed: 96.6% of reports accepted, ~0.1 s per batch; CRIS mapping remains",
+    ),
     (
         "All-train schedules and data completeness",
-        85,
-        "Every train audited; working schedules for 5,187; running days not in open data",
+        92,
+        "Running days observed for all 3,549 trains; 343 placeholder timetables caught",
     ),
-    ("Machine learning", 85, "Best model on public data; retraining on actual running data needs live feeds"),
-    ("Official data", 85, "Pipeline incl. running days, provenance, tests; data.gov.in refuses this build network"),
+    ("Machine learning", 93, "Forecast learned from 1.26M actual arrivals: 13.7 vs 17.2 min on unseen days"),
+    (
+        "Official data",
+        85,
+        "Pipeline ready; data.gov.in refuses this build network; data checked against Ministry figure",
+    ),
+    ("Infrastructure data", 80, "OSM line count on 90% of sections; block sections and loops need IR registers"),
+    ("Conflict prediction on real days", 70, "Warnings 1.23x as likely to precede real time loss; needs IR block data"),
 ]
 # (stage, weight %, done %, what this project has done, what only the railway can do)
 DEPLOYMENT_PATH = [
-    ("Software built and verified", 35, 92, "This repository", "-"),
-    ("Live data and CRIS integration", 15, 40, "Gateway, contract, test vector, simulator",
-     "Authorise access; share spec; issue keys; test in CRIS environment"),
+    ("Software built and verified", 35, 94, "This repository, verified on real running data", "-"),
+    ("Live data and CRIS integration", 15, 45, "Gateway proven on a real morning's reports; contract; test vector",
+     "Authorise access; share spec and block-section data; issue keys; test in CRIS environment"),
     ("Security audit and hosting", 10, 35, "ASVS self-assessment, attack tests, SAST/SCA",
      "CERT-In/STQC audit; host on IR infrastructure"),
-    ("Safety acceptance", 15, 30, "Draft hazard log and safety case with evidence",
+    ("Safety acceptance", 15, 35, "Hazard log (14 hazards) and safety case with real-data evidence",
      "Hazard workshop; scoring; independent assessment; RDSO/IR acceptance"),
-    ("Shadow-mode trial", 20, 20, "Trial tooling (/shadow), protocol, metrics",
-     "Run 3-12 months on a division; review disagreements"),
+    ("Shadow-mode trial", 20, 25, "Retrospective shadow run on real days; trial tooling, protocol, metrics",
+     "Run 3-12 months on a division with live data; review disagreements"),
     ("Roll-out and training", 5, 30, "Operator guide and training modules", "Deliver training; issue procedures"),
 ]  # fmt: skip
+
+
+REAL_FINDINGS = [
+    (
+        "Live-feed gateway threw away real reports",
+        "A late train that had not reported yet was projected on time, so its real report at a station the projection "
+        "had already passed was rejected (19% of a real morning's reports). Reports are now matched from the train's "
+        "last accepted observation, never from the projection; a report behind it is refused as out of order.",
+    ),
+    (
+        "Threats re-evaluated once per event",
+        "Every report triggered a national threat evaluation: 0.5 s per one-minute batch in the first hour. Now once "
+        "per batch: about 0.1 s over a whole morning, and every change still supersedes earlier rankings.",
+    ),
+    (
+        "Placeholder timetables in the source",
+        "343 trains (mostly specials) list every stop at the same minute; their 'actual' times mean nothing. They are "
+        "excluded from the twin and from every score, and counted.",
+    ),
+    (
+        "Track count over-read on curves and corridors",
+        "The first OSM line count read curving single lines and the parallel Dedicated Freight Corridor as double "
+        "line. It now counts lines crossing a perpendicular cross-section, ignores freight corridors, metros and "
+        "sidings, and was checked against known single (Konkan) and double (Delhi-Bhopal) routes.",
+    ),
+    (
+        "Old timetable and stale labels",
+        "The 2016 timetable lacked 6,091 sections of 2024; the twin now runs on the 2024 one, and its data label no "
+        "longer claims the network is inferred from the open timetable.",
+    ),
+    (
+        "Conflict warnings barely predictive with the old projection",
+        "Carrying a delay forward unchanged made warnings only slightly better than chance; projecting late trains "
+        "with the forecast learned from real running made them clearly more predictive (see table).",
+    ),
+    (
+        "Forecast plan overlapped itself (found by the simulation)",
+        "A forecast recovering time faster than possible made a plan leave a stop before arriving (7 of the first 60 "
+        "episodes). Forecast plans now never do that and never run a section under 85% of its timetabled time.",
+    ),
+    (
+        "A forecast could replace a controller's decision",
+        "A forecast now only replaces a projection; once a hold or yield shapes the plan, new delays are added on top.",
+    ),
+    (
+        "Simulation workers stalled",
+        "Model inference threads in every worker spun against each other; now one thread per worker (600 episodes in "
+        "35 s).",
+    ),
+]
+
+
+def real_data_section(rv: dict[str, Any]) -> list[Any]:
+    """Section 2: verification against what actually happened (observed running, September 2024)."""
+
+    if not rv:
+        return []
+    cred, drift, fc = rv["credibility"], rv["timetable_drift"], rv["forecast"]
+    track, build_ = rv.get("track_data", {}), rv.get("data_build", {})
+    conf, feed = rv["conflicts"], rv["live_feed_replay"]
+    lines = track.get("accepted_lines", {})
+    double = sum(v for k, v in lines.items() if k not in ("1", "None"))
+    out: list[Any] = [
+        p("2. Verified on real running", "h1"),
+        p(
+            "Everything in this section is computed from <b>what really happened</b>: the actual arrival times of "
+            f"{cred['runs_observed']:,} train runs ({cred['arrivals_observed']:,} station arrivals, "
+            f"{cred['trains']:,} trains) in September 2024, published for research by Chowdhury, Koley, "
+            "Chakraborty and Ghosh (IIT Kharagpur, IEEE T-ITS 2026). Real track data comes from OpenStreetMap. "
+            "Nothing here is generated by this project. The running data is fetched by the user, checked against a "
+            "pinned SHA-256 and never redistributed; only these aggregate results are published."
+        ),
+        tiles(
+            [
+                ("real train runs checked", f"{cred['runs_observed']:,}"),
+                ("actual arrival times", f"{cred['arrivals_observed'] / 1e6:.2f}M"),
+                ("sections with mapped track data", f"{track.get('sections_accepted', 0):,}"),
+                (
+                    "forecast error on unseen days",
+                    f"{fc['scores']['learned_from_real_running']['mae_min']:.1f} min",
+                ),  # fmt: skip
+            ]
+        ),
+        Spacer(1, 3 * mm),
+        p("Is the data credible?", "h2"),
+        table(
+            [
+                ["Measure", "Observed (Sep 2024)", "Official"],
+                [
+                    "Mail/Express at destination within 15 min",
+                    f"{cred['destination_on_time_pct_mail_express']:.1f}%",
+                    f"{cred['official_figure']['value_pct']}% (FY 2024-25, Ministry of Railways)",
+                ],
+            ],
+            [70, 40, 60],
+        ),  # fmt: skip
+        p(cred["reading"], "small"),
+        p("What the real data changed in the twin", "h2"),
+        table(
+            [
+                ["Item", "Before (open 2016 data)", "Now (real data)"],
+                [
+                    "Timetable",
+                    "2016 community snapshot",
+                    f"September 2024: {build_.get('trains', 0):,} trains, {build_.get('stops', 0):,} timed stops",
+                ],
+                [
+                    "Running days",
+                    "unknown for every train",
+                    f"from observed running for all {build_.get('trains_with_running_days', 0):,} trains",
+                ],
+                [
+                    "Station positions",
+                    "community coordinates",
+                    f"{track.get('stations_located_by_osm_ref', 0):,} located on the map by their IR code",
+                ],
+                [
+                    "Track count",
+                    "inferred from timetable or assumed single",
+                    f"mapped on {track.get('sections_accepted', 0):,} of {track.get('sections', 0):,} sections: "
+                    f"{lines.get('1', 0):,} single, {double:,} double or more",
+                ],
+                [
+                    "Electrification",
+                    "unknown",
+                    f"{track.get('accepted_electrified_over_90pct', 0):,} sections at least 90% electrified",
+                ],
+                [
+                    "Trains with placeholder times",
+                    "not detected",
+                    f"{build_.get('trains_with_placeholder_timetable_excluded', 0)} excluded and counted",
+                ],
+            ],
+            [40, 50, 80],
+        ),  # fmt: skip
+        p(
+            f"Of the trains running under the same number, origin and destination in 2016 and 2024, "
+            f"{drift.get('journey_time_changed_over_15_min_pct', 0)}% changed journey time by more than 15 minutes, "
+            f"and {drift.get('sections_2024_missing_from_2016', 0):,} sections of 2024 did not exist in the 2016 "
+            "data: running on the current timetable matters.",
+            "small",
+        ),
+        p("Forecasting where late trains will be (forward in time: learned on 1-20 Sep, scored on 21-30 Sep)", "h2"),
+    ]
+    names = {"twin_current_rule": "Twin's previous rule", "persistence": "Delay stays the same",
+             "history": "Train's own history", "learned_from_real_running": "Learned from real running"}  # fmt: skip
+    rows = [["Method", "Average error", "Within 15 min", "<=1 h ahead", "1-3 h", "3-6 h", ">6 h"]]
+    for key, label in names.items():
+        sc = fc["scores"][key]
+        hz = sc["mae_by_horizon_min"]
+        rows.append([label, f"{sc['mae_min']:.1f} min", f"{sc['within_15_min_pct']:.1f}%",
+                     *(f"{hz[b]:.1f}" for b in ("<=1h", "1-3h", "3-6h", ">6h"))])  # fmt: skip
+    gain = fc["mae_reduction_vs"]["twin_current_rule"]
+    out += [
+        table(rows, [44, 24, 22, 20, 20, 20, 20]),
+        p(
+            f"{fc['split']['test_pairs']:,} forecasts for {fc['split']['test_runs']:,} real runs on days the model "
+            f"never saw. Improvement over the previous rule: {gain['mae_reduction_min']} min "
+            f"(95% interval {gain['ci95_min'][0]}-{gain['ci95_min'][1]}, bootstrap over runs). The P10-P90 band "
+            f"covered {fc['interval_p10_p90_coverage_pct']}% of real outcomes (target 80%). The deployed model is "
+            "exactly the one scored here; it is rebuilt locally and not distributed.",
+            "small",
+        ),
+        p("Do conflict warnings come true? (retrospective shadow run on real days)", "h2"),
+        p(
+            "At six times of day on four unseen real days, the national twin was given every train's real delay "
+            "and flagged conflicts in the next two hours. For each warning, the train that has to give way "
+            "should then lose time on that section. It is compared with unflagged trains in the same state "
+            "(already late or not), because late trains tend to recover on their own.",
+            "small",
+        ),
+    ]
+    variants = [("twin_rule_without_real_track_data", "Previous projection, no track data"),
+                ("twin_rule_with_real_track_data", "Previous projection + real track data"),
+                ("learned_projection_with_real_track_data", "Learned projection + real track data")]  # fmt: skip
+    rows = [["Twin", "Warnings", "Give-way train lost >=5 min", "Comparable trains", "Lift"]]
+    for key, label in variants:
+        c = conf[key]
+        rows.append([label, f"{c['flagged_gives_way']:,}", f"{c['gives_way_lost_5_min_pct']}%",
+                     f"{c['comparable_unflagged_lost_5_min_pct']}%", f"{c['lift']}x"])  # fmt: skip
+    single_before = conf["twin_rule_without_real_track_data"]["single_line"]["flagged_gives_way"]
+    single_after = conf["twin_rule_with_real_track_data"]["single_line"]["flagged_gives_way"]
+    out += [
+        table(rows, [60, 22, 36, 30, 22]),
+        p(
+            f"Real track data removed {single_before - single_after:,} of {single_before:,} single-line warnings "
+            "that the old 'assume single line' rule raised. Warnings are informative but far from certain: section "
+            "data between stopping stations cannot see block sections, intermediate loops or signals. That data is "
+            "held by Indian Railways (engineering registers, COA) and is the next real gain.",
+            "small",
+        ),
+        p("A real morning through the signed live-feed gateway", "h2"),
+    ]
+    rows = [["Projection", "Reports", "Accepted", "Batch p50 / p95", "Projection within 15 min of reality"]]
+    for key, label in (("twin_rule", "Previous rule"), ("learned_projection", "Learned forecast")):
+        f = feed[key]
+        rows.append([label, f"{f['events_sent']:,}", f"{f['accepted'] / f['events_sent'] * 100:.1f}%",
+                     f"{f['batch_latency_ms']['p50']:.0f} / {f['batch_latency_ms']['p95']:.0f} ms",
+                     f"{f['projection_error_at_arrival_min']['within_15_min_pct']}%"])  # fmt: skip
+    out += [
+        table(rows, [36, 22, 22, 34, 56]),
+        p(
+            f"{feed['twin_rule']['window']} on {feed['twin_rule']['day']}: every real arrival sent as a signed "
+            "NTES-style STATION event at its real time. Rejected reports are out-of-order or unknown runs, refused "
+            "on purpose.",
+            "small",
+        ),
+        p("Defects found by real data (all fixed)", "h2"),
+        table([["Finding", "What changed"]] + [[a, b] for a, b in REAL_FINDINGS], [44, 126]),
+        p(
+            "<b>Limits.</b> One month (September: no fog season); only arrivals are observed (departures in the "
+            "file are arrival plus scheduled halt); early running is recorded as zero; freight and suburban trains "
+            "are not included; OpenStreetMap is volunteer-mapped. A shadow trial on live data with controllers is "
+            "still needed.",
+            "small",
+        ),
+        PageBreak(),
+    ]
+    return out
 
 
 def build(out: Path) -> Path:
     sim = load(EVIDENCE / "simulation" / "simulation_results.json")
     reg = load(EVIDENCE / "simulation" / "regression_results.json")
     final = load(EVIDENCE / "simulation" / "final_code_results.json")
+    real_final = load(EVIDENCE / "simulation" / "real_data_final_results.json")
+    real_national = load(EVIDENCE / "simulation" / "real_data_national_results.json")
     tlog = load(ROOT / "models" / "training_log.json")
     model = load(ROOT / "models" / "runtime_model_metrics.json")
     audit = load(EVIDENCE / "audit" / "audit_summary.json")
     sched = load(EVIDENCE / "schedules" / "schedule_audit.json")
+    rv = load(EVIDENCE / "real_data" / "real_validation.json")
     nat_stats = audit.get("national_stats", {})
     software_pct = sum(v for _, v, _ in SOFTWARE_READINESS) / len(SOFTWARE_READINESS)
     path_pct = sum(w * done / 100 for _, w, done, _, _ in DEPLOYMENT_PATH)
@@ -309,20 +541,21 @@ def build(out: Path) -> Path:
             "Rules and railway staff remain controlling."
         ),
         p(
-            "<b>How to read the numbers.</b> Everything measured here is a software result on open and synthetic data. "
-            "None of it is a field measurement on Indian Railways. Readiness percentages are judgements and are stated "
-            "with their reasons."
+            "<b>How to read the numbers.</b> The verification in section 2 uses real recorded running of Indian "
+            "Railways trains (September 2024) and real track data; the safety checks use randomised simulation. None of "
+            "it is yet a live field trial. Readiness percentages are judgements and are stated with their reasons."
         ),
         Spacer(1, 6 * mm),
     ]
     sim_ops = sim.get("operations_checked", 0)
     viol = sum(t.get("violations_total", 0) for t in sim.get("twins", {}).values())
-    final_viol = sum(t.get("violations_total", 0) for t in final.get("twins", {}).values()) if final else viol
+    last = real_final or final
+    final_viol = sum(t.get("violations_total", 0) for t in last.get("twins", {}).values()) if last else viol
     locked = tlog.get("locked_test", {})
     story.append(
         tiles(
             [
-                ("stations in the twin (all in the open data)", f"{nat_stats.get('stations_total', 8990):,}"),
+                ("stations in the twin", f"{nat_stats.get('stations_total', 8990):,}"),
                 ("junctions", f"{nat_stats.get('junctions', 1454):,}"),
                 ("sections between stops", f"{nat_stats.get('sections', 8738):,}"),
                 ("timetabled train runs in the 2-day window", f"{nat_stats.get('runs_in_window', 7580):,}"),
@@ -342,10 +575,11 @@ def build(out: Path) -> Path:
     story += [
         p("1. How much is done, and what is left", "h1"),
         p(
-            f"<b>Software side: about {software_pct:.0f}% done</b> - everything this project can build and verify. "
-            "The rest of the software work needs inputs only Indian Railways holds: CRIS's interface specification, "
-            "actual running data to retrain on, the official timetable with running days (downloadable only from "
-            "India), and controller feedback from a trial."
+            f"<b>Software side: about {software_pct:.0f}% done</b> - everything this project can build and verify, "
+            "now verified on real recorded running (section 2). The rest of the software work needs inputs only "
+            "Indian Railways holds: CRIS's interface specification and live feed, block-section and loop registers "
+            "(what makes conflict warnings precise), the current official timetable, and controller feedback from a "
+            "trial."
         ),
         p(
             f"<b>Whole path to railway use: about {path_pct:.0f}% done, about {100 - path_pct:.0f}% left.</b> "
@@ -373,10 +607,11 @@ def build(out: Path) -> Path:
             "small",
         ),  # fmt: skip
     ]
+    story += [PageBreak(), *real_data_section(rv)]
 
-    # ---- 2. what was built ---------------------------------------------------------------------------------
+    # ---- 3. what was built ---------------------------------------------------------------------------------
     story += [
-        p("2. What was built", "h1"),
+        p("3. What was built", "h1"),
         table(
             [
                 ["Component", "What it does"],
@@ -492,18 +727,29 @@ def build(out: Path) -> Path:
 
     # ---- 3. data -------------------------------------------------------------------------------------------
     story += [
-        p("3. Data: the whole network", "h1"),
+        p("4. Data: the whole network", "h1"),
         p(
-            "The twin is built from the open Indian Railways timetable (DataMeet, CC0): 8,990 stations, 5,208 trains "
-            "and 417,080 stop rows, pinned by SHA-256. Every attribute that the open data does not publish is inferred "
-            "and labelled with how it was obtained, so nobody mistakes an inference for a survey."
+            "The twin is built from <b>real data</b>: the September 2024 timetable (3,549 trains; 343 with placeholder "
+            "times excluded), running days observed for every train, station positions and line counts from "
+            "OpenStreetMap, and station records from the open DataMeet data (CC0). Every attribute is labelled with "
+            "its evidence, so nobody mistakes an inference for a survey. Without the real data the twin falls back to "
+            "the 2016 open timetable; production refuses that."
         ),
         table(
             [["Quantity", "Value", "How it was obtained"]]
             + [
                 [k.replace("_", " "), f"{v:,}" if isinstance(v, int) else v, how]
                 for k, v, how in [
-                    ("stations_total", nat_stats.get("stations_total", 8990), "every station in the open data"),
+                    (
+                        "stations_total",
+                        nat_stats.get("stations_total", 8990),
+                        "every station in the open and 2024 data",
+                    ),
+                    (
+                        "stations_located_from_osm",
+                        nat_stats.get("stations_located_from_osm", 0),
+                        "positioned on the map by their Indian Railways code (OpenStreetMap ref)",
+                    ),
                     ("stations", nat_stats.get("stations", 7679), "stations where at least one train halts"),
                     (
                         "stations_without_halt_placed_on_sections",
@@ -518,14 +764,29 @@ def build(out: Path) -> Path:
                     ("junctions", nat_stats.get("junctions", 1454), "stations joined to 3 or more neighbours"),
                     ("sections", nat_stats.get("sections", 8738), "pairs of consecutive stops"),
                     (
+                        "sections_with_osm_infrastructure",
+                        nat_stats.get("sections_with_osm_infrastructure", 0),
+                        "mapped track path accepted (agrees with the timetable's rail distance)",
+                    ),
+                    (
+                        "sections_osm_double_or_more",
+                        nat_stats.get("sections_osm_double_or_more", 0),
+                        "two or more parallel running lines mapped along the section",
+                    ),
+                    (
+                        "sections_osm_single",
+                        nat_stats.get("sections_osm_single", 0),
+                        "a single-line stretch over 2 km, or over 10% of the section",
+                    ),
+                    (
                         "sections_inferred_multi_track",
                         nat_stats.get("sections_inferred_multi_track", 5098),
-                        "opposing trains timetabled on it at the same time",
+                        "opposing trains timetabled on it at the same time (they must cross inside it)",
                     ),
                     (
                         "sections_assumed_single",
                         nat_stats.get("sections_assumed_single", 3640),
-                        "no such evidence: treated as single line (the safe assumption)",
+                        "no evidence at all: treated as single line (the safe assumption)",
                     ),
                     ("runs_in_window", nat_stats.get("runs_in_window", 7580), "train numbers x start days in 2 days"),
                     ("occupations", nat_stats.get("occupations", 843568), "section occupations in the window"),
@@ -544,9 +805,9 @@ def build(out: Path) -> Path:
             "format fixture."
         ),
         p(
-            "<b>Known limits.</b> The timetable snapshot is from about 2016 and has no running days, so trains without "
-            "known days are treated as daily (the twin honours running days as soon as an official file supplies them). "
-            "Track counts, line speeds and lengths are inferred. Loops, platforms and signals are not in any open dataset."
+            "<b>Known limits.</b> The timetable is from September 2024 (the current official one must be ingested from "
+            "India). OpenStreetMap is volunteer-mapped. Loops, platforms, block sections and signals are not in any "
+            "open dataset; they are what conflict warnings need next (section 2)."
         ),
     ]
     if sched:
@@ -554,7 +815,7 @@ def build(out: Path) -> Path:
         dur = sched.get("timetable_vs_published_duration", {})
         suspects = sched.get("suspect_station_coordinates", [])
         story += [
-            p("All trains: working schedules and completeness", "h2"),
+            p("All trains in the open data: working schedules and completeness", "h2"),
             p(
                 "Every published train was checked: <i>python -m india_rail schedules --audit</i>. Each train's working "
                 "schedule (every stop with day, arrival, departure, dwell, distance from origin, section run time and "
@@ -609,7 +870,7 @@ def build(out: Path) -> Path:
     med = scores.get("baseline_section_median", {})
     iv = model.get("interval_p10_p90", {})
     story += [
-        p("4. Machine learning: section run-time model", "h1"),
+        p("5. Machine learning: section run-time model", "h1"),
         p(
             "The model predicts the scheduled run time between two stops: the planning quantity a re-planner needs. "
             "It learns the correction to a section prior. Section priors are recomputed inside every cross-validation "
@@ -698,8 +959,9 @@ def build(out: Path) -> Path:
     story += [
         p(
             "<b>Why not 'perfect'.</b> The target is a published timetable in whole minutes with operator-chosen "
-            "allowances that no public feature explains, so zero error is not achievable. The next real gain needs "
-            "actual running data (NTES/COA), which is exactly what the live-feed gateway is for.",
+            "allowances that no public feature explains, so zero error is not achievable. The real gain comes from "
+            "actual running: section 2 trains a delay forecast on 1.26 million real arrivals and scores it on unseen "
+            "days; with IR's live feed it can be retrained across seasons.",
             "body",
         ),
     ]
@@ -707,7 +969,7 @@ def build(out: Path) -> Path:
     # ---- 5. simulation -------------------------------------------------------------------------------------
     twins = sim.get("twins", {})
     story += [
-        p("5. Simulation: 5 million checked operations", "h1"),
+        p("6. Simulation: 5 million checked operations", "h1"),
         p(
             "An <b>episode</b> starts a fresh twin with random conditions, then runs a random sequence of operations. "
             "The operations are clock ticks, recommendations, approvals (including stale and wrong ones), section and "
@@ -744,15 +1006,22 @@ def build(out: Path) -> Path:
             "small",
         ),
     ]
-    for label, run in (("Regression run (after the main run's code)", reg), ("Run on the exact final code", final)):
+    runs = (
+        ("Regression run (after the main run's code)", reg),
+        ("Run on the code before real data", final),
+        ("Final code on real data with the learned forecast", real_final),
+        ("Final code, national twin on the real network", real_national),
+    )
+    for label, run in runs:
         if run:
             story.append(p(f"{label}: {run.get('completed_episodes', 0):,} episodes, "
                            f"{run.get('operations_checked', 0):,} operations, "
                            f"{sum(t.get('violations_total', 0) for t in run.get('twins', {}).values())} violations "
                            f"(code checksum {str(run.get('code_checksum', ''))[:16]}…).", "small"))  # fmt: skip
-    total_ops = sum(r.get("operations_checked", 0) for r in (sim, reg, final) if r)
+    every = (sim, reg, final, real_final, real_national)
+    total_ops = sum(r.get("operations_checked", 0) for r in every if r)
     story.append(p(f"<b>All runs together: {total_ops:,} checked operations, "
-                   f"{sum(t.get('violations_total', 0) for r in (sim, reg, final) if r for t in r.get('twins', {}).values())} "
+                   f"{sum(t.get('violations_total', 0) for r in every if r for t in r.get('twins', {}).values())} "
                    "violations.</b>", "body"))  # fmt: skip
     story += [
         p("Invariants", "h2"),
@@ -796,7 +1065,7 @@ def build(out: Path) -> Path:
 
     # ---- 6. security -----------------------------------------------------------------------------------------
     story += [
-        p("6. Security", "h1"),
+        p("7. Security", "h1"),
         table(
             [
                 ["Check", "Result"],
@@ -832,14 +1101,14 @@ def build(out: Path) -> Path:
     ]
 
     # ---- 7. audits ------------------------------------------------------------------------------------------
-    story += [p("7. Five audit passes", "h1"),
+    story += [p("8. Five audit passes", "h1"),
               p("Each pass looked at the whole system through one lens, fixed what it found, and re-ran the full "
                 "test suite and lint before the next pass. Details are in <i>seva2026/AUDIT_LOG.md</i>.")]  # fmt: skip
     story.append(table([["Pass", "Lens", "Main findings and fixes", "Evidence"], *AUDITS], [12, 30, 92, 36]))
 
     # ---- 8. live data, compliance, remaining ------------------------------------------------------------------
     story += [
-        p("8. Ready for live data", "h1"),
+        p("9. Ready for live data", "h1"),
         p("When the Ministry of Railways / CRIS authorises a feed, it plugs in without code changes to the twin."),
         *bullets(
             [
@@ -856,7 +1125,7 @@ def build(out: Path) -> Path:
                 "and a shadow-mode trial.",
             ]
         ),
-        p("9. Legal, safety and data compliance", "h1"),
+        p("10. Legal, safety and data compliance", "h1"),
         table(
             [
                 ["Instrument", "How the design addresses it", "Status"],
@@ -895,24 +1164,27 @@ def build(out: Path) -> Path:
             "Full register: <i>seva2026/COMPLIANCE_REGISTER.md</i>. This is an engineering register, not legal advice.",
             "small",
         ),
-        p("10. What is left", "h1"),
+        p("11. What is left", "h1"),
         *bullets(
             [
                 "Indian Railways / CRIS: authorise live feeds (NTES/RTIS/COA) and share the interface specification.",
-                "Download the official data.gov.in timetable from a connection in India and ingest it (one command).",
-                "Retrain the run-time model on observed running data, and add a delay-propagation model once real "
-                "delays are available.",
+                "Indian Railways: share block-section, loop and line-speed registers; measured on real days, they are "
+                "what conflict warnings need to become precise.",
+                "Download the current official timetable from a connection in India and ingest it (one command).",
+                "Retrain the delay forecast on IR's own feed across seasons (fog, monsoon); it is learned from one "
+                "month of real running today.",
                 "Independent CERT-In/STQC security audit; hosting on railway infrastructure in India.",
                 "Safety case and hazard log signed by IR; independent safety assessment; RDSO acceptance of the advisory role.",
                 "Shadow-mode trial on one division: compare recommendations with controllers' actual decisions.",
             ]
         ),
-        p("11. How to run", "h1"),
+        p("12. How to run", "h1"),
         table(
             [
                 ["Task", "Command (in india_rail_ai/)"],
                 ["Install", "pip install -r requirements.txt"],
                 ["Get data and train", "python -m india_rail setup"],
+                ["Real data", "python -m india_rail real fetch | build | osm --pbf FILE | validate"],
                 ["Serve the API and consoles", "python -m india_rail serve  →  /control, /control/national, /cab"],
                 ["Tests and lint", "python -m pytest -q;  ruff check ."],
                 ["Simulation", "python -m india_rail.railguard.simulate --demo 70000 --national 90000"],
@@ -1044,6 +1316,14 @@ AUDITS = [
         "Dead code removed; national builder split (complexity F 62 → C 16) with an identical data "
         "checksum; lint/format clean on Python 3.11 and 3.13; CI parity checked",
         "radon, vulture, ruff, CI",
+    ],
+    [
+        "6",
+        "Real-life data",
+        "10 findings fixed (section 2): feed reports rejected by a projection, per-event threat refresh, placeholder "
+        "timetables, OSM line over-count, old timetable, weak warnings, forecast plan overlap (caught by the "
+        "simulation), forecasts replacing decisions, worker thread contention, stale labels",
+        "56,395 real runs; realval.py; REAL_DATA_VALIDATION.md",
     ],
 ]
 

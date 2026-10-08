@@ -1,12 +1,15 @@
-# Audit log: five passes over the whole system
+# Audit log: six passes over the whole system
 
 Each pass examined the whole code base through one lens, fixed what it found, then re-ran the full test suite,
 lint (ruff 0.8.6, as pinned in CI) and, where behaviour could change, the simulation, before the next pass.
 Findings are listed with the evidence that caught them and the evidence that the fix holds.
 
-Final state after all five passes: **134 automated tests pass** (Python 3.11 and 3.13), **Bandit 0 findings**,
+Final state after all six passes (the sixth on real-life data): **159 automated tests pass** (Python 3.11 and 3.13),
+**Bandit 0 findings**,
 **pip-audit 0 known vulnerabilities**, **0 safety-invariant violations** in the randomised simulation
-(final-code run in `evidence/simulation/final_code_results.json`; the main run found two last defects, see pass 1), UI regression with **0 HTTP errors and 0 console errors** under
+(final code on real data: `evidence/simulation/real_data_final_results.json`, 36,000 episodes, 960,020 operations,
+code checksum 55bda851; the main run found two last defects, see pass 1, and the simulation found one more in the
+new forecast code, see pass 6), UI regression with **0 HTTP errors and 0 console errors** under
 a strict Content-Security-Policy.
 
 ## Pass 1 - Safety logic (randomised simulation, `india_rail/railguard/simulate.py`)
@@ -96,3 +99,24 @@ GroupKFold by train pair; train-pace and neighbour context leave the row's own r
 | 3 | Duplicated scoring constants between the two planners (found in an earlier pass) | One `scoring.py` shared by both |
 | 4 | CI parity | Lint/format clean with the CI-pinned ruff 0.8.6; tests pass on Python 3.11 and 3.13 |
 | 5 | Documentation | `SECURITY.md`, `COMPLIANCE_REGISTER.md`, this log, report generator `scripts/build_report.py` |
+
+## Pass 6 - Real-life data (`india_rail/realdata.py`, `osm_infra.py`, `realval.py`)
+
+The system was run against what actually happened: 56,395 real train runs with 1.26 million actual arrival
+times (September 2024, IIT Kharagpur research dataset), real track data from OpenStreetMap, and the Ministry of
+Railways' published punctuality figure. Results: `evidence/real_data/real_validation.json` and
+`railway_readiness/REAL_DATA_VALIDATION.md`. Each finding below was reproduced on the real data, fixed, and
+re-checked on the same data.
+
+| # | Finding | Fix | Evidence |
+|---|---|---|---|
+| 1 | The live-feed gateway rejected 19% of a real morning's reports: a late train not yet reported was projected on time, so its real report at a station the projection had passed was "not ahead on the route" | Reports are matched from the run's last *accepted observation*, never from the projection; a report behind it is refused as out of order; the memory is dropped when the twin is reset | `test_reports_are_matched_from_the_last_observation_and_never_move_a_train_back`; real replay: acceptance 80% -> 96.6% |
+| 2 | Every feed event re-evaluated all national threats: 505 ms per one-minute batch | Threats are re-evaluated once per batch, after all its events; the version still changes, so earlier rankings are superseded | `test_a_feed_batch_re_evaluates_threats_once`; real replay about 0.1 s per batch over a whole morning |
+| 3 | 343 trains in the 2024 file list every stop at the same minute (placeholder timetables); their "actual" times are meaningless | Detected (more than 30% zero-minute sections) and excluded from the twin and every score, and counted | `test_build_derives_running_days_and_actual_times_and_drops_placeholder_timetables` |
+| 4 | The first OpenStreetMap line count read curving single lines and the parallel Dedicated Freight Corridor as double line, and missed double lines mapped far apart | Lines are counted where they cross a perpendicular cross-section; freight corridors, metros and sidings are not counted; a lone line with a parallel line 30-150 m away reads double; checked on Konkan (single) and Delhi-Bhopal (double) | `tests/test_osm_infra.py` (7 cases) |
+| 5 | The 2016 open timetable lacks 6,091 sections of 2024 and differs by over 15 minutes in two thirds of journey times | The national twin runs on the 2024 timetable, with real running days for every train; production refuses any other timetable | `test_production_runs_only_on_the_real_timetable`, `test_real_network_runs_on_real_timetable_days_and_track_data` |
+| 6 | With the old projection (a delay carried forward), conflict warnings were barely better than chance at predicting real time loss | Late trains reported by the feed are projected with a forecast learned from real running (13.9 vs 17.4 min average error on unseen days); warnings became clearly more predictive | `evidence/real_data/real_validation.json` (forecast, conflicts) |
+| 7 | Found by the randomised simulation within 60 episodes of the new code: a forecast that recovers time faster than physically possible made a projected plan overlap itself (RANKING invariant, 7 episodes) | Forecast plans never leave a stop before arriving and never run a section in under 85% of its timetabled time | `test_forecast_plans_never_overlap_themselves_or_run_impossibly_fast`; the 7 episodes replay clean |
+| 8 | A forecast could have replaced a plan already shaped by a controller's decision (a hold) | A forecast only replaces a projection; once a controller decision shapes the plan, a new delay is added on top of it | `test_a_forecast_never_replaces_a_controller_decision` |
+| 9 | Simulation workers stalled: model inference threads in every worker spun against each other (OpenMP) | One inference thread per simulation worker | 600 episodes in 35 s (was over 10 minutes) |
+| 10 | The twin's data label still said the network was inferred from the open timetable | The label states the timetable used and how many sections have mapped track data | `recommend()` output |

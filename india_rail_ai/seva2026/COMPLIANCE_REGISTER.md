@@ -33,7 +33,9 @@ approve or grant access) · **Open** (work that remains outside this repository)
 | Digital Personal Data Protection Act, 2023 and DPDP Rules, 2025 (notified Nov 2025; most duties apply ~18 months later) | Lawful purpose, notice, security safeguards, breach reporting, retention limits | No passenger data is processed. The only personal data is the controller identifier recorded with each decision (employment / legitimate-use purpose, needed for accountability). Recommend using staff IDs rather than names and documenting retention with HR | Met by design; operator policy needed |
 | Government Open Data License - India (GODL) / NDSAP | Attribution when using data.gov.in data | `india_rail/official.py` registers publisher and licence for every official source and records them with the file's SHA-256 in `official_provenance` | Met by design |
 | DataMeet Indian Railways data (CC0) | None required (attribution given anyway) | Pinned by SHA-256 in `india_rail/sources.py`; documented in README | Met |
-| OpenStreetMap (ODbL), optional track geometry | Attribution; share-alike for derived databases | Optional loader only; not used for the delivered results | Met if used with attribution |
+| OpenStreetMap (ODbL 1.0): track line count, electrification, gauge, speed limits, station positions | Attribution "(c) OpenStreetMap contributors"; a *publicly distributed* derived database must itself be ODbL | `india_rail/osm_infra.py` derives per-section attributes from an India extract verified by its published MD5 and recorded by SHA-256. The derived tables stay in the git-ignored `data/` directory; only aggregate counts are published, with attribution. If IR distributes the derived database, it does so under ODbL | Met |
+| Observed running, September 2024 (Chowdhury, Koley, Chakraborty, Ghosh - IIT Kharagpur; IEEE T-ITS 2026) | No licence file; published "for research and development" with a citation request. The underlying observations come from NTES, whose terms permit personal use and require permission for reproduction or systematic databases | Used **only to verify** the system (research use), fetched by the user from the authors' repository and checked against a pinned SHA-256, kept in git-ignored `data/`, **never redistributed**; only aggregate validation results are published, with citation; the forecast model trained on it is rebuilt locally by each user and is not distributed either. Nothing in this project scrapes NTES or any railway system | Met for research verification; for operational use the authorised NTES/COA feed replaces it (needs Ministry/CRIS permission) |
+| Ministry of Railways punctuality statistic (77.12% Mail/Express, 2024-25) | Public statement (Indian Railway Year Book; written reply in Lok Sabha) | Quoted with its source as the reference the observed data is checked against | Met |
 | Licence of this code | - | MIT (repository `LICENSE`) | Met |
 
 ## 4. Procurement and adoption pathway (not legal requirements, but how IR adopts software)
@@ -46,6 +48,7 @@ approve or grant access) · **Open** (work that remains outside this repository)
 
 ## What remains (honestly)
 
-Only Indian Railways and its authorities can: grant live-data access; approve a trial; sign the hazard log and
-safety case; appoint an independent safety assessor; commission the CERT-In/STQC audit; and decide hosting.
+Only Indian Railways and its authorities can: grant live-data access; share the block-section, loop and line-speed
+registers that make conflict warnings precise; approve a trial; sign the hazard log and safety case; appoint an
+independent safety assessor; commission the CERT-In/STQC audit; and decide hosting.
 The software side of each item above is built and evidenced in this repository.

@@ -186,12 +186,108 @@ def test_reset_restores_timetable(twin):
     assert not twin.plans and not twin.pending and not twin.threats.active()
 
 
-REAL_DB = Path(__file__).resolve().parent.parent / "data" / "india_rail.sqlite"
+DATA = Path(__file__).resolve().parent.parent / "data"
 
 
-@pytest.mark.skipif(not REAL_DB.exists(), reason="real timetable not ingested (run python -m india_rail ingest)")
-def test_real_network_scale():
-    from india_rail.railguard.national import national_data
-
-    data = national_data()
+@pytest.mark.skipif(not (DATA / "india_rail.sqlite").exists(), reason="open timetable not ingested")
+def test_open_network_scale():
+    data = build_national(DATA / "india_rail.sqlite")
     assert data.stats["sections"] > 8000 and data.stats["junctions"] > 1000 and data.stats["runs_in_window"] > 7000
+
+
+@pytest.mark.skipif(not (DATA / "real.sqlite").exists(), reason="real data not built (python -m india_rail real build)")
+def test_real_network_runs_on_real_timetable_days_and_track_data():
+    data = build_national(DATA / "real.sqlite")
+    stats = data.stats
+    assert stats["sections"] > 9000 and stats["junctions"] > 2000 and stats["runs_in_window"] > 3000
+    assert stats["trains_with_known_running_days"] == stats["train_numbers"]  # every day from observed running
+    assert stats["sections_with_osm_infrastructure"] > 0.85 * stats["sections"]
+    assert stats["stations_located_from_osm"] > 8000
+    # every section says where its track count came from; nothing is unlabelled
+    assert all("tracks:" in s.data_quality for s in data.network.sections.values())
+
+
+def test_production_runs_only_on_the_real_timetable(monkeypatch):
+    from india_rail.railguard import national
+
+    monkeypatch.setenv("RAILGUARD_MODE", "production")
+    monkeypatch.setenv("RAILGUARD_TIMETABLE", "open")
+    with pytest.raises(RuntimeError, match="real timetable"):
+        national.timetable_source()
+
+
+def test_live_reported_delay_follows_an_attached_forecast_but_a_controller_delay_does_not(data):
+    calls = []
+
+    class Forecast:
+        def plan(self, twin, key, p, d_now):
+            calls.append((key, p, d_now))
+            return twin.propagate(twin.plan_of(key), {p: d_now + 7})  # stand-in: forecast says +7 more
+
+    twin = NationalTwin(data, start_min=600.0)
+    twin.eta = Forecast()
+    twin.disrupt("12001@0", "B", 10)  # a controller's statement: carried forward as given
+    assert not calls and twin.plans["12001@0"].enter[1] == twin.runs["12001@0"].s_enter[1] + 10
+    twin.reset()
+    twin.disrupt("12001@0", "B", 8, actor="feed:NTES", observed_arrival_delay=10)
+    assert calls == [("12001@0", 1, 10.0)] and twin.plans["12001@0"].enter[1] == twin.runs["12001@0"].s_enter[1] + 17
+
+
+def test_mapped_track_data_sets_line_count_length_and_positions(tmp_path, data):
+    import shutil
+    import sqlite3
+
+    src = next(Path(p) for p in [tmp_path.parent] for p in p.glob("national*/rail.sqlite"))
+    db = tmp_path / "rail.sqlite"
+    shutil.copy(src, db)
+    con = sqlite3.connect(db)
+    con.executescript(
+        """
+        CREATE TABLE osm_stations (code TEXT PRIMARY KEY, lat REAL, lon REAL, located_by TEXT, osm_node INTEGER);
+        CREATE TABLE osm_sections (edge TEXT PRIMARY KEY, quality TEXT, osm_km REAL, lines INTEGER,
+            lines_median REAL, single_share REAL, longest_single_km REAL, samples INTEGER, electrified_share REAL,
+            electrification_known_share REAL, gauge_mm INTEGER, maxspeed_kmph REAL, maxspeed_share REAL,
+            service_share REAL);
+        INSERT INTO osm_stations VALUES ('B', 28.001, 77.101, 'OSM_REF', 1);
+        INSERT INTO osm_sections VALUES ('B-C', 'ACCEPTED', 10.4, 2, 2, 0, 0, 20, 1.0, 1.0, 1676, NULL, 0, 0);
+        INSERT INTO osm_sections VALUES ('A-B', 'REJECTED_DETOUR', 30.0, 1, 1, 1, 9, 20, 1.0, 1.0, 1676, NULL, 0, 0);
+        """
+    )
+    con.commit()
+    con.close()
+    mapped = build_national(db)
+    bc, ab = mapped.network.sections["B-C"], mapped.network.sections["A-B"]
+    assert bc.tracks == 2 and "tracks:OSM_MULTI_2" in bc.data_quality and "length:OSM_MAPPED_PATH" in bc.data_quality
+    assert bc.length_km == 10.4 and mapped.infrastructure["B-C"]["electrified_share"] == 1.0
+    assert ab.tracks == 1 and "OSM" not in ab.data_quality  # a rejected path is not used
+    assert mapped.network.nodes["B"] == (77.101, 28.001)  # the mapped station position
+    plain = build_national(db, use_osm=False)
+    assert plain.network.sections["B-C"].tracks == 1 and not plain.infrastructure
+
+
+def test_a_forecast_never_replaces_a_controller_decision(data):
+    from india_rail.railguard.eta import forecast_plan
+
+    class Forecast:
+        def plan(self, twin, key, p, d_now):
+            return forecast_plan(twin.plan_of(key), p, {p: d_now, p + 1: 0.0})  # claims a full recovery
+
+    twin = NationalTwin(data, start_min=600.0)
+    twin.eta = Forecast()
+    held = twin.propagate(twin.plan_of("12001@0"), {1: 15.0})  # stands in for an approved 15-minute hold at B
+    twin._set_plan("12001@0", held)
+    twin.disrupt("12001@0", "B", 5, actor="feed:NTES", observed_arrival_delay=5)
+    assert twin.plans["12001@0"].enter[1] == held.enter[1] + 5  # added on top of the hold, not replaced
+
+
+def test_forecast_plans_never_overlap_themselves_or_run_impossibly_fast():
+    from india_rail.railguard.eta import RUN_FLOOR, forecast_plan
+    from india_rail.railguard.national import Plan
+
+    s_enter, s_exit = [0.0, 30.0, 60.0], [28.0, 58.0, 90.0]
+    plan = Plan(["a", "b", "c"], ["A", "B", "C"], ["B", "C", "D"], s_enter[:], s_exit[:], s_enter, s_exit, 3)
+    out = forecast_plan(plan, 0, {0: 40.0, 1: 0.0, 2: 0.0, 3: 0.0})  # the forecast recovers 40 minutes at once
+    for i in range(3):
+        assert out.exit[i] - out.enter[i] >= RUN_FLOOR * (s_exit[i] - s_enter[i]) - 1e-9
+        if i:
+            assert out.enter[i] >= out.exit[i - 1]

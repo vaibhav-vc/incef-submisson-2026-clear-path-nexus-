@@ -37,7 +37,8 @@ Tests run offline on a hand-made three-station network: `python -m pytest -q`.
 | [DataMeet `stations.json`](https://github.com/datameet/railways) | 8,990 stations with code, zone, state and coordinates | CC0 | Ingested, SHA-256 pinned |
 | [DataMeet `trains.json`](https://github.com/datameet/railways) | 5,208 trains with type, zone, classes, distance and route geometry | CC0 | Ingested, SHA-256 pinned |
 | [DataMeet `schedules.json`](https://github.com/datameet/railways) | 417,080 stop rows (arrival, departure, day) | CC0 | Ingested, SHA-256 pinned |
-| OpenStreetMap `railway=rail` | Physical track geometry, gauge, electrification, track count, max speed | ODbL | Loader in `scripts/fetch_osm_tracks.py`. It needs Overpass access, which this build sandbox did not have |
+| **September 2024 timetable and actual running** (IIT Kharagpur research dataset, IEEE T-ITS 2026) | 3,892 trains; 1.28M *actual* arrival times over 57,485 real train runs | No licence; research use with citation | `python -m india_rail real fetch && ... real build`: SHA-256 pinned, kept in git-ignored `data/`, never redistributed. Used for real running days and to verify the system |
+| **OpenStreetMap India extract** (`download.openstreetmap.fr`, MD5-verified) | 101,805 mapped running-line ways, 10,314 stations (93% with their IR code) | ODbL | `python -m india_rail real osm --pbf ...`: real line count, electrification, gauge, speed limits and station positions per section |
 | NTES / COA / FOIS / ICMS | Live running, control charts, freight, crew | Indian Railways (no open API) | Needs an authorised data-sharing agreement. Not scraped |
 
 **Data quality**, from the ingest report:
@@ -47,7 +48,7 @@ Tests run offline on a hand-made three-station network: `python -m pytest -q`.
 - 780 small backward clock steps (for example 08:30 followed by 08:29) were clamped rather than read as a 24-hour section.
 - 1,220 rows disagree with the published `day` field. Spot checks show the published day is the faulty field: train 59298 increments its day at most stops within four hours.
 
-The timetable is a **community snapshot from about 2016** with **no running-days field**, so every train is treated as daily. Station codes are from that era too (Mumbai Central is `BCT`, not `MMCT`).
+The open timetable is a **community snapshot from about 2016** with **no running-days field**. The national twin therefore runs on the **September 2024 timetable** instead whenever it has been built (`RAILGUARD_TIMETABLE=real`, required in production): every train's running days come from the days it was actually seen running, and the line count of each section from OpenStreetMap. See [Real-life data and verification](#real-life-data-and-verification).
 
 ## ML model: section run time
 
@@ -116,7 +117,7 @@ None of them can change anything; plans are proposals.
 ## Nexus RailGuard (SEVA 2026 build)
 
 `india_rail/railguard/` is a controller decision-support and driver-advisory layer with two digital twins:
-- **National twin:** every station (8,990; 7,679 with halts, 914 non-halt stations placed on their sections), 1,454 junctions, 8,738 sections and 7,580 timetabled train runs over two days. Track counts, speeds and lengths are inferred from the timetable and labelled as such. Console: `/control/national`.
+- **National twin:** runs on **real data**: the September 2024 timetable (3,549 trains, 9,065 sections between halts, 2,000+ junctions), every train's running days as observed, station positions and single/double line from OpenStreetMap on 90% of sections, and rail distances from the timetable. Every attribute is labelled with its evidence. Without the real data it falls back to the 2016 open timetable (production refuses that). Console: `/control/national`.
 - **Tabletop twin:** two trains on ten sections, with the TwinTrack ESP32 node and six judge scenarios. Console: `/control`; driver screens: `/cab?train=A|B` or `/cab?run=<train>@<day>`.
 
 The parts:
@@ -126,11 +127,24 @@ The parts:
 - **Cab:** each driver sees only the approved plan.
 - **Audit:** a hash chain (optional HMAC, persisted) records every decision, and each decision replays to the same ranking.
 - **Live-feed gateway** (`livefeed.py`): accepts signed RTIS/NTES/COA-style batches, protects against replays, map-matches positions, and turns late station events into disruptions for the controller. It is ready for authorised data.
-- **Simulation** (`simulate.py`): randomised operation sequences on both twins, with eight safety invariants checked after every operation. The main run checked 5,068,492 operations and found one last defect, now fixed. The final code passed 1,201,001 more operations with 0 violations. See [`seva2026/AUDIT_LOG.md`](seva2026/AUDIT_LOG.md).
+- **Simulation** (`simulate.py`): randomised operation sequences on both twins, with eight safety invariants checked after every operation. The main run checked 5,068,492 operations and found one last defect, now fixed. On the final code with real data and the learned forecast attached, 36,000 episodes (960,020 operations) ran with 0 violations, after the simulation caught one defect in the new forecast code. See [`seva2026/AUDIT_LOG.md`](seva2026/AUDIT_LOG.md).
 
 Security: role tokens, fail-closed production mode, strict request schemas, CSP, rate limits, and a signed feed. See [SECURITY.md](SECURITY.md). Compliance with the Railways Act / G&SR, RDSO and EN 50716, the IT Act, CERT-In, DPDP and the data licences is covered in [seva2026/COMPLIANCE_REGISTER.md](seva2026/COMPLIANCE_REGISTER.md). The full report is [seva2026/ClearPath_Nexus_RailGuard_Report.pdf](seva2026/ClearPath_Nexus_RailGuard_Report.pdf).
 
 Start with [seva2026/START_HERE.md](seva2026/START_HERE.md). The tabletop ESP32 node is in [hardware/twintrack_esp32](hardware/twintrack_esp32/README.md); it is written but not yet bench-tested.
+
+## Real-life data and verification
+
+```sh
+python -m india_rail real fetch                              # observed running, Sep 2024 (SHA-256 pinned)
+python -m india_rail real build                              # data/real.sqlite: 2024 timetable, real running days
+python -m india_rail real osm --pbf data/raw/osm/india.osm.pbf   # real track data from OpenStreetMap
+python -m india_rail real validate                           # verify against what actually happened
+```
+
+The verification ([`seva2026/railway_readiness/REAL_DATA_VALIDATION.md`](seva2026/railway_readiness/REAL_DATA_VALIDATION.md), generated from [`seva2026/evidence/real_data/real_validation.json`](seva2026/evidence/real_data/real_validation.json)) uses 56,395 real train runs with 1.26 million actual arrival times. It checks the data against the Ministry of Railways' published punctuality; scores delay forecasts forward in time on days the model never saw; tests whether the twin's conflict warnings precede real time loss; and replays a real morning through the signed live-feed gateway. Running on real data found ten defects, all fixed (`seva2026/AUDIT_LOG.md`, pass 6). Late trains reported by the feed are now projected with the forecast learned from real running (`railguard/eta.py`, `GET /railguard/national/eta/{run}`).
+
+The observed-running data has no licence beyond research use with citation, so it is never committed or redistributed: each user fetches it, it is checked by SHA-256 and stays in git-ignored `data/`. OpenStreetMap data is ODbL.
 
 ## HTTP API
 
@@ -146,10 +160,11 @@ Run `python -m india_rail serve`; the endpoint docs are at `/docs` (disabled whe
 
 ## Next steps towards real deployment
 
+0. **Done with real data:** the twin runs on the 2024 timetable with observed running days and mapped track data, and is verified against 56,395 real train runs (see above).
 1. **Authorised live data.** NTES running status, RTIS positions and COA control charts through CRIS; the signed gateway is built and needs the interface specification and keys. Also running days and the current timetable (Trains at a Glance / ICMS); the official-data pipeline ingests the data.gov.in release.
-2. **Track data.** Load OSM or, better, the Indian Railways engineering register: line count, loops and block sections. This enables single-line conflicts and overtaking at loops.
-3. **Delay model.** Train on actual running data to predict delays, not just planned run times.
+2. **Track data.** OpenStreetMap line counts are loaded; the Indian Railways engineering register (block sections, loops, signals) is what makes conflict warnings precise (measured on real days: informative, far from certain).
+3. **Delay model.** Done on one month of actual running; retrain on IR's own feed across seasons (fog, monsoon).
 4. **Optimiser.** Replace the greedy holds with an optimiser that minimises weighted delay, then trial it in shadow mode beside a real control office, comparing its proposals with the controllers' decisions.
 5. **Certification.** Any step that issues commands to trains or signals goes through RDSO safety certification and Kavach/EI integration by the authority. That is outside this software.
 
-Data attribution: DataMeet (CC0). OpenStreetMap contributors (ODbL) when the OSM loader is used.
+Data attribution: DataMeet (CC0). © OpenStreetMap contributors (ODbL). Observed running: K. Chowdhury, P. Koley, A. Chakraborty, S. Ghosh, "RSTGCN: Railway-centric spatio-temporal graph convolutional network for train delay prediction", IEEE Transactions on Intelligent Transportation Systems, 2026 (arXiv:2510.01262).

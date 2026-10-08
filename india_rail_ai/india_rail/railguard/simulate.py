@@ -534,9 +534,11 @@ _NATIONAL: Any = None
 def _national_twin() -> Any:
     global _NATIONAL
     if _NATIONAL is None:
+        from india_rail.railguard.eta import load_default
         from india_rail.railguard.national import NationalTwin
 
         _NATIONAL = NationalTwin()
+        _NATIONAL.eta = load_default()  # as deployed: live-reported delays follow the learned forecast
     return _NATIONAL
 
 
@@ -619,12 +621,15 @@ class NationalEpisode:
         if station is None:
             return False
         delay = round(min(self.rng.expovariate(1 / 25) + 1, 240), 1)
+        # Half come from a controller, half from the live feed (projected by the real-running forecast, if loaded).
+        observed = round(delay + self.rng.uniform(0, 5), 1) if self.rng.random() < 0.5 else None
         try:
-            self.tw.disrupt(key, station, delay)
+            self.tw.disrupt(key, station, delay, actor="feed:SIM" if observed else "controller",
+                            observed_arrival_delay=observed)  # fmt: skip
         except ValueError as exc:
             self.log(f"disrupt {key} refused: {exc}")
             return False
-        self.log(f"disrupt {key} at {station} +{delay} min")
+        self.log(f"disrupt {key} at {station} +{delay} min" + (f" (feed, arrived {observed} late)" if observed else ""))
         return True
 
     def feed(self, key: str, valid: bool = True) -> None:
@@ -934,9 +939,31 @@ def _code_checksum() -> str:
     return digest.hexdigest()
 
 
+@lru_cache(maxsize=1)
+def _data_identity() -> dict[str, Any]:
+    """Which timetable the national twin ran on and which forecast model was attached (by SHA-256)."""
+
+    from india_rail.railguard.national import timetable_source
+
+    try:
+        name, path = timetable_source()
+    except RuntimeError as exc:
+        return {"timetable": f"unavailable: {exc}"}
+    out: dict[str, Any] = {"timetable": name, "timetable_db": path.name}
+    model = Path(__file__).resolve().parents[2] / "models" / "eta_model.joblib"
+    if model.exists():
+        out["eta_model_sha256"] = hashlib.sha256(model.read_bytes()).hexdigest()
+    return out
+
+
 def _init_worker(load_national: bool) -> None:
+    # One thread per worker: OpenMP inference threads in every worker would spin against each other.
+    os.environ["OMP_NUM_THREADS"] = "1"
     if load_national:
         _national_twin()
+    from threadpoolctl import threadpool_limits
+
+    threadpool_limits(1)  # also for libraries already loaded above
 
 
 def _write(out, totals, began, seed, workers, target, done) -> dict[str, Any]:
@@ -947,6 +974,7 @@ def _write(out, totals, began, seed, workers, target, done) -> dict[str, Any]:
         "workers": workers,
         "platform": f"{platform.python_implementation()} {platform.python_version()} on {platform.machine()}",
         "code_checksum": _code_checksum(),
+        "data": _data_identity(),
         "target_episodes": target,
         "completed_episodes": done,
         "operations_checked": sum(t["stats"].get("ops", 0) for t in totals.values()),

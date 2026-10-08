@@ -4,6 +4,12 @@
 Measure, without any effect on operations, whether RailGuard's ranked alternatives contain the decisions experienced
 controllers actually take, and where they differ, why.
 
+## Already done on recorded real running (retrospective shadow run)
+Before any live trial, the national twin was run against four real days of September 2024 (`REAL_DATA_VALIDATION.md`):
+at six times of day it received every train's real delay and its conflict warnings were checked against what the
+trains then did. This measures the warnings honestly (informative, far from certain) and shows what a live trial
+must add: controllers' actual decisions, and IR's block-section and loop data.
+
 ## Set-up
 * One division, one or two control boards (e.g. a busy double-line section with a single-line branch).
 * RailGuard hosted on railway infrastructure; authorised NTES/COA (and if available RTIS) feed via the signed

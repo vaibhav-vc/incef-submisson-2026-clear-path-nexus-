@@ -22,7 +22,7 @@ from pydantic import Field
 from india_rail.railguard.cab import build_advisory, compact
 from india_rail.railguard.engine import RailGuardEngine
 from india_rail.railguard.scenarios import SCENARIOS
-from india_rail.security import StrictRequest, limit, require
+from india_rail.security import StrictRequest, limit, production, require
 
 STATIC = Path(__file__).parent / "static"
 VIEW = [Depends(require("viewer")), Depends(limit("read"))]
@@ -30,6 +30,16 @@ VIEW_HEAVY = [Depends(require("viewer")), Depends(limit("heavy"))]
 CONTROL = [Depends(require("controller")), Depends(limit("write"))]
 CONTROL_HEAVY = [Depends(require("controller")), Depends(limit("heavy"))]
 FEED = [Depends(require("feed")), Depends(limit("write"))]
+
+
+def _demo_network() -> None:
+    """The tabletop twin is a made-up ten-section network for demonstrations: production serves real data only."""
+
+    if production():
+        raise HTTPException(status_code=404, detail="Demo network disabled in production: real data only")
+
+
+DEMO = [Depends(_demo_network)]
 
 router = APIRouter(prefix="/railguard", tags=["railguard"])
 pages = APIRouter(tags=["railguard-ui"])
@@ -56,7 +66,7 @@ def _run(fn, *args, **kwargs) -> Any:
 
 
 # ---- pages (no data; every data call they make is authorised separately) -------------------------
-@pages.get("/control", include_in_schema=False)
+@pages.get("/control", include_in_schema=False, dependencies=DEMO)
 def control_page() -> FileResponse:
     return FileResponse(STATIC / "control.html")
 
@@ -72,17 +82,17 @@ def cab_page() -> FileResponse:
 
 
 # ---- tabletop twin: state and scenarios ---------------------------------------------------------
-@router.get("/state", dependencies=VIEW)
+@router.get("/state", dependencies=VIEW + DEMO)
 def state() -> dict[str, Any]:
     return ENGINE.state()
 
 
-@router.get("/scenarios", dependencies=VIEW)
+@router.get("/scenarios", dependencies=VIEW + DEMO)
 def scenarios() -> list[dict[str, str]]:
     return [{"name": name, "title": spec["title"]} for name, spec in SCENARIOS.items()]
 
 
-@router.post("/scenarios/{name}/load", dependencies=CONTROL)
+@router.post("/scenarios/{name}/load", dependencies=CONTROL + DEMO)
 def load_scenario(name: str) -> dict[str, Any]:
     if name not in SCENARIOS:
         raise HTTPException(status_code=404, detail="Unknown scenario")
@@ -91,7 +101,7 @@ def load_scenario(name: str) -> dict[str, Any]:
     return ENGINE.state()
 
 
-@router.post("/scenarios/{name}/run", dependencies=CONTROL_HEAVY)
+@router.post("/scenarios/{name}/run", dependencies=CONTROL_HEAVY + DEMO)
 def run_scenario(name: str) -> dict[str, Any]:
     """Run the full scripted scenario on a separate twin (the live demo is untouched)."""
 
@@ -104,7 +114,7 @@ class TickRequest(StrictRequest):
     seconds: int = Field(60, ge=1, le=3600)
 
 
-@router.post("/tick", dependencies=CONTROL)
+@router.post("/tick", dependencies=CONTROL + DEMO)
 def tick(request: TickRequest) -> dict[str, Any]:
     ENGINE.tick(request.seconds)
     return ENGINE.state()
@@ -116,7 +126,7 @@ class RecommendRequest(StrictRequest):
     weights: dict[str, float] | None = Field(None, max_length=7)
 
 
-@router.post("/recommend", dependencies=CONTROL_HEAVY)
+@router.post("/recommend", dependencies=CONTROL_HEAVY + DEMO)
 def recommend(request: RecommendRequest) -> dict[str, Any]:
     _run(ENGINE.set_weights, request.preset, request.weights)
     return ENGINE.recommend()
@@ -128,7 +138,7 @@ class ApproveRequest(StrictRequest):
     controller: str = Field(pattern=NAME)
 
 
-@router.post("/approve", dependencies=CONTROL)
+@router.post("/approve", dependencies=CONTROL + DEMO)
 def approve(request: ApproveRequest) -> dict[str, Any]:
     return _run(ENGINE.approve, request.snapshot_id, request.candidate_id, request.controller)
 
@@ -139,7 +149,7 @@ class RejectRequest(StrictRequest):
     reason: str = Field("", max_length=300)
 
 
-@router.post("/reject", dependencies=CONTROL)
+@router.post("/reject", dependencies=CONTROL + DEMO)
 def reject(request: RejectRequest) -> dict[str, Any]:
     return _run(ENGINE.reject, request.snapshot_id, request.controller, request.reason)
 
@@ -150,7 +160,7 @@ class HoldRequest(StrictRequest):
     train_id: str | None = Field(None, pattern=TRAIN)
 
 
-@router.post("/hold", dependencies=CONTROL)
+@router.post("/hold", dependencies=CONTROL + DEMO)
 def hold(request: HoldRequest) -> dict[str, Any]:
     if request.train_id and request.train_id not in ENGINE.trains:
         raise HTTPException(status_code=404, detail="Unknown train")
@@ -161,7 +171,7 @@ class AckRequest(StrictRequest):
     by: str = Field(pattern=NAME)
 
 
-@router.post("/threats/{threat_id}/ack", dependencies=CONTROL)
+@router.post("/threats/{threat_id}/ack", dependencies=CONTROL + DEMO)
 def acknowledge(threat_id: str, request: AckRequest) -> dict[str, Any]:
     return _run(ENGINE.acknowledge, threat_id, request.by)
 
@@ -172,7 +182,7 @@ class FaultRequest(StrictRequest):
     section_id: str | None = Field(None, pattern=SECTION)
 
 
-@router.post("/fault", dependencies=CONTROL)
+@router.post("/fault", dependencies=CONTROL + DEMO)
 def fault(request: FaultRequest) -> dict[str, Any]:
     if request.train_id is not None and request.train_id not in ENGINE.trains:
         raise HTTPException(status_code=404, detail="Unknown train")
@@ -193,7 +203,7 @@ class PositionReport(StrictRequest):
     source: str = Field("TWINTRACK_SENSOR", pattern="^(TWINTRACK_SENSOR|GNSS_SIM)$")
 
 
-@router.post("/twintrack/position", dependencies=FEED)
+@router.post("/twintrack/position", dependencies=FEED + DEMO)
 def twintrack_position(report: PositionReport) -> dict[str, Any]:
     body = report.model_dump(exclude_none=True)
     body.setdefault("t", ENGINE.t)
@@ -224,12 +234,12 @@ def _update_twin_section(report: SectionReport, source: str) -> dict[str, Any]:
     return _run(ENGINE.update_section, report.section_id, source, **_section_changes(report)).to_dict()
 
 
-@router.post("/tracksense/section", dependencies=FEED)
+@router.post("/tracksense/section", dependencies=FEED + DEMO)
 def tracksense_section(report: SectionReport) -> dict[str, Any]:
     return _update_twin_section(report, "TRACKSENSE_FEED")
 
 
-@router.post("/console/section", dependencies=CONTROL)
+@router.post("/console/section", dependencies=CONTROL + DEMO)
 def console_section(report: SectionReport) -> dict[str, Any]:
     """The same section input, entered by a controller from the demo console."""
 
@@ -241,7 +251,7 @@ class ObstacleReport(StrictRequest):
     detected: bool = True
 
 
-@router.post("/twintrack/obstacle", dependencies=FEED)
+@router.post("/twintrack/obstacle", dependencies=FEED + DEMO)
 def twintrack_obstacle(report: ObstacleReport) -> dict[str, Any]:
     """Tabletop obstacle sensor. Raising is automatic; clearing needs a controller (inspection) action."""
 
@@ -253,7 +263,7 @@ def twintrack_obstacle(report: ObstacleReport) -> dict[str, Any]:
 
 
 # ---- Nexus Cab (read-only) --------------------------------------------------------------------------
-@router.get("/cab/{train_id}", dependencies=VIEW)
+@router.get("/cab/{train_id}", dependencies=VIEW + DEMO)
 def cab(train_id: str) -> dict[str, Any]:
     if train_id not in ENGINE.trains:
         raise HTTPException(status_code=404, detail="Unknown train")
@@ -261,20 +271,20 @@ def cab(train_id: str) -> dict[str, Any]:
         return build_advisory(ENGINE, train_id)
 
 
-@router.get("/cab/{train_id}/compact", response_class=PlainTextResponse, dependencies=VIEW)
+@router.get("/cab/{train_id}/compact", response_class=PlainTextResponse, dependencies=VIEW + DEMO)
 def cab_compact(train_id: str) -> str:
     return compact(cab(train_id))
 
 
 # ---- audit --------------------------------------------------------------------------------------------
-@router.get("/audit", dependencies=VIEW)
+@router.get("/audit", dependencies=VIEW + DEMO)
 def audit_events(limit_events: int = 200) -> dict[str, Any]:
     with ENGINE.lock:
         count = max(1, min(limit_events, 1000))
         return {"chain_ok": ENGINE.audit.verify_chain(), "events": ENGINE.audit.events[-count:]}
 
 
-@router.get("/audit/{snapshot_id}", dependencies=VIEW)
+@router.get("/audit/{snapshot_id}", dependencies=VIEW + DEMO)
 def snapshot(snapshot_id: str) -> dict[str, Any]:
     with ENGINE.lock:
         if snapshot_id not in ENGINE.audit.snapshots:
@@ -282,7 +292,7 @@ def snapshot(snapshot_id: str) -> dict[str, Any]:
         return ENGINE.audit.snapshots[snapshot_id]
 
 
-@router.get("/audit/{snapshot_id}/replay", dependencies=VIEW_HEAVY)
+@router.get("/audit/{snapshot_id}/replay", dependencies=VIEW_HEAVY + DEMO)
 def replay(snapshot_id: str) -> dict[str, Any]:
     with ENGINE.lock:
         if snapshot_id not in ENGINE.audit.snapshots:
@@ -293,9 +303,12 @@ def replay(snapshot_id: str) -> dict[str, Any]:
 # ---- national network twin ------------------------------------------------------------------------------
 @lru_cache(maxsize=1)
 def _national():
+    from india_rail.railguard.eta import load_default
     from india_rail.railguard.national import NationalTwin
 
-    return NationalTwin()
+    twin = NationalTwin()
+    twin.eta = load_default()  # forecasts learned from real running, when the model and real data are present
+    return twin
 
 
 def national():
@@ -303,8 +316,10 @@ def national():
         return _national()
     except (OSError, sqlite3.Error) as exc:  # timetable database not ingested yet
         raise HTTPException(
-            status_code=503, detail="National data unavailable: run `python -m india_rail ingest`"
+            status_code=503, detail="National data unavailable: run `python -m india_rail real build`"
         ) from exc
+    except RuntimeError as exc:  # production asked to run on anything but real timetable data
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/national/summary", dependencies=VIEW)
@@ -337,6 +352,19 @@ def national_plan(run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
 @router.get("/national/cab/{run}", dependencies=VIEW)
 def national_cab(run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
     return _run(national().cab, run)
+
+
+@router.get("/national/eta/{run}", dependencies=VIEW)
+def national_eta(run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
+    """Forecast delay at each later stop (median and P10-P90), learned from real running. Advice only."""
+
+    twin = national()
+    if twin.eta is None:
+        raise HTTPException(status_code=503, detail="Forecast model not built: run python -m india_rail real validate")
+    with twin.lock:
+        if run not in twin.runs:
+            raise HTTPException(status_code=404, detail="Unknown run")
+        return {"run": run, "basis": twin.eta.source, "stops": twin.eta.forecast(twin, run)}
 
 
 class NationalDisruption(StrictRequest):

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from india_rail import security
 from india_rail.api import app
+from india_rail.railguard import api as railguard_api
 from india_rail.railguard.audit import AuditLog, verify_events
 
 TOKENS = {"viewer": "v" * 40, "controller": "c" * 40, "feed": "f" * 40}
@@ -26,7 +27,23 @@ def prod(monkeypatch):
     monkeypatch.setenv("RAILGUARD_ALLOWED_HOSTS", "testserver")
     for role, env in security.ROLE_ENV.items():
         monkeypatch.setenv(env, TOKENS[role])
-    return TestClient(app)
+    # These tests attack the HTTP layer through the small demo network, which production otherwise disables.
+    app.dependency_overrides[railguard_api._demo_network] = lambda: None
+    yield TestClient(app)
+    app.dependency_overrides.pop(railguard_api._demo_network, None)
+
+
+def test_production_serves_real_data_only(monkeypatch):
+    monkeypatch.setenv("RAILGUARD_MODE", "production")
+    monkeypatch.setenv("RAILGUARD_RATE_LIMIT", "off")
+    monkeypatch.setenv("RAILGUARD_ALLOWED_HOSTS", "testserver")
+    for role, env in security.ROLE_ENV.items():
+        monkeypatch.setenv(env, TOKENS[role])
+    client = TestClient(app)
+    assert client.get("/railguard/state", headers=bearer("viewer")).status_code == 404  # made-up demo network
+    assert client.post("/railguard/tick", json={"seconds": 1}, headers=bearer("controller")).status_code == 404
+    assert client.get("/control").status_code == 404
+    assert client.get("/control/national").status_code == 200
 
 
 def test_production_without_tokens_fails_closed(monkeypatch):

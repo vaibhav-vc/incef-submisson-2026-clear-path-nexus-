@@ -49,3 +49,15 @@ Signature: `8ae2417f1ce117df5593a0fff30e1e2806d6f12a22eb3677a08f2d33139b0886`
    confirm acceptance rates and the map-matching tolerance on real GNSS traces.
 4. Set `RAILGUARD_LIVE_CLOCK=1` so the twin follows Indian Standard Time; keep both clocks on NIC/NPL NTP.
 5. Start the shadow trial (`SHADOW_TRIAL_PLAN.md`).
+
+## Behaviour verified on real running data
+A real morning (24 September 2024) was replayed through the gateway: every actual arrival sent as a signed
+STATION event at its real time (`python -m india_rail real validate`, `live_feed_replay`). This changed the gateway:
+* a report is matched from the run's **last accepted observation**, never from the timetable projection (a late
+  train that has not reported yet is projected ahead of where it really is);
+* a report for a station **behind** the last accepted one is refused as out of order: a train is never moved back;
+* threats are re-evaluated **once per batch**, after all its events (about 0.1 s per one-minute batch at national
+  scale over a whole morning);
+* the origin of a journey is reported as a departure (`DEP`), not an arrival.
+CRIS should confirm ordering guarantees per train and whether corrections are sent as new events.
+

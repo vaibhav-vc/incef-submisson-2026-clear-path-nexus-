@@ -21,7 +21,10 @@ def client(monkeypatch):
     for role, env in security.ROLE_ENV.items():
         monkeypatch.setenv(env, TOKENS[role])
     monkeypatch.setattr(railguard_api, "ENGINE", RailGuardEngine())
-    return TestClient(app, raise_server_exceptions=False)
+    # The attacks go through the small demo network, which production otherwise disables (real data only).
+    app.dependency_overrides[railguard_api._demo_network] = lambda: None
+    yield TestClient(app, raise_server_exceptions=False)
+    app.dependency_overrides.pop(railguard_api._demo_network, None)
 
 
 CONTROL = {"Authorization": f"Bearer {TOKENS['controller']}"}

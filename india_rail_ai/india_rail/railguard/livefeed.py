@@ -104,6 +104,9 @@ class FeedGateway:
         self.auto_disruption_min = auto_disruption_min
         self.nonces: OrderedDict[str, None] = OrderedDict()
         self.last_sequence: dict[str, int] = {}
+        # Section index of each run's last accepted observation: a real report is matched from there on, not
+        # from the projection (a late train not yet reported is projected ahead of where it really is).
+        self.last_index: dict[str, int] = {}
 
     # ---- envelope ----------------------------------------------------------------------------------
     def receive(self, envelope: dict[str, Any]) -> dict[str, Any]:
@@ -150,6 +153,7 @@ class FeedGateway:
                     twin.tick(wall - twin.now)
             results = [self._event(source, event) for event in events]
             accepted = sum(1 for r in results if r["accepted"])
+            twin.refresh()  # threats re-evaluated once per batch, after every event is in
             twin.audit.record(
                 int(twin.now * 60),
                 "FEED_BATCH",
@@ -196,6 +200,15 @@ class FeedGateway:
             raise ValueError(f"no timetabled run {key}")
         return key
 
+    def _observed_from(self, key: str, default: int) -> int:
+        """Where to match a run's next report: its last accepted observation, while the twin still holds it
+        (a twin reset drops the evidence, and with it this memory)."""
+
+        if f"position:{key}" in self.twin.evidence.records:
+            return self.last_index.get(key, default)
+        self.last_index.pop(key, None)
+        return default
+
     def _minutes(self, when: datetime) -> float:
         midnight = datetime.combine(self.service_date, datetime.min.time(), IST)
         return (when - midnight).total_seconds() / 60
@@ -210,8 +223,9 @@ class FeedGateway:
         twin = self.twin
         plan = twin.plan_of(key)
         here = twin.position(key)["index"]
+        start = self._observed_from(key, max(here - 3, 0))
         best = None
-        for i in range(max(here - 3, 0), min(here + 8, len(plan.sections))):
+        for i in range(start, min(max(here, start) + 8, len(plan.sections))):
             (ax, ay), (bx, by) = twin.net.nodes[plan.frm[i]], twin.net.nodes[plan.to[i]]
             kx = 111.32 * math.cos(math.radians(lat))
             px, py, dx, dy = (lon - ax) * kx, (lat - ay) * 110.57, (bx - ax) * kx, (by - ay) * 110.57
@@ -220,12 +234,16 @@ class FeedGateway:
             if best is None or dist < best[0]:
                 best = (dist, i, frac)
         if best is None or best[0] > MATCH_KM:
-            result = twin.ingest_position(key, "UNMATCHED", 0.0, source=f"FEED_{source}")
+            result = twin.ingest_position(key, "UNMATCHED", 0.0, source=f"FEED_{source}", refresh=False)
             off = best[0] if best else math.inf
             return {**result, "run": key, "reason": f"fix {off:.1f} km from the planned route"}
         _dist, i, frac = best
         sid = plan.sections[i]
-        result = twin.ingest_position(key, sid, round(frac * twin.section(sid).length_km, 3), source=f"FEED_{source}")
+        result = twin.ingest_position(
+            key, sid, round(frac * twin.section(sid).length_km, 3), source=f"FEED_{source}", refresh=False
+        )
+        if result.get("accepted"):
+            self.last_index[key] = i
         return {**result, "run": key, "section_id": sid, "match_km": round(best[0], 2)}
 
     def _station(self, source: str, key: str, event: dict[str, Any], minute: float) -> dict[str, Any]:
@@ -234,8 +252,7 @@ class FeedGateway:
             raise ValueError("invalid station_code or event")
         twin = self.twin
         plan = twin.plan_of(key)
-        here = twin.position(key)["index"]
-        window = range(max(here - 2, 0), len(plan.sections))
+        window = range(self._observed_from(key, 0), len(plan.sections))
         if what == "DEP":
             i = next((i for i in window if plan.frm[i] == station), None)
             planned, offset = (plan.enter[i], 0.0) if i is not None else (None, 0.0)
@@ -244,6 +261,9 @@ class FeedGateway:
             planned = plan.exit[i] if i is not None else None
             offset = twin.section(plan.sections[i]).length_km if i is not None else 0.0
         if i is None:
+            behind = any(plan.to[k] == station or plan.frm[k] == station for k in range(window.start))
+            if behind:
+                raise ValueError(f"{station} is behind the last reported position of {key} (out-of-order report)")
             raise ValueError(f"{station} is not ahead on the planned route of {key}")
         late = minute - planned
         recorded = None
@@ -252,9 +272,15 @@ class FeedGateway:
             j = i if what == "DEP" else i + 1
             delay = late if what == "DEP" else late - 2.0
             if j < len(plan.sections) and delay >= 1:
-                twin.disrupt(key, plan.frm[j], min(delay, 720), actor=f"feed:{source}", at_index=j)
+                observed = late if what != "DEP" else None
+                twin.disrupt(key, plan.frm[j], min(delay, 720), actor=f"feed:{source}", at_index=j,
+                             observed_arrival_delay=observed, refresh=False)  # fmt: skip
                 recorded = {"station": plan.frm[j], "delay_min": round(delay, 1)}
-        result = twin.ingest_position(key, twin.plan_of(key).sections[i], round(offset, 3), source=f"FEED_{source}")
+        result = twin.ingest_position(
+            key, twin.plan_of(key).sections[i], round(offset, 3), source=f"FEED_{source}", refresh=False
+        )
+        if result.get("accepted"):
+            self.last_index[key] = i
         out = {**result, "run": key, "late_min": round(late, 1)}
         if recorded:
             out["disruption_recorded"] = recorded

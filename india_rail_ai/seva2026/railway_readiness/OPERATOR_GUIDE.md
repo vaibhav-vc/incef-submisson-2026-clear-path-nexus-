@@ -11,6 +11,11 @@
 3. **Approving:** only the latest ranking can be approved. If anything changed, re-rank first. Your name is recorded.
 4. **Threats:** acknowledge only after you have acted or confirmed. Acknowledgement is recorded.
 5. **When it is wrong or unavailable:** carry on with normal working. Note the case for the shadow-trial review.
+6. **Forecasts of late trains:** a train the live feed reports late is projected with a forecast learned from real
+   running (`ETA` view: median and a P10-P90 band per station). On real days it was within 15 minutes 81% of the
+   time, so treat the band, not the single number, as the forecast. A forecast never changes a decision you made.
+7. **Conflict warnings are advice with a known hit rate:** on real days the train that should give way lost time
+   about 1.2 times as often as comparable trains. Use them to look, not as certainties.
 
 ## For loco pilots (Nexus Cab)
 * The cab view shows only the controller-approved plan, as **advice**. **Signals, Kavach/ATP, caution orders

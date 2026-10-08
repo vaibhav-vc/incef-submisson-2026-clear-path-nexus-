@@ -14,6 +14,10 @@ def main(argv: list[str] | None = None) -> int:
         from india_rail.official import main as official_main
 
         return official_main(argv[1:])
+    if argv[:1] == ["real"]:
+        from india_rail.realdata import main as real_main
+
+        return real_main(argv[1:])
     if argv[:1] == ["schedules"]:
         from india_rail.schedules import main as schedules_main
 
@@ -48,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("official", help="register/ingest official Government of India railway data (--help for options)")
     sub.add_parser("schedules", help="working schedule, metrics and completeness audit of every train (--help)")
+    sub.add_parser("real", help="real-life data: observed running, real track data, validation (--help)")
 
     serve = sub.add_parser("serve", help="run the HTTP API")
     serve.add_argument("--host", default="127.0.0.1")

@@ -130,3 +130,27 @@ def test_published_signing_test_vector():
         ],
     }
     assert sign(envelope, key) == "8ae2417f1ce117df5593a0fff30e1e2806d6f12a22eb3677a08f2d33139b0886"
+
+
+def _arrival(station: str, hhmm: str) -> dict:
+    hour, minute = map(int, hhmm.split(":"))
+    observed = datetime.combine(DAY, datetime.min.time(), IST).replace(hour=hour, minute=minute)
+    return {"type": "STATION", "train_number": "12001", "start_date": DAY.isoformat(), "station_code": station,
+            "event": "ARR", "observed_at": observed.isoformat()}  # fmt: skip
+
+
+def test_reports_are_matched_from_the_last_observation_and_never_move_a_train_back(data):  # noqa: F811
+    twin, gateway, sim = _gateway(data, 627.0)
+    first = gateway.receive(sim.envelope([_arrival("C", "10:26")]))["results"][0]  # planned 10:25
+    assert first["accepted"] and first["late_min"] == 1.0
+    behind = gateway.receive(sim.envelope([_arrival("B", "10:26")]))["results"][0]
+    assert not behind["accepted"] and "out-of-order" in behind["reason"]  # B is behind the reported C
+    twin.reset()  # a reset drops the evidence, and the gateway's memory of positions with it
+    assert gateway._observed_from("12001@0", 0) == 0
+
+
+def test_a_feed_batch_re_evaluates_threats_once(data):  # noqa: F811
+    twin, gateway, sim = _gateway(data, 615.0)
+    before = twin.version
+    gateway.receive(sim.envelope([sim.position_event("12001@0"), sim.position_event("54001@0")]))
+    assert twin.version == before + 1

@@ -38,3 +38,15 @@ Each row links a claim to the code that implements it, the automated test that c
 - `evidence/screenshots/` — UI captures.
 - `evidence/hardware/` — empty until the tabletop node is built and filmed.
 - `evidence/source-register/` — see [SOURCE_REGISTER.md](SOURCE_REGISTER.md).
+
+## Verified on real-life data (September 2024 actual running; OpenStreetMap track data)
+
+| Claim | Code path | Test | Real data used | Measured | Limitation |
+|---|---|---|---|---|---|
+| The twin runs on the real current-era timetable with real running days | `realdata.build`, `national.timetable_source` | `test_build_derives_running_days_*`, `test_production_runs_only_on_the_real_timetable` | 3,549 trains, 56,395 runs | Running days observed for 100% of trains; 343 placeholder timetables excluded | One month of observation |
+| Track line count from real mapped track | `osm_infra.lines_at`, `section_attributes` | `tests/test_osm_infra.py` | 101,805 OSM running-line ways | 90% of sections mapped; checked on Konkan (single) and Delhi-Bhopal (double) | Volunteer-mapped; no block sections or loops |
+| The data is a credible sample of real running | `realval.credibility` | `test_destination_punctuality_*` | Destination arrivals vs Ministry figure | 82.0% (Sep 2024) vs 77.12% (FY 2024-25, includes fog months) | Different periods |
+| Late trains are forecast better than by carrying the delay forward | `realval.forecast`, `railguard/eta.py` | `test_forecast_history_never_contains_*` | 1.42M forecasts on unseen days | 13.7 vs 17.2 min average error (3.4-3.7 min better, 95% CI); P10-P90 covers 81.5% | Trained on September only |
+| Forecast projections stay physically possible and never override a controller | `eta.forecast_plan`, `national.disrupt` | `test_forecast_plans_never_overlap_*`, `test_a_forecast_never_replaces_*` | - | RANKING invariant clean on the final code (see simulation evidence) | - |
+| Conflict warnings precede real time loss | `realval.conflict_replay` | `test_flag_scores_compare_*` | 4 unseen days x 6 snapshots, ~88,000 scored traversals | Give-way trains lost 5+ min in 29.4% of warnings vs 23.9% for comparable trains (1.23x) | Needs IR block-section and loop data |
+| The signed gateway handles a real morning's reports | `livefeed.FeedGateway`, `realval.feed_replay` | `test_reports_are_matched_from_the_last_observation_*`, `test_a_feed_batch_re_evaluates_threats_once` | 7,979 real arrivals, 06:00-10:00 | 96.6% accepted (the rest out of order or unknown runs); ~0.1-0.2 s per one-minute batch | Recorded data, not the live CRIS feed |

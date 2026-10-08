@@ -30,7 +30,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from india_rail.ingest import DB_PATH
+from india_rail.ingest import DATA_DIR, DB_PATH
 from india_rail.network import DEFAULT_PRIORITY, UNKNOWN_PRIORITY, clock
 from india_rail.railguard import scoring
 from india_rail.railguard.audit import AuditLog
@@ -132,18 +132,23 @@ class NationalData:
     checksum: str
     # Stations with no scheduled halt, placed on the section they lie along: section -> [(code, fraction)]
     passing_points: dict[str, list[tuple[str, float]]] = field(default_factory=dict)
+    # Real infrastructure per section from OpenStreetMap (lines, electrification, gauge), where mapped
+    infrastructure: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def _section_id(a: str, b: str) -> str:
     return f"{a}-{b}" if a < b else f"{b}-{a}"
 
 
-def build_national(db_path: Path = DB_PATH, service_date: date | None = None) -> NationalData:
+def build_national(db_path: Path = DB_PATH, service_date: date | None = None, use_osm: bool = True) -> NationalData:
     """`service_date` is the calendar date of day 0 (default: today in India); it matters only for trains whose
-    running days are known, which then run only on those weekdays. Others are treated as daily and flagged."""
+    running days are known, which then run only on those weekdays. Others are treated as daily and flagged.
+    `use_osm=False` ignores mapped infrastructure (for measuring what the real track data changes)."""
 
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     stations = {code: (lat, lon) for code, lat, lon in con.execute("SELECT code, lat, lon FROM stations")}
+    osm_stations, osm_sections = _osm(con) if use_osm else ({}, {})
+    stations.update(osm_stations)  # mapped station positions (located by their Indian Railways code) win
     official_km = _official_section_km(con)
     running_days = _running_days(con)
     service_date = service_date or datetime.now(timezone(timedelta(hours=5, minutes=30))).date()
@@ -154,7 +159,7 @@ def build_national(db_path: Path = DB_PATH, service_date: date | None = None) ->
     ).fetchall()
     con.close()
 
-    sections, by_train, inferred_multi = _build_sections(rows, official_km)
+    sections, by_train, inferred_multi = _build_sections(rows, official_km, osm_sections)
     nodes_used = {n for sid in sections for n in sid.split("-", 1)}
     neighbours: dict[str, set[str]] = defaultdict(set)
     for sid in sections:
@@ -176,7 +181,11 @@ def build_national(db_path: Path = DB_PATH, service_date: date | None = None) ->
         "sections": len(sections),
         "junctions": sum(1 for v in neighbours.values() if len(v) >= 3),
         "sections_inferred_multi_track": inferred_multi,
-        "sections_assumed_single": len(sections) - inferred_multi,
+        "sections_assumed_single": sum(1 for s in sections.values() if "ASSUMED_SINGLE" in s.data_quality),
+        "stations_located_from_osm": len(osm_stations),
+        "sections_with_osm_infrastructure": sum(1 for sid in sections if sid in osm_sections),
+        "sections_osm_double_or_more": sum(1 for s in sections.values() if "tracks:OSM_MULTI" in s.data_quality),
+        "sections_osm_single": sum(1 for s in sections.values() if "tracks:OSM_SINGLE" in s.data_quality),
         "stations_placed_from_neighbours": len(nodes_used - own),
         "train_numbers": len(by_train),
         "trains_with_known_running_days": sum(1 for n in by_train if n in running_days),
@@ -190,12 +199,21 @@ def build_national(db_path: Path = DB_PATH, service_date: date | None = None) ->
             "runs": [(r.key, r.sections, r.s_enter) for r in runs.values()],
         }
     )
-    return NationalData(network, runs, occupancy, stats, digest, passing)
+    infrastructure = {sid: osm_sections[sid] for sid in sections if sid in osm_sections}
+    return NationalData(network, runs, occupancy, stats, digest, passing, infrastructure)
 
 
-def _build_sections(rows: list[tuple], official_km: dict[str, float]) -> tuple[dict[str, Section], dict, int]:
-    """Sections between consecutive stops, with every attribute inferred from the timetable and labelled."""
+def _build_sections(
+    rows: list[tuple], official_km: dict[str, float], osm: dict[str, dict[str, Any]] | None = None
+) -> tuple[dict[str, Section], dict, int]:
+    """Sections between consecutive stops, every attribute labelled with its evidence.
 
+    Track count: >= 2 where the timetable itself has opposing trains in the section at once (they must cross
+    inside it) or where OpenStreetMap maps parallel running lines along it; 1 where OSM maps a single line;
+    otherwise assumed 1 (single line is the safe assumption: it can only add conflicts, never hide one).
+    """
+
+    osm = osm or {}
     crow: dict[str, float] = {}
     runtimes: dict[str, list[int]] = defaultdict(list)
     occupations: dict[str, list[tuple[float, float, bool]]] = defaultdict(list)
@@ -215,8 +233,11 @@ def _build_sections(rows: list[tuple], official_km: dict[str, float]) -> tuple[d
     inferred_multi = 0
     for sid in sorted(users):
         a, b = sid.split("-", 1)
+        mapped = osm.get(sid)
         if sid in official_km:
             length, length_src = max(official_km[sid], 0.2), "OFFICIAL_TIMETABLE_KM"
+        elif mapped and mapped.get("osm_km"):
+            length, length_src = max(mapped["osm_km"], 0.2), "OSM_MAPPED_PATH"
         elif sid in crow:
             length, length_src = max(crow[sid] * DETOUR_FACTOR, 0.2), "CROW_X1.03"
         else:
@@ -224,22 +245,32 @@ def _build_sections(rows: list[tuple], official_km: dict[str, float]) -> tuple[d
             length, length_src = minutes / 60 * FALLBACK_SPEED_KMPH, "RUNTIME_X45KMPH"
         fastest = min(runtimes[sid]) if runtimes[sid] else None
         vmax = min(max(length / fastest * 60, 20.0), 130.0) if fastest else 100.0
+        speed_src = "TIMETABLE_FASTEST" if fastest else "DEFAULT"
+        if mapped and mapped.get("maxspeed_kmph") and (mapped.get("maxspeed_share") or 0) >= 0.5:
+            if mapped["maxspeed_kmph"] < vmax:
+                vmax, speed_src = mapped["maxspeed_kmph"], "OSM_SPEED_LIMIT"
         multi = _opposing_overlap(occupations[sid])
         inferred_multi += multi
+        lines = mapped.get("lines") if mapped else None
+        if multi:
+            tracks, tracks_src = (
+                2,
+                "INFERRED_MULTI_FROM_TIMETABLE" if lines != 1 else "OSM_SINGLE_TIMETABLE_CROSSES_INSIDE",
+            )
+        elif lines:
+            tracks, tracks_src = (2, f"OSM_MULTI_{lines}") if lines >= 2 else (1, "OSM_SINGLE")
+        else:
+            tracks, tracks_src = 1, "ASSUMED_SINGLE_NO_EVIDENCE"
         sections[sid] = Section(
             sid,
             a,
             b,
             round(length, 2),
             round(vmax, 1),
-            2 if multi else 1,
+            tracks,
             utilisation=float(len(users[sid])),
             condition=0.9,
-            data_quality=(
-                f"length:{length_src}|speed:{'TIMETABLE_FASTEST' if fastest else 'DEFAULT'}|"
-                f"tracks:{'INFERRED_MULTI_FROM_TIMETABLE' if multi else 'ASSUMED_SINGLE_NO_EVIDENCE'}|"
-                "condition:NO_FEED_DEFAULT"
-            ),
+            data_quality=f"length:{length_src}|speed:{speed_src}|tracks:{tracks_src}|condition:NO_FEED_DEFAULT",
         )
     return sections, by_train, inferred_multi
 
@@ -344,6 +375,25 @@ def _official_section_km(con: sqlite3.Connection) -> dict[str, float]:
     return {edge: float(km) for edge, km in rows if km and km > 0}
 
 
+def _osm(con: sqlite3.Connection) -> tuple[dict[str, tuple[float, float]], dict[str, dict[str, Any]]]:
+    """OpenStreetMap station positions (located by IR code) and accepted section attributes, if built."""
+
+    try:
+        stations = {
+            code: (lat, lon)
+            for code, lat, lon in con.execute("SELECT code, lat, lon FROM osm_stations WHERE located_by = 'OSM_REF'")
+        }
+        con.row_factory = sqlite3.Row
+        sections = {
+            row["edge"]: dict(row) for row in con.execute("SELECT * FROM osm_sections WHERE quality = 'ACCEPTED'")
+        }
+    except sqlite3.OperationalError:
+        return {}, {}
+    finally:
+        con.row_factory = None
+    return stations, sections
+
+
 def _place_passing_points(
     stations: dict[str, tuple[float | None, float | None]],
     halts: set[str],
@@ -401,9 +451,38 @@ def _opposing_overlap(occ: list[tuple[float, float, bool]]) -> bool:
     return False
 
 
+REAL_DB_PATH = DATA_DIR / "real.sqlite"  # built by `python -m india_rail real build` (and `real osm`)
+
+
+def timetable_source() -> tuple[str, Path]:
+    """Which timetable the national twin runs on.
+
+    `real`: the September 2024 timetable with real running days (from observed running) and real track data
+    (OpenStreetMap), built by `python -m india_rail real build|osm`. `open`: the 2016 community timetable.
+    RAILGUARD_TIMETABLE selects one; by default the real one is used whenever it has been built. A production
+    deployment (RAILGUARD_MODE=production) refuses to start on anything but the real timetable.
+    """
+
+    import os
+
+    from india_rail.security import production
+
+    wanted = os.environ.get("RAILGUARD_TIMETABLE", "real" if REAL_DB_PATH.exists() else "open").lower()
+    if production() and wanted != "real":
+        raise RuntimeError("production mode runs only on real timetable data (RAILGUARD_TIMETABLE=real)")
+    if wanted == "real":
+        if not REAL_DB_PATH.exists():
+            raise RuntimeError("real timetable not built: run python -m india_rail real fetch && ... real build")
+        return "real", REAL_DB_PATH
+    return "open", DB_PATH
+
+
 @lru_cache(maxsize=1)
 def national_data() -> NationalData:
-    return build_national()
+    name, path = timetable_source()
+    data = build_national(path)
+    data.stats["timetable"] = name
+    return data
 
 
 def gap(tracks: int, same_direction: bool, ae: float, ax: float, be: float, bx: float) -> float | None:
@@ -431,6 +510,7 @@ class NationalTwin:
         self.headway = headway
         self.lock = threading.RLock()
         self.start_min = start_min
+        self.eta = None  # optional EtaForecaster (railguard/eta.py): projects live-reported late trains
         self.reset()
 
     # ---- state ----------------------------------------------------------------------------
@@ -631,12 +711,21 @@ class NationalTwin:
 
     # ---- disruption, candidates and recommendation ------------------------------------------------
     def disrupt(
-        self, key: str, station: str, delay_min: float, actor: str = "controller", at_index: int | None = None
+        self,
+        key: str,
+        station: str,
+        delay_min: float,
+        actor: str = "controller",
+        at_index: int | None = None,
+        observed_arrival_delay: float | None = None,
+        refresh: bool = True,
     ) -> dict[str, Any]:
         """Record that `key` will leave `station` late. Its timeline changes now; others wait for a decision.
 
         `at_index` pins the stop when a live observation says where the train really is (the projection may
-        already have it past that station).
+        already have it past that station). `observed_arrival_delay` (from the live feed) lets an attached
+        forecaster learned from real running project the rest of the journey; a controller's own statement
+        of a delay is carried forward as given.
         """
 
         with self.lock:
@@ -650,7 +739,14 @@ class NationalTwin:
             if not candidates:
                 raise ValueError(f"{key} has no departure from {station} ahead of its current position")
             k = candidates[0]
-            self._set_plan(key, self.propagate(plan, {k: float(delay_min)}))
+            follows_timetable = list(plan.sections) == list(self.runs[key].sections)
+            # A forecast may only replace a projection: once a controller decision (hold, yield, path) shapes the
+            # plan, a new delay is added on top of it, so an approved decision is never silently dropped.
+            only_projected = key not in self.plans or self.plans[key].note == "FORECAST_FROM_REAL_RUNNING"
+            if self.eta is not None and observed_arrival_delay is not None and follows_timetable and only_projected:
+                self._set_plan(key, self.eta.plan(self, key, k, float(observed_arrival_delay)))
+            else:
+                self._set_plan(key, self.propagate(plan, {k: float(delay_min)}))
             self.pending[key] = {"index": k, "station": station.upper(), "delay_min": float(delay_min)}
             self.audit.record(
                 int(self.now * 60),
@@ -658,7 +754,8 @@ class NationalTwin:
                 actor,
                 {"run": key, "station": station.upper(), "delay_min": delay_min},
             )
-            self.refresh()
+            if refresh:
+                self.refresh()
             return {
                 "run": key,
                 "index": k,
@@ -1104,7 +1201,11 @@ class NationalTwin:
                 "ranking": ranking,
                 "preset": self.preset,
                 "authority": AUTHORITY,
-                "data_quality": "Network attributes inferred from the open timetable; see stats",
+                "data_quality": (
+                    f"Timetable: {self.data.stats.get('timetable', 'given')}; track count mapped (OpenStreetMap) on "
+                    f"{self.data.stats.get('sections_with_osm_infrastructure', 0)} of {self.data.stats['sections']} "
+                    "sections, otherwise inferred; see stats"
+                ),
             }
             self.audit.record(
                 int(self.now * 60),
@@ -1250,9 +1351,11 @@ class NationalTwin:
             return self.section_overrides[sid]
 
     def ingest_position(
-        self, key: str, section_id: str, offset_km: float, source: str = "AUTHORISED_FEED"
+        self, key: str, section_id: str, offset_km: float, source: str = "AUTHORISED_FEED", refresh: bool = True
     ) -> dict[str, Any]:
-        """A live observation (e.g. an authorised RTIS-style feed). Compared with the plan, never trusted blindly."""
+        """A live observation (e.g. an authorised RTIS-style feed). Compared with the plan, never trusted blindly.
+
+        `refresh=False` lets a feed batch re-evaluate threats once, after all of its events."""
 
         with self.lock:
             if key not in self.runs:
@@ -1272,7 +1375,8 @@ class NationalTwin:
                 stale_s=180,
                 mandatory=True,
             )
-            self.refresh()
+            if refresh:
+                self.refresh()
             return {"accepted": True}
 
     def tick(self, minutes: float = 1.0) -> None:
