@@ -18,6 +18,14 @@ def main(argv: list[str] | None = None) -> int:
         from india_rail.freight import main as freight_main
 
         return freight_main(argv[1:])
+    if argv[:1] == ["accounts"]:
+        from india_rail.accounts import main as accounts_main
+
+        return accounts_main(argv[1:])
+    if argv[:1] == ["loadtest"]:
+        from india_rail.railguard.loadtest import main as loadtest_main
+
+        return loadtest_main(argv[1:])
     if argv[:1] == ["advisor"]:
         from india_rail.delay_advisor import main as advisor_main
 
@@ -75,6 +83,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("real", help="real-life data: observed running, real track data, validation (--help)")
     sub.add_parser("current", help="every train running now: current timetable, registry, PIN codes (--help)")
     sub.add_parser("gnss", help="GNSS device agent for a loco/cab unit: NMEA in, signed position batches out (--help)")
+    sub.add_parser("accounts", help="named user accounts: add, list, disable, enable (--help)")
+    sub.add_parser("loadtest", help="load-test the live service on the real network (streams, feed, push latency)")
     sub.add_parser("advisor", help="delay-minimisation advisor: where delay is made on the real network (--help)")
     sub.add_parser("gnss-verify", help="verify GNSS tracking on the real network with simulated receivers")
     sub.add_parser("freight", help="Dedicated Freight Corridors: network and automated freight pathing (--help)")

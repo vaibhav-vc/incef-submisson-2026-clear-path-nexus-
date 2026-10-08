@@ -101,3 +101,13 @@ def db_path(tmp_path: Path) -> Path:
 @pytest.fixture()
 def db(db_path: Path) -> sqlite3.Connection:
     return connect(db_path)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    """Each test starts with full rate-limit buckets (they are per process and would leak between tests)."""
+
+    from india_rail.security import LIMITER
+
+    LIMITER.buckets.clear()
+    yield

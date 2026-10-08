@@ -12,17 +12,28 @@
 <header>
   <div>
     <h1>Nexus Control — national network</h1>
-    <div class="sub">Every station, junction and timetabled train in the open data set · controller decision support, advisory only</div>
+    <div class="sub">Every train in the current all-India timetable on the real track · controller decision support, advisory only</div>
   </div>
   <div class="grow"></div>
   <span>Twin clock <b id="clock">--:--</b></span>
   <span id="running" class="badge">running</span>
   <span id="chainBadge" class="badge">audit</span>
+  <span id="liveBadge" class="badge">polling</span>
+  <span id="powerBadge" class="badge">power</span>
+  <span id="signedIn" class="muted"></span>
+  <input id="user" size="9" placeholder="user name" autocomplete="username" aria-label="User name">
+  <input id="pass" size="9" type="password" placeholder="password" autocomplete="current-password" aria-label="Password">
+  <button id="login">Sign in</button><button id="logout" hidden>Sign out</button>
   <label class="muted">Controller <input id="controllerName" size="12" value="controller-1"></label>
   <label class="muted">Token <input id="token" size="8" type="password" placeholder="optional"></label>
 </header>
-<div class="banner" id="banner">Positions are timetable projections: no authorised live feed (RTIS/COA) is connected, so approvals are
-  planning rehearsals. Track counts, line speeds and lengths are inferred from the timetable — see data quality.</div>
+<div class="banner" id="banner">Positions are timetable projections until an authorised live feed (RTIS/COA or cab GNSS units) is
+  connected: until then approvals are planning rehearsals. Track, line counts and electrification come from OpenStreetMap where mapped
+  — see data quality.</div>
+<div class="banner" id="pwChange" hidden>Your password was set by an administrator: choose your own before taking decisions.
+  <input id="pwOld" type="password" placeholder="current password" autocomplete="current-password" aria-label="Current password">
+  <input id="pwNew" type="password" placeholder="new password (12+)" autocomplete="new-password" aria-label="New password">
+  <button id="pwSave">Change password</button></div>
 <main>
   <div>
     <section class="panel">
@@ -31,9 +42,20 @@
       <div class="row">
         <button id="zoomRun">Zoom to selected train</button>
         <button id="zoomAll">Whole network</button>
-        <span class="muted">Thick = inferred multi-track · thin = single line or unknown · dots = running trains (red = premium) ·
-          blue = selected plan</span>
+        <label class="muted"><input id="showDfc" type="checkbox" checked> Freight corridors</label>
+        <span class="muted">Thick = multi-track · thin = single line or unknown · dots = running trains (red = premium) ·
+          blue = selected plan · orange = searched train's route on mapped track · DFC: green double, amber single line ·
+          red = advisor section</span>
       </div>
+    </section>
+    <section class="panel">
+      <h2>Delay advisor — where delay is made (real running, Sep 2024)</h2>
+      <div class="row"><select id="akind" aria-label="Kind of finding">
+        <option value="sections">Sections losing time</option><option value="stations">Junctions / stations</option>
+        <option value="late_starts">Trains starting late</option><option value="timetable">Timings not achievable</option>
+        <option value="trains">Chronically late trains</option></select></div>
+      <div class="muted" id="asummary"></div>
+      <div class="scroll"><table id="atable"></table></div>
     </section>
     <section class="panel">
       <h2>Threats</h2>
@@ -43,7 +65,15 @@
   </div>
   <div>
     <section class="panel">
-      <h2>1 · Find a train</h2>
+      <h2>Every train — number, name, operator, PIN codes, route</h2>
+      <div class="row"><input id="tq" size="14" placeholder="number or name, e.g. Tejas" aria-label="Train number or name">
+        <select id="top" aria-label="Operator"><option value="">All operators</option></select>
+        <button id="tsearch">Search</button></div>
+      <div id="tresults" class="scroll short"></div>
+      <div id="tdetail"></div>
+    </section>
+    <section class="panel">
+      <h2>1 · Find a train in the twin</h2>
       <div class="row"><input id="number" size="8" placeholder="e.g. 12951"><button id="find">Find</button>
         <button data-tick="1">+1 min</button><button data-tick="5">+5 min</button><button data-tick="15">+15 min</button>
         <button id="reset" class="danger">Reset twin</button></div>
@@ -74,6 +104,14 @@
         <button data-section='{"condition":0.9,"obstacle":false,"available":true}'>Restore</button></div>
     </section>
     <section class="panel">
+      <h2>Dedicated Freight Corridors — automated pathing</h2>
+      <div id="fsummary" class="muted"></div>
+      <div class="row"><select id="fcorr" aria-label="Corridor"><option>Western</option><option>Eastern</option></select>
+        <input id="fn" type="number" min="1" max="600" value="150" size="4" aria-label="Freight trains"> trains a day
+        <button id="fplan">Path a sample day</button></div>
+      <div class="muted" id="fresult"></div>
+    </section>
+    <section class="panel">
       <h2>Data quality</h2>
       <table><tbody id="quality"></tbody></table>
     </section>
@@ -82,5 +120,6 @@
 <footer>APPROVE approves an advisory plan (a planning rehearsal while positions are projections). It is not movement authority.
   Kavach/ATP, signalling, interlocking and authorised operating rules remain controlling. <a href="/control" class="link-a">Tabletop twin</a></footer>
 <script src="/railguard/static/national.js"></script>
+<script src="/railguard/static/national_plus.js"></script>
 </body>
 </html>

@@ -66,3 +66,6 @@ tmp/
 # with `python -m india_rail setup`; only the model metrics are versioned.
 india_rail_ai/data/
 india_rail_ai/models/*.joblib
+
+# RailGuard deployment secrets (template: india_rail_ai/railguard.env.example)
+india_rail_ai/railguard.env

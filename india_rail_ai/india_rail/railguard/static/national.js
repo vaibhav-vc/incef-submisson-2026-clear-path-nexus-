@@ -2,6 +2,8 @@
 const FACTORS = ["delay", "conflict", "infra", "energy", "threat", "evidence", "complexity"];
 const PRESETS = ["FASTEST", "INFRA_PROTECT", "LOWEST_RISK", "BALANCED"];
 let net = null, positions = [], selected = null, planCoords = null, latest = null;
+let liveStream = false;      // true while the server pushes positions and threats (national_plus.js)
+const overlays = [];         // extra map layers drawn after the network (national_plus.js)
 const view = {lon: 82.8, lat: 22.5, scale: 26};  // pixels per degree
 const canvas = document.getElementById("map");
 const ctx = canvas.getContext("2d");
@@ -19,19 +21,20 @@ function el(tag, attrs = {}, ...children) {
 }
 function headers() {
   const h = {"Content-Type": "application/json"};
-  const token = document.getElementById("token").value;
+  const token = (typeof sessionToken === "string" && sessionToken) || document.getElementById("token").value;
   if (token) h.Authorization = "Bearer " + token;
   return h;
 }
 async function api(path, body) {
   const init = body === undefined ? {headers: headers()} : {method: "POST", headers: headers(), body: JSON.stringify(body)};
-  const res = await fetch("/railguard/national" + path, init);
+  const absolute = /^\/(railguard|auth|health)\//.test(path);
+  const res = await fetch(absolute ? path : "/railguard/national" + path, init);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail || res.statusText));
   return data;
 }
 function badge(text, cls) { return el("span", {class: `badge s-${cls || text}`}, text); }
-function who() { return document.getElementById("controllerName").value.trim() || "controller"; }
+function who() { return document.getElementById("controllerName").value.trim() || "controller"; }  // ignored by the server for a signed-in person
 function showError(e) { document.getElementById("err").textContent = e ? e.message : ""; }
 async function act(fn) { showError(null); try { await fn(); } catch (e) { showError(e); } await refresh(); }
 
@@ -69,6 +72,8 @@ function draw() {
     ctx.fillRect(x - r / 2, y - r / 2, r, r);
   }
 }
+const drawNetwork = draw;
+draw = function () { drawNetwork(); if (net) for (const layer of overlays) layer(); };  // eslint-disable-line no-func-assign
 function fit(coords) {
   if (!coords || !coords.length) return;
   const lons = coords.map(c => c[0]), lats = coords.map(c => c[1]);
@@ -141,6 +146,14 @@ function drawCandidates() {
       el("div", {class: "row"}, approve)));
   });
 }
+function renderThreats(threats) {
+  const body = document.getElementById("threats");
+  body.replaceChildren(...(threats.length ? threats.slice(0, 40).map(t => el("tr", {},
+    el("td", {}, t.id), el("td", {}, t.type), el("td", {}, badge(t.severity)), el("td", {}, t.train_ids.join(", ")),
+    el("td", {class: "muted"}, t.detail),
+    el("td", {}, t.lifecycle === "OPEN" ? el("button", {onclick: () => act(() => api(`/threats/${t.id}/ack`, {by: who()}))}, "Ack") : t.lifecycle))) :
+    [el("tr", {}, el("td", {colspan: 6, class: "muted"}, "No active threats."))]));
+}
 async function refresh() {
   try {
     const s = await api("/summary");
@@ -152,13 +165,8 @@ async function refresh() {
     chain.className = `badge s-${s.audit_chain_ok ? "OK" : "BAD"}`;
     document.getElementById("netStats").textContent = `${s.stats.stations} stations · ${s.stats.junctions} junctions · ${s.stats.sections} sections · ${s.stats.runs_in_window} train runs`;
     document.getElementById("quality").replaceChildren(...Object.entries(s.stats).map(([k, v]) => el("tr", {}, el("td", {}, k.replaceAll("_", " ")), el("td", {}, v))));
-    const body = document.getElementById("threats");
-    body.replaceChildren(...(s.threats.length ? s.threats.slice(0, 40).map(t => el("tr", {},
-      el("td", {}, t.id), el("td", {}, t.type), el("td", {}, badge(t.severity)), el("td", {}, t.train_ids.join(", ")),
-      el("td", {class: "muted"}, t.detail),
-      el("td", {}, t.lifecycle === "OPEN" ? el("button", {onclick: () => act(() => api(`/threats/${t.id}/ack`, {by: who()}))}, "Ack") : t.lifecycle))) :
-      [el("tr", {}, el("td", {colspan: 6, class: "muted"}, "No active threats."))]));
-    positions = await api("/positions");
+    renderThreats(s.threats);
+    if (!liveStream) positions = await api("/positions");
     if (selected) planCoords = (await api(`/plan/${encodeURIComponent(selected)}`)).coords;
     draw(); drawCandidates();
   } catch (e) { showError(e); }

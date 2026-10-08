@@ -23,6 +23,9 @@ Invariants (a violation is recorded with the episode id and operation trace):
   RANKING           ranked plans are conflict-free, feasible, monotonic in time, never early, scored 0-1,
                     winner first
   REPLAY            sampled snapshots verify and replay to the same ranking; audit chain verifies
+  GNSS_GATE         through the signed live-feed gateway, a GNSS fix that jumps along the route faster than any
+                    train, lies far off the route, or has too few satellites is never accepted and never changes the
+                    train's position evidence (national twin, real track geometry)
   NO_CRASH          no unexpected exception
   LIVENESS          every episode finishes within EPISODE_LIMIT_S (no hang in planning)
 This is a software-in-the-loop test of the twins' own rules on synthetic and open
@@ -649,6 +652,52 @@ class NationalEpisode:
         elif not valid:
             check(sid in plan.sections, "INPUT_REJECTION", "off-plan observation accepted")
 
+    def gnss(self, key: str) -> None:
+        """GNSS fixes through the signed gateway: genuine ones, and attacks that must never move the twin."""
+
+        from datetime import date, datetime
+
+        from india_rail.railguard.gnss_verify import _ahead
+        from india_rail.railguard.livefeed import IST, FeedGateway, FeedSimulator
+
+        tw, rng = self.tw, self.rng
+        if getattr(self, "gateway", None) is None:
+            day = date.fromisoformat(tw.data.stats["service_date"])
+            midnight = datetime.combine(day, datetime.min.time(), IST).timestamp()
+            secret = bytes(range(32))
+            self.gateway = FeedGateway(tw, {("SIM", "k1"): secret}, service_date=day,
+                                       clock=lambda: midnight + tw.now * 60)  # fmt: skip
+            self.gnss_sim = FeedSimulator(self.gateway, "SIM", "k1", secret, seed=rng.randrange(1 << 30))
+        gw, sim = self.gateway, self.gnss_sim
+        genuine = sim.position_event(key, noise_m=5.0, hdop=1.0)
+        if genuine is None:
+            return
+        first = gw.receive(sim.envelope([genuine]))["results"][0]
+        self.stats["gnss_genuine"] += 1
+        self.stats["gnss_genuine_accepted"] += bool(first["accepted"])
+        attack = rng.choice(("jump", "teleport", "weak"))
+        event = dict(genuine)
+        if attack == "jump":
+            if not first["accepted"]:
+                return  # a jump is only defined against an accepted position
+            tw.tick(1)
+            point = _ahead(tw, gw.matcher, key, 20_000)  # 20 km in one minute
+            if point is None:
+                return
+            event = sim.position_event(key, noise_m=0.0, hdop=1.0) or event
+            event["lon"], event["lat"] = round(point[0], 6), round(point[1], 6)
+        elif attack == "teleport":
+            event["lat"] = round(event["lat"] + rng.choice((-1, 1)) * rng.uniform(0.6, 1.5), 6)  # 65-165 km away
+        else:
+            event["satellites"] = rng.randint(0, 3)
+        before = tw.evidence.records.get(f"position:{key}")
+        result = gw.receive(sim.envelope([event]))["results"][0]
+        self.log(
+            f"gnss {key} genuine={first['accepted']} {attack} -> {result['accepted']} {result.get('reason', '')[:60]}"
+        )
+        check(not result["accepted"], "GNSS_GATE", f"{attack} fix accepted for {key}")
+        check(tw.evidence.records.get(f"position:{key}") == before, "GNSS_GATE", f"{attack} fix changed evidence")
+
     def recommend(self, key: str) -> dict[str, Any] | None:
         tw = self.tw
         tw.set_weights(self.rng.choice(sorted(PRESETS)))
@@ -820,6 +869,8 @@ class NationalEpisode:
                     self.log("tick (feed ageing)")
             if rng.random() < 0.1:
                 self.feed(key, valid=False)
+            if rng.random() < 0.2:
+                self.gnss(key)
             for _round in range(rng.choice((1, 1, 2, 3))):
                 if not self.disrupt(key):
                     break

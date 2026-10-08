@@ -14,9 +14,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi import Path as PathParam
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import Field
 
 from india_rail.railguard.cab import build_advisory, compact
@@ -27,8 +27,20 @@ from india_rail.security import StrictRequest, limit, production, require
 STATIC = Path(__file__).parent / "static"
 VIEW = [Depends(require("viewer")), Depends(limit("read"))]
 VIEW_HEAVY = [Depends(require("viewer")), Depends(limit("heavy"))]
-CONTROL = [Depends(require("controller")), Depends(limit("write"))]
-CONTROL_HEAVY = [Depends(require("controller")), Depends(limit("heavy"))]
+
+
+def _writable() -> None:
+    """Controller decisions pause while power is critical: a decision must not be half-written when it fails."""
+
+    from india_rail.railguard import ops
+
+    if ops.OPS.read_only:
+        raise HTTPException(status_code=503, detail="Power critical: approvals paused. Use the standby site or "
+                                                    "the manual procedure.")  # fmt: skip
+
+
+CONTROL = [Depends(require("controller")), Depends(limit("write")), Depends(_writable)]
+CONTROL_HEAVY = [Depends(require("controller")), Depends(limit("heavy")), Depends(_writable)]
 FEED = [Depends(require("feed")), Depends(limit("write"))]
 
 
@@ -53,6 +65,14 @@ SECTION = r"^[A-Z0-9]{1,8}(-[A-Z0-9]{1,8})?$"
 NAME = r"^[\w .@-]{1,80}$"
 SNAPSHOT = r"^SNAP-\d{4,9}$"
 PRESET = "^(FASTEST|INFRA_PROTECT|LOWEST_RISK|BALANCED)$"
+
+
+def _actor(http: Request, claimed: str) -> str:
+    """Who is acting: the logged-in person when there is a personal session (the name typed in the request is
+    then ignored), else the name given with a shared controller token."""
+
+    user = getattr(http.state, "user", None)
+    return f"{user['display_name']} ({user['username']})" if user else claimed
 
 
 def _run(fn, *args, **kwargs) -> Any:
@@ -355,6 +375,80 @@ def national_cab(run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
     return _run(national().cab, run)
 
 
+# ---- live, one-to-one: server-sent events -------------------------------------------------------------
+SSE_HEADERS = {"Cache-Control": "no-store", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
+STREAM_LIMIT = [Depends(limit("heavy"))]
+
+
+@router.get("/national/stream", dependencies=[Depends(require("viewer")), *STREAM_LIMIT])
+def national_stream(request: Request, events: Annotated[int | None, Query(ge=1, le=100_000)] = None):
+    """Live picture for control screens: positions and active threats, pushed as they change (text/event-stream)."""
+
+    from india_rail.railguard import live
+
+    body = live.stream(national(), live.NETWORK, request.is_disconnected, events)
+    return StreamingResponse(body, media_type="text/event-stream", headers=SSE_HEADERS)
+
+
+class CabTokenRequest(StrictRequest):
+    hours: int = Field(12, ge=1, le=24)
+    issued_by: str = Field(pattern=NAME)
+
+
+@router.post("/national/cab/{run}/token", dependencies=CONTROL)
+def national_cab_token(request: CabTokenRequest, http: Request, run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
+    """A controller issues a cab unit its capability for one run: that train's advisory, nothing else."""
+
+    from india_rail.railguard import live
+
+    twin = national()
+    if run not in twin.runs:
+        raise HTTPException(status_code=404, detail="Unknown run")
+    issued = live.issue_cab_token(run, request.hours * 3600)
+    with twin.lock:
+        twin.audit.record(
+            int(twin.now * 60),
+            "CAB_TOKEN_ISSUED",
+            _actor(http, request.issued_by),
+            {"run": run, "expires_at": issued["expires_at"]},
+        )  # fmt: skip (never the token)
+    return issued
+
+
+def _cab_capability(request: Request, run: str) -> None:
+    from india_rail.railguard import live
+
+    auth = request.headers.get("authorization", "")
+    token = auth[7:].strip() if auth.lower().startswith("bearer ") else request.query_params.get("token")
+    if not live.cab_token_valid(token, run):
+        raise HTTPException(status_code=403, detail="Not authorised for this train")
+
+
+@router.get("/national/cab/{run}/live", dependencies=[Depends(limit("read"))])
+def national_cab_live(request: Request, run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
+    """One train's advisory for a cab unit holding that run's token (polling devices)."""
+
+    _cab_capability(request, run)
+    return _run(national().cab, run)
+
+
+@router.get("/national/cab/{run}/stream", dependencies=STREAM_LIMIT)
+def national_cab_stream(
+    request: Request, run: str = PathParam(pattern=RUN), events: Annotated[int | None, Query(ge=1, le=100_000)] = None
+):
+    """One train's advisory, pushed the moment it changes, to the cab unit holding that run's token."""
+
+    from india_rail.railguard import live
+
+    _cab_capability(request, run)
+    twin = national()
+    if run not in twin.runs:
+        raise HTTPException(status_code=404, detail="Unknown run")
+
+    return StreamingResponse(live.stream(twin, run, request.is_disconnected, events, kind="advisory"),
+                             media_type="text/event-stream", headers=SSE_HEADERS)  # fmt: skip
+
+
 # ---- every train and station (registry of the current timetable) ----------------------------------------------
 def _registry():
     from india_rail.registry import registry
@@ -538,8 +632,8 @@ class NationalDisruption(StrictRequest):
 
 
 @router.post("/national/disrupt", dependencies=CONTROL)
-def national_disrupt(request: NationalDisruption) -> dict[str, Any]:
-    return _run(national().disrupt, request.run, request.station, request.delay_min)
+def national_disrupt(request: NationalDisruption, http: Request) -> dict[str, Any]:
+    return _run(national().disrupt, request.run, request.station, request.delay_min, actor=_actor(http, "controller"))
 
 
 class NationalRecommend(StrictRequest):
@@ -556,8 +650,8 @@ def national_recommend(request: NationalRecommend) -> dict[str, Any]:
 
 
 @router.post("/national/approve", dependencies=CONTROL)
-def national_approve(request: ApproveRequest) -> dict[str, Any]:
-    return _run(national().approve, request.snapshot_id, request.candidate_id, request.controller)
+def national_approve(request: ApproveRequest, http: Request) -> dict[str, Any]:
+    return _run(national().approve, request.snapshot_id, request.candidate_id, _actor(http, request.controller))
 
 
 class NationalTick(StrictRequest):
@@ -591,8 +685,8 @@ def national_section(request: NationalSection) -> dict[str, Any]:
 
 
 @router.post("/national/threats/{threat_id}/ack", dependencies=CONTROL)
-def national_ack(threat_id: str, request: AckRequest) -> dict[str, Any]:
-    return _run(national().acknowledge, threat_id, request.by)
+def national_ack(threat_id: str, request: AckRequest, http: Request) -> dict[str, Any]:
+    return _run(national().acknowledge, threat_id, _actor(http, request.by))
 
 
 @router.post("/national/reset", dependencies=CONTROL)
@@ -632,7 +726,7 @@ class ShadowDecision(StrictRequest):
 
 
 @router.post("/national/shadow/actual", dependencies=CONTROL)
-def national_shadow_actual(request: ShadowDecision) -> dict[str, Any]:
+def national_shadow_actual(request: ShadowDecision, http: Request) -> dict[str, Any]:
     """Shadow trial: log what the controller actually decided (nothing in the twin changes)."""
 
     from india_rail.railguard.shadow import ActualDecision
@@ -642,7 +736,7 @@ def national_shadow_actual(request: ShadowDecision) -> dict[str, Any]:
         request.run,
         request.action,
         trial.twin.now if request.at_min is None else request.at_min,
-        request.controller,
+        _actor(http, request.controller),
         request.hold_min,
         request.station,
         request.note,

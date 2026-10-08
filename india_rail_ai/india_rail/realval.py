@@ -257,6 +257,7 @@ def forecast_rows(d: dict[str, pd.DataFrame], lookups: Lookups | None = None) ->
     return pd.DataFrame(columns)
 
 
+COLD_START_SHARE = 0.15
 FORECAST_FEATURES = ["d_now", "sch_gap", "stops_gap", "km_gap", "single_km_gap", "dwell_recovery", "priority",
                      "hour", "weekday", "hist_change", "hist_q", "hist_n_q"]  # fmt: skip
 
@@ -269,7 +270,12 @@ def forecast(d: dict[str, pd.DataFrame], seed: int = 0, save_model: bool = True)
     rows = forecast_rows(d)
     train, test = rows[rows.date <= SPLIT_DATE], rows[rows.date > SPLIT_DATE]
     rng = np.random.default_rng(seed)
-    fit = train.iloc[rng.choice(len(train), size=min(len(train), 1_500_000), replace=False)]
+    fit = train.iloc[rng.choice(len(train), size=min(len(train), 1_500_000), replace=False)].copy()
+    # A share of rows without the train's delay history, so the model has learned what to do for a train it has
+    # never seen (new or renumbered in a new timetable): measured on the cold-start test below (scenario_ml.py).
+    no_history = rng.random(len(fit)) < COLD_START_SHARE
+    fit.loc[no_history, ["hist_q", "hist_change"]] = np.nan
+    fit.loc[no_history, "hist_n_q"] = 0
 
     def model(loss: str, quantile: float | None = None) -> HistGradientBoostingRegressor:
         kw = {"quantile": quantile} if quantile is not None else {}
@@ -301,6 +307,11 @@ def forecast(d: dict[str, pd.DataFrame], seed: int = 0, save_model: bool = True)
                 str(b): round(float(err[(buckets == b).to_numpy()].mean()), 2) for b in buckets.cat.categories
             },  # fmt: skip
         }
+    cold = test[FORECAST_FEATURES].copy()
+    cold[["hist_q", "hist_change"]] = np.nan
+    cold["hist_n_q"] = 0
+    cold_err = np.abs(np.maximum(test.d_now + median.predict(cold), 0) - truth)
+    scores["learned_from_real_running"]["cold_start_mae_min"] = round(float(cold_err.mean()), 2)
     p_lo = np.maximum(test.d_now + lo.predict(test[FORECAST_FEATURES]), 0)
     p_hi = np.maximum(test.d_now + hi.predict(test[FORECAST_FEATURES]), 0)
     coverage = float(((truth >= p_lo) & (truth <= p_hi)).mean() * 100)

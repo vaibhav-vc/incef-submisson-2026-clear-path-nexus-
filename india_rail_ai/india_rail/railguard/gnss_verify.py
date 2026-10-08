@@ -116,7 +116,12 @@ def verify(rounds: int = 10, start_min: float = 600.0, attack_share: float = 0.0
                         genuine["on_mapped_track"] += res.get("matched_to") == gps.MAPPED_TRACK
                     else:
                         reason = res.get("reason", "")
-                        reason = "off route" if "from the planned route" in reason else reason.split(":")[0][:60]
+                        if "second in a row" in reason:
+                            reason = "off track once: refused quietly (multipath), no alarm"
+                        elif "from the planned route" in reason:
+                            reason = "off route: route-deviation alarm"
+                        else:
+                            reason = reason.split(":")[0][:60]
                         genuine["refused"][reason] = genuine["refused"].get(reason, 0) + 1
                 else:
                     attacks[kind]["sent"] += 1

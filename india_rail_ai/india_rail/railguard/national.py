@@ -554,6 +554,8 @@ class NationalTwin:
         self.threats = ThreatRegistry()
         self.audit = AuditLog()
         self.flags: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        # Alerts about the control system itself (power, monitoring), shown with the threats: {type: details}
+        self.system_alerts: dict[str, dict[str, Any]] = {}
         self.pending: dict[str, dict[str, Any]] = {}  # disrupted runs awaiting a controller decision
         self.approved: dict[str, dict[str, Any]] = {}
         self.latest: dict[str, Any] | None = None
@@ -1567,6 +1569,20 @@ class NationalTwin:
                         "Twin shows opposing occupancy.",
                     )
                 )
+        for kind, alert in self.system_alerts.items():
+            found.append(
+                _threat(
+                    kind,
+                    alert["severity"],
+                    [],
+                    None,
+                    ["system"],
+                    1.0,
+                    alert["detail"],
+                    "Control system alert - follow controller instructions",
+                    alert["detail"],
+                )  # fmt: skip
+            )
         return found
 
     # ---- cab ---------------------------------------------------------------------------------------

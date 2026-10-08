@@ -95,12 +95,45 @@ def _matches(env: str, supplied: list[str]) -> bool:
     return bool(expected) and any(hmac.compare_digest(expected.encode(), s.encode()) for s in supplied)
 
 
+RANK = {"viewer": 0, "controller": 1, "admin": 2}
+
+
+def _session_user(supplied: list[str]) -> dict | None:
+    from india_rail import accounts
+
+    store = accounts.accounts()
+    if store is None:
+        return None
+    for token in supplied:
+        user = store.session(token)
+        if user:
+            return user
+    return None
+
+
 def authorised(request: Request, role: str) -> bool:
+    """Shared role tokens (screens and devices) or a named user's session (people). Admin is sessions only;
+    with RAILGUARD_REQUIRE_ACCOUNTS=1 decisions are too."""
+
+    from india_rail import accounts
+
     supplied = _supplied(request)
     if role == "viewer":
         # A controller may read everything; a feed device may not.
-        return _open("viewer") or _matches(ROLE_ENV["viewer"], supplied) or _matches(ROLE_ENV["controller"], supplied)
-    return _open(role) or _matches(ROLE_ENV[role], supplied)
+        shared = _open("viewer") or _matches(ROLE_ENV["viewer"], supplied) or _matches(ROLE_ENV["controller"], supplied)
+    elif role == "controller":
+        shared = not accounts.required() and (_open(role) or _matches(ROLE_ENV[role], supplied))
+    elif role == "feed":
+        return _open(role) or _matches(ROLE_ENV[role], supplied)
+    else:
+        shared = False
+    user = _session_user(supplied) if supplied else None
+    if user is not None:
+        request.state.user = user
+        if user["must_change"] and role != "viewer":
+            return False  # a first (administrator-set) password must be changed before any decision
+        return RANK[user["role"]] >= RANK[role]
+    return shared
 
 
 def _open(role: str) -> bool:

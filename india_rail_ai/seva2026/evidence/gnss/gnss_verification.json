@@ -12,7 +12,8 @@
     "accepted": 21777,
     "on_mapped_track": 19795,
     "refused": {
-      "off route": 70,
+      "off track once: refused quietly (multipath), no alarm": 66,
+      "off route: route-deviation alarm": 4,
       "implausible": 4
     },
     "accepted_pct": 99.661,
@@ -37,8 +38,8 @@
   },
   "throughput": {
     "events": 22764,
-    "seconds": 7.3,
-    "events_per_second": 3117
+    "seconds": 8.23,
+    "events_per_second": 2765
   },
   "labels": [
     "Receivers simulated (no live GNSS access); network, timetable and track geometry are real.",
