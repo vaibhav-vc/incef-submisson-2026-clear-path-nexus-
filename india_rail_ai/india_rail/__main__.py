@@ -106,6 +106,14 @@ def main(argv: list[str] | None = None) -> int:
     from india_rail.services import Services
 
     services = Services()
+    try:
+        return _service_command(args, services)
+    except (ValueError, KeyError) as exc:  # bad train, station or input: a message, not a traceback
+        print(f"error: {str(exc).strip(chr(39))}", file=sys.stderr)
+        return 2
+
+
+def _service_command(args: argparse.Namespace, services) -> int:
     if args.command == "summary":
         print(json.dumps(services.network.summary(), indent=2))
     elif args.command == "plan":

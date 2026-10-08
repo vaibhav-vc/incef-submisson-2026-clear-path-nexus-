@@ -700,6 +700,135 @@ def production_section(audit: dict[str, Any]) -> list[Any]:
     return out
 
 
+def scenarios_section(rv: dict[str, Any]) -> list[Any]:
+    """Section 4: shared track, the 75,556 scenarios, the railway's remaining steps and the feature check."""
+
+    bank = load(EVIDENCE / "scenarios" / "scenario_bank.json")
+    register = load(EVIDENCE / "register" / "register_template_summary.json")
+    features = load(EVIDENCE / "features" / "feature_check.json")
+    out: list[Any] = [p("4. Shared track, 75,556 scenarios, and the railway's remaining steps", "h1")]
+    conf = rv.get("conflicts", {}).get("learned_projection_with_real_track_data", {})
+    if conf:
+        out += [
+            p("Trains with different stopping patterns are compared where they share track", "h2"),
+            p(
+                "Each train's sections run between its own stops, so an express's one section is a local's several. "
+                "5,084 of 15,951 sections (56.6% of train-km) are such paths over shorter sections; until this build "
+                "an express and a local on the same track were never compared. Every occupation is now registered on "
+                "the pieces of track it runs over and checked there; closures of any piece block every section over "
+                "it; the index of changed trains is kept in time order so a feed batch still takes about 0.1 s."
+            ),
+            table(
+                [
+                    ["Measure (learned projection, real track data, unseen real days)", "Value"],
+                    ["Real time losses of 15 min or more warned of in advance", f"{conf['losses_15_min_or_more_flagged_pct']}%"],
+                    ["...before shared track was checked", "2.56%"],
+                    ["Warned trains that really lost 5+ min vs comparable trains", f"{conf['lift']}x"],
+                    ["Warnings (give-way traversals flagged)", f"{conf['flagged_gives_way']:,}"],
+                ],
+                [120, 50],
+            ),
+        ]  # fmt: skip
+    f = bank.get("forecasts", {})
+    if f:
+        clean, damaged = f["clean"], f["damaged_inputs"]
+        out += [
+            p(f"Forecasts trained and tested under {f['scenarios']:,} real scenarios", "h2"),
+            p(
+                f"A scenario is one real train at one real reporting moment of September 2024: its real delay, the "
+                f"real state of the network, and its real delays at later stops (the answer). {f['scenarios']:,} were "
+                f"held out in five rolling-origin rounds and spread evenly over {f['situation_types_covered']} "
+                "situation types (time of day x how late x train class x line x network disrupted or not), so rare "
+                "situations count. Each was also scored under six damaged inputs: "
+                f"{f['scenario_variants_scored']:,} scored scenario-variants in all. The model trained on damaged "
+                "inputs with every situation type weighted in is now the deployed forecaster."
+            ),
+            table(
+                [["Model", "Mean error (min)", "Within 15 min", "Situation types better than both baselines",
+                  "Worst situation type (min)"]]
+                + [[m, clean[m]["mae_min"], f"{clean[m]['within_15_min_pct']}%",
+                    clean[m]["situations_better_than_both_baselines"], clean[m]["worst_situation_mae_min"]]
+                   for m in ("persistence", "twin_rule", "learned", "scenario_trained")],
+                [40, 28, 26, 46, 30],
+            ),
+            table(
+                [["Damaged input", "Persistence", "Twin rule", "Previous model", "Deployed (scenario-trained)"]]
+                + [[name.replace("_", " "), *(f"{damaged[name][m]['mae_min']} (+{damaged[name][m]['added_error_min']})"
+                                              for m in ("persistence", "twin_rule", "learned", "scenario_trained"))]
+                   for name in damaged],
+                [46, 30, 30, 32, 32],
+            ),
+        ]  # fmt: skip
+    pl = bank.get("planner", {})
+    if pl:
+        d = pl["delay_vs_wait_your_turn"]["first_ranked_saves_weighted_min"]
+        cond = pl["by_condition"]
+        out += [
+            p(f"The planner under {pl['scenarios']:,} disruption scenarios on the real network", "h2"),
+            p(
+                "A train running at a random time of day is delayed at a station ahead by a real delay (drawn from "
+                f"{pl['real_delays_drawn_from']['losses_observed']:,} time losses observed between consecutive reports), "
+                "in some scenarios with a section ahead closed, obstructed, speed-restricted or under a weather alert, "
+                "or with a second train delayed nearby. Every candidate shown was checked independently and the first "
+                "was approved and checked again."
+            ),
+            tiles(
+                [
+                    ("scenarios run", f"{pl['run']:,}"),
+                    ("crashes", f"{pl['crashes']}"),
+                    ("safety violations", f"{pl['violations']}"),
+                    ("approved and re-checked", f"{pl['approved_and_rechecked']:,}"),
+                    ("closures with a feasible plan", f"{cond.get('closure ahead', {}).get('ranked_pct', 0)}%"),
+                    ("obstructions with a feasible plan", f"{cond.get('obstacle ahead', {}).get('ranked_pct', 0)}%"),
+                    ("first-ranked plan beats 'wait your turn'", f"{d['better_pct']}%"),
+                    ("weighted minutes saved per 1,000 scenarios", f"{d['total_per_1000_scenarios']:,}"),
+                ]
+            ),
+            p(
+                f"The first-ranked plan was worse on delay than letting the late train wait its turn in {d['worse_pct']}% "
+                "of compared scenarios: the ranking also weighs separation margins, track stress, energy, threats, "
+                "evidence and complexity. The lowest-delay plan shown saves "
+                f"{pl['delay_vs_wait_your_turn']['best_shown_saves_weighted_min']['mean']} weighted minutes per scenario "
+                "on average. Disruptions are sampled, not observed; their outcome is the twin's projection.",
+                "small",
+            ),
+        ]  # fmt: skip
+    out += [
+        p("The railway's remaining steps, made run-and-sign", "h2"),
+        table(
+            [
+                ["Step", "What this project now supplies"],
+                ["Loops and block sections",
+                 f"Register template for {register.get('stations', 0):,} stations and {register.get('physical_sections', 0):,} "
+                 "physical sections with OpenStreetMap/timetable hints; validation; a built register sets track counts, "
+                 "per-section headway and refuses waits without a loop. Only rows citing an IR document are used."],
+                ["Live feeds", "Conformance kit: CRIS certifies its own envelopes offline and a test receiver online."],
+                ["Security audit", "Audit pack: software bill of materials, hashed evidence index, controls mapping; "
+                 "clock checked against NIC/NPL NTP (CERT-In)."],
+                ["Shadow trial", "Control-office CSV import; agreement over the whole persisted audit across restarts "
+                 "and days (shadow-report)."],
+                ["Safety acceptance", "Dossier on the EN 50126 lifecycle (IR_HANDOVER.md)."],
+            ],
+            [40, 130],
+        ),
+    ]  # fmt: skip
+    api = features.get("api", {})
+    if api:
+        pages = features.get("pages", {})
+        out += [
+            p("Every feature exercised", "h2"),
+            p(
+                f"scripts/verify_features.py ran a day of operations against the real network: {api['routes_exercised']} "
+                f"of {api['routes']} API routes exercised ({api['calls_ok']} of {api['calls']} calls as expected); "
+                f"protected routes refusing a request without credentials: {api['protected_routes_refuse_without_credentials']}; "
+                f"commands {features['commands']['ok']} of {features['commands']['commands']} working"
+                + (f"; pages driven in Chromium {pages['ok']} of {pages['pages_checked']}" if pages else "")
+                + f". Result: {features.get('result')}."
+            ),
+        ]  # fmt: skip
+    return out
+
+
 def build(out: Path) -> Path:
     sim = load(EVIDENCE / "simulation" / "simulation_results.json")
     reg = load(EVIDENCE / "simulation" / "regression_results.json")
@@ -815,10 +944,11 @@ def build(out: Path) -> Path:
     ]
     story += [PageBreak(), *real_data_section(rv)]
     story += [PageBreak(), *production_section(audit)]
+    story += [PageBreak(), *scenarios_section(rv)]
 
     # ---- 3. what was built ---------------------------------------------------------------------------------
     story += [
-        p("4. What was built", "h1"),
+        p("5. What was built", "h1"),
         table(
             [
                 ["Component", "What it does"],
@@ -978,7 +1108,7 @@ def build(out: Path) -> Path:
 
     # ---- 3. data -------------------------------------------------------------------------------------------
     story += [
-        p("5. Data: the whole network", "h1"),
+        p("6. Data: the whole network", "h1"),
         p(
             "The twin is built from <b>real data</b>: by default the current all-India timetable (10,594 trains with "
             "running days and validity dates, section 3), with station positions, line counts and track geometry from "
@@ -1122,7 +1252,7 @@ def build(out: Path) -> Path:
     med = scores.get("baseline_section_median", {})
     iv = model.get("interval_p10_p90", {})
     story += [
-        p("6. Machine learning: section run-time model", "h1"),
+        p("7. Machine learning: section run-time model", "h1"),
         p(
             "The model predicts the scheduled run time between two stops: the planning quantity a re-planner needs. "
             "It learns the correction to a section prior. Section priors are recomputed inside every cross-validation "
@@ -1223,7 +1353,7 @@ def build(out: Path) -> Path:
     every = (sim, reg, final, real_final, real_national, prod_found, prod_final)
     total_ops = sum(r.get("operations_checked", 0) for r in every if r)
     story += [
-        p(f"7. Simulation: {total_ops / 1e6:.1f} million checked operations", "h1"),
+        p(f"8. Simulation: {total_ops / 1e6:.1f} million checked operations", "h1"),
         p(
             "An <b>episode</b> starts a fresh twin with random conditions, then runs a random sequence of operations. "
             "The operations are clock ticks, recommendations, approvals (including stale and wrong ones), section and "
@@ -1326,7 +1456,7 @@ def build(out: Path) -> Path:
 
     # ---- 6. security -----------------------------------------------------------------------------------------
     story += [
-        p("8. Security", "h1"),
+        p("9. Security", "h1"),
         table(
             [
                 ["Check", "Result"],
@@ -1366,14 +1496,14 @@ def build(out: Path) -> Path:
     ]
 
     # ---- 7. audits ------------------------------------------------------------------------------------------
-    story += [p("9. Seven audit passes", "h1"),
+    story += [p("10. Nine audit passes", "h1"),
               p("Each pass looked at the whole system through one lens, fixed what it found, and re-ran the full "
                 "test suite and lint before the next pass. Details are in <i>seva2026/AUDIT_LOG.md</i>.")]  # fmt: skip
     story.append(table([["Pass", "Lens", "Main findings and fixes", "Evidence"], *AUDITS], [12, 30, 92, 36]))
 
     # ---- 8. live data, compliance, remaining ------------------------------------------------------------------
     story += [
-        p("10. Ready for live data", "h1"),
+        p("11. Ready for live data", "h1"),
         p("When the Ministry of Railways / CRIS authorises a feed, it plugs in without code changes to the twin."),
         *bullets(
             [
@@ -1397,7 +1527,7 @@ def build(out: Path) -> Path:
                 "and a shadow-mode trial.",
             ]
         ),
-        p("11. Legal, safety and data compliance", "h1"),
+        p("12. Legal, safety and data compliance", "h1"),
         table(
             [
                 ["Instrument", "How the design addresses it", "Status"],
@@ -1436,7 +1566,7 @@ def build(out: Path) -> Path:
             "Full register: <i>seva2026/COMPLIANCE_REGISTER.md</i>. This is an engineering register, not legal advice.",
             "small",
         ),
-        p("12. What is left", "h1"),
+        p("13. What is left", "h1"),
         *bullets(
             [
                 "Indian Railways / CRIS: authorise live feeds (NTES/RTIS/COA) and share the interface specification.",
@@ -1450,7 +1580,7 @@ def build(out: Path) -> Path:
                 "Shadow-mode trial on one division: compare recommendations with controllers' actual decisions.",
             ]
         ),
-        p("13. How to run", "h1"),
+        p("14. How to run", "h1"),
         table(
             [
                 ["Task", "Command (in india_rail_ai/)"],

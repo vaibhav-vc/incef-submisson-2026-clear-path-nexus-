@@ -205,6 +205,9 @@ class FaultRequest(StrictRequest):
 
 @router.post("/fault", dependencies=CONTROL + DEMO)
 def fault(request: FaultRequest) -> dict[str, Any]:
+    needs = "section_id" if request.kind in ("obstacle", "clear_obstacle") else "train_id"
+    if getattr(request, needs) is None:
+        raise HTTPException(status_code=422, detail=f"{request.kind} needs {needs}")
     if request.train_id is not None and request.train_id not in ENGINE.trains:
         raise HTTPException(status_code=404, detail="Unknown train")
     if request.section_id is not None and request.section_id not in ENGINE.net.sections:

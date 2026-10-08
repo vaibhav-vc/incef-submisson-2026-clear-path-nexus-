@@ -300,16 +300,47 @@ def stress_training(fit: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame
     return out
 
 
-def forecast(d: dict[str, pd.DataFrame], seed: int = 0, save_model: bool = True) -> tuple[dict[str, Any], dict]:
+def _with_network_state(d: dict[str, pd.DataFrame], rows: pd.DataFrame) -> pd.DataFrame:
+    """The state of the network when each forecast is made (scenario_ml.network_state), joined to the rows."""
+
+    from india_rail.scenario_ml import NETWORK_FEATURES, network_state
+
+    con = sqlite3.connect(f"file:{REAL_DB_PATH}?mode=ro", uri=True)
+    zone_of = dict(con.execute("SELECT code, zone FROM stations"))
+    con.close()
+    keyed = network_state(d["obs"], zone_of).set_index(["run", "seq"])
+    joined = keyed.reindex(pd.MultiIndex.from_arrays([rows.run, rows.now_seq]))
+    for col in ("zone", *NETWORK_FEATURES):
+        rows[col] = joined[col].to_numpy()
+    return rows
+
+
+# How the deployed forecaster is trained: "scenario" = on the six damaged inputs, with every situation type weighted
+# in (chosen on 75,556 held-out real scenarios, scenario_bank.py); "plain" = random rows, 15% without history.
+FORECAST_RECIPE = "scenario"
+
+
+def forecast(
+    d: dict[str, pd.DataFrame], seed: int = 0, save_model: bool = True, recipe: str = FORECAST_RECIPE
+) -> tuple[dict[str, Any], dict]:
     """Score delay forecasts on the test dates; returns (scores, fitted models)."""
 
     from sklearn.ensemble import HistGradientBoostingRegressor
 
     rows = forecast_rows(d)
+    if recipe == "scenario":
+        rows = _with_network_state(d, rows)
     train, test = rows[rows.date <= SPLIT_DATE], rows[rows.date > SPLIT_DATE]
     rng = np.random.default_rng(seed)
     fit = train.iloc[rng.choice(len(train), size=min(len(train), 1_500_000), replace=False)].copy()
-    fit = cold_start(fit, rng)  # measured on the cold-start test below and in scenario_ml.py / scenario_bank.py
+    weights = None
+    if recipe == "scenario":
+        from india_rail.scenario_bank import balance_weights, cells
+
+        fit = stress_training(fit, rng)
+        weights = balance_weights(cells(fit, float(np.nanquantile(train.net_delay_2h, 0.75))))
+    else:
+        fit = cold_start(fit, rng)  # measured on the cold-start test below and in scenario_ml.py
 
     def model(loss: str, quantile: float | None = None) -> HistGradientBoostingRegressor:
         kw = {"quantile": quantile} if quantile is not None else {}
@@ -319,9 +350,9 @@ def forecast(d: dict[str, pd.DataFrame], seed: int = 0, save_model: bool = True)
         )  # fmt: skip
 
     y = fit.d_tgt - fit.d_now
-    median = model("absolute_error").fit(fit[FORECAST_FEATURES], y)
-    lo = model("quantile", 0.1).fit(fit[FORECAST_FEATURES], y)
-    hi = model("quantile", 0.9).fit(fit[FORECAST_FEATURES], y)
+    median = model("absolute_error").fit(fit[FORECAST_FEATURES], y, sample_weight=weights)
+    lo = model("quantile", 0.1).fit(fit[FORECAST_FEATURES], y, sample_weight=weights)
+    hi = model("quantile", 0.9).fit(fit[FORECAST_FEATURES], y, sample_weight=weights)
     preds = {
         "twin_current_rule": np.where(test.d_now >= 5, np.maximum(test.d_now - 2 - test.dwell_recovery, 0), 0.0),
         "persistence": test.d_now.to_numpy(dtype=float),
@@ -354,6 +385,7 @@ def forecast(d: dict[str, pd.DataFrame], seed: int = 0, save_model: bool = True)
     for base in ("persistence", "twin_current_rule"):
         ci[base] = _bootstrap_gain(test.run.to_numpy(), np.abs(preds[base] - truth), learned_err, seed)
     result = {
+        "recipe": recipe,
         "split": {
             "train_dates": f"2024-09-01..{SPLIT_DATE}",
             "test_dates": f"after {SPLIT_DATE}",
@@ -371,7 +403,7 @@ def forecast(d: dict[str, pd.DataFrame], seed: int = 0, save_model: bool = True)
         import joblib
 
         ETA_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump({"median": median, "p10": lo, "p90": hi, "features": FORECAST_FEATURES,
+        joblib.dump({"median": median, "p10": lo, "p90": hi, "features": FORECAST_FEATURES, "recipe": recipe,
                      "trained_on": f"observed running 2024-09-01..{SPLIT_DATE}", "source": OBSERVED["publisher"]},
                     ETA_MODEL_PATH, compress=3)  # fmt: skip
     return result, {"median": median, "p10": lo, "p90": hi}

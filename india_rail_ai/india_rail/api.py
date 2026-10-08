@@ -197,7 +197,14 @@ class PasswordChange(StrictRequest):
     new_password: str = Field(min_length=1, max_length=256)
 
 
-@app.post("/auth/password", dependencies=LOGIN)
+def _session_present(request: Request) -> None:
+    """Credentials are checked before the body: no session, no password change (401, not a validation error)."""
+
+    if not _bearer(request):
+        raise HTTPException(status_code=401, detail="Sign in first", headers={"WWW-Authenticate": "Bearer"})
+
+
+@app.post("/auth/password", dependencies=[Depends(_session_present), *LOGIN])
 def change_password(body: PasswordChange, request: Request) -> dict[str, str]:
     from india_rail.accounts import AuthError
 
