@@ -71,3 +71,16 @@ STATION event at its real time (`python -m india_rail real validate`, `live_feed
 * the origin of a journey is reported as a departure (`DEP`), not an arrival.
 CRIS should confirm ordering guarantees per train and whether corrections are sent as new events.
 
+
+## What the feed drives for passengers, customers and staff
+Accepted reports move the twin, and the twin's projection is published as expected times (viewer role):
+* `GET /railguard/national/expected/{run}`: every stop of a run, scheduled and expected arrival and departure,
+  status (`LATE N MIN`, `ON TIME`, `SCHEDULED`, `DUE`, `ARRIVED`, `DEPARTED`), the likely arrival range where the
+  forecaster gives one, and the evidence behind it (`LIVE`, `LAST_REPORT` with its age and section, `TIMETABLE`);
+* `GET /railguard/national/board/{code}?window=30-360&rows=1-100`: the trains due at a station, soonest first,
+  including late trains scheduled earlier and diverted trains no longer calling there; page `/board`.
+Times are published under rules that avoid needless changes (`railguard/publish.py`, hazard H24): later at once,
+earlier only once held for 3 minutes, no change under 2 minutes, never departing before the timetable. So the
+feed does not need to smooth anything: send every report as it is made, and corrections as new events.
+NTES remains the official passenger information; these endpoints can feed station displays or enquiry staff
+only with CRIS/NTES agreement on wording and hand-off.
