@@ -164,41 +164,51 @@ def api_checks(feed_secret: bytes) -> dict[str, Any]:
     c("POST", "/auth/password", "session", json_body={"old_password": ctrl_pw, "new_password": new_pw})
     session = c("POST", "/auth/login", None, json_body={"username": "sharma.feature", "password": new_pw}).json()
     h.tokens["session"] = session["token"]
-    # ---- the open timetable services
+    # ---- the open timetable services: every input is discovered from the data, none is written in here
     c("GET", "/summary")
-    c("GET", "/trains/search", params={"q": "Rajdhani"})
-    open_train = c("GET", "/trains/{number}", fill={"number": "12951"}).json()
-    call_at = open_train["stops"][1]["station_code"]  # a station the train calls at, in the open timetable
-    c("GET", "/trains/{number}/working-schedule", fill={"number": "12951"}, expect=(200, 404))
-    c("GET", "/trains/{number}/slack", fill={"number": "12951"}, expect=(200, 404))
-    c("GET", "/stations/search", params={"q": "Mumbai"})
-    c("GET", "/stations/{code}/board", fill={"code": "NDLS"})
-    c("GET", "/between", params={"origin": "NDLS", "destination": "MMCT"})
-    c("GET", "/sections/busiest")
-    c("GET", "/path", params={"origin": "NDLS", "destination": "MMCT"}, expect=(200, 404))
+    busiest = c("GET", "/sections/busiest").json()[0]
+    board = c("GET", "/stations/{code}/board", fill={"code": busiest["station_a"]}).json()
+    open_number = board["trains"][0]["number"]
+    open_train = c("GET", "/trains/{number}", fill={"number": open_number}).json()
+    stops = [s["station_code"] for s in open_train["stops"]]
+    origin, call_at, destination = stops[0], stops[len(stops) // 2], stops[-1]
+    c("GET", "/trains/search", params={"q": open_train["train"]["name"].split()[0]})
+    c("GET", "/trains/{number}/working-schedule", fill={"number": open_number}, expect=(200, 404))
+    c("GET", "/trains/{number}/slack", fill={"number": open_number}, expect=(200, 404))
+    c("GET", "/stations/search", params={"q": board["station"]["name"].split()[0]})
+    c("GET", "/between", params={"origin": origin, "destination": destination})
+    c("GET", "/path", params={"origin": origin, "destination": destination}, expect=(200, 404))
     c(
         "POST",
         "/plan/disruption",
         "controller",
-        json_body={"train_number": "12951", "station_code": call_at, "delay_min": 30},
+        json_body={"train_number": open_number, "station_code": call_at, "delay_min": 30},
     )
     c(
         "POST",
         "/assistant/ask",
         "viewer",
-        json_body={"question": "Which trains run between NDLS and MMCT?", "provider": "offline"},
+        json_body={"question": f"Which trains run between {origin} and {destination}?", "provider": "offline"},
     )
+    found = {"open_train": open_number, "origin": origin, "call_at": call_at, "destination": destination}
     # ---- national twin: every train, the network, a disruption decided and replayed
     c("GET", "/railguard/national/summary")
     c("GET", "/railguard/national/network")
     c("GET", "/railguard/national/positions")
     c("GET", "/railguard/national/operators")
-    trains = c("GET", "/railguard/national/trains", params={"q": "Rajdhani"}).json()["trains"]
-    number = next((t["number"] for t in trains if t.get("in_twin")), trains[0]["number"])
+    trains = c("GET", "/railguard/national/trains", params={"q": "", "limit": 200}).json()["trains"]
+    number, run = None, None
+    for t in (t for t in trains if t.get("in_twin")):  # the first train in the twin with a departure still ahead
+        runs = client.get(f"/railguard/national/runs/{t['number']}",
+                          headers={"Authorization": f"Bearer {tokens['viewer']}"}).json()  # fmt: skip
+        run = next((r for r in runs if r["next_departures"]), None)
+        if run:
+            number = t["number"]
+            break
     c("GET", "/railguard/national/trains/{number}", fill={"number": number})
     c("GET", "/railguard/national/trains/{number}/route", fill={"number": number})
-    runs = c("GET", "/railguard/national/runs/{number}", fill={"number": number}).json()
-    run = next(r for r in runs if r["next_departures"])
+    c("GET", "/railguard/national/runs/{number}", fill={"number": number})
+    found.update(national_train=number, national_query=next(t["name"] for t in trains if t["number"] == number))
     station = run["next_departures"][0]["station"]
     c("GET", "/railguard/national/stations/{code}", fill={"code": station})
     c("GET", "/railguard/national/plan/{run}", fill={"run": run["run"]})
@@ -438,6 +448,7 @@ def api_checks(feed_secret: bytes) -> dict[str, Any]:
         "failures": [r for r in h.results if not r["ok"]],
         "protected_routes_refuse_without_credentials": f"{sum(r['ok'] for r in refused)}/{len(refused)}",
         "not_refused": [r for r in refused if not r["ok"]],
+        "inputs_discovered_from_data": found,
         "calls_detail": h.results,
     }
 
@@ -481,7 +492,7 @@ def _run(args: list[str], env: dict[str, str], timeout: int = 600) -> tuple[int,
     return done.returncode, (done.stdout + done.stderr)[-400:]
 
 
-def cli_checks(env: dict[str, str], work: Path, feed_secret: bytes) -> dict[str, Any]:
+def cli_checks(env: dict[str, str], work: Path, feed_secret: bytes, found: dict[str, str]) -> dict[str, Any]:
     from india_rail.railguard.livefeed import IST, sign
 
     results = []
@@ -500,9 +511,9 @@ def cli_checks(env: dict[str, str], work: Path, feed_secret: bytes) -> dict[str,
         "events": [
             {
                 "type": "STATION",
-                "train_number": "12951",
+                "train_number": found["national_train"],
                 "start_date": now.date().isoformat(),
-                "station_code": "MMCT",
+                "station_code": found["call_at"],
                 "event": "DEP",
                 "observed_at": now.isoformat(),
             }
@@ -512,10 +523,10 @@ def cli_checks(env: dict[str, str], work: Path, feed_secret: bytes) -> dict[str,
     (work / "sample.jsonl").write_text(json.dumps(env_) + "\n")
     working = [
         (["summary"], 0),
-        (["slack", "12951"], 0),
-        (["plan", "12951", "BCT", "30"], 0),
-        (["plan", "12951", "NOWHERE", "30"], 2),  # a station off the route: a clear error, not a traceback
-        (["ask", "--provider", "offline", "trains", "between", "NDLS", "and", "MMCT"], 0),
+        (["slack", found["open_train"]], 0),
+        (["plan", found["open_train"], found["call_at"], "30"], 0),
+        (["plan", found["open_train"], "NOT-A-STATION", "30"], 2),  # off the route: a clear error, not a traceback
+        (["ask", "--provider", "offline", "trains", "between", found["origin"], "and", found["destination"]], 0),
         (
             [
                 "feed-conformance",
@@ -639,9 +650,11 @@ def main() -> int:
         "generated_at": datetime.now().isoformat(timespec="seconds"),
     }
     report["api"] = api_checks(feed_secret)
-    report["commands"] = cli_checks(env, work, feed_secret)
+    report["commands"] = cli_checks(env, work, feed_secret, report["api"]["inputs_discovered_from_data"])
     if args.ui:
-        report["pages"] = ui_checks(env, work)
+        found = report["api"]["inputs_discovered_from_data"]
+        report["pages"] = ui_checks({**env, "FEATURE_TRAIN": found["national_train"],
+                                     "FEATURE_QUERY": found["national_query"].split()[0]}, work)  # fmt: skip
     report["seconds"] = round(time.time() - started)
     ok = (
         not report["api"]["failures"]

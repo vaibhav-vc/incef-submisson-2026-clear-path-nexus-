@@ -5,7 +5,7 @@
 
     # Test environment: does the deployed receiver accept the good and refuse the bad?
     python -m india_rail feed-conformance endpoint --url https://nexus-test.example --source RTIS --key-id k1 \\
-        --key-file rtis_k1.hex --token-file feed_token.txt
+        --key-file rtis_k1.hex --token-file feed_token.txt --train <a train running today> --station <a stop of it>
 
 Both write a certificate (JSON) listing every rule checked and its result. The rules are the receiver's own
 (constants and parser imported from livefeed.py), so the kit cannot drift from what production enforces. Keys and
@@ -184,9 +184,12 @@ def check_producer(envelopes: list[Any], secret: bytes, source: str) -> dict[str
 Post = Callable[[dict[str, Any] | str, str | None], tuple[int, Any]]
 
 
-def check_endpoint(post: Post, source: str, key_id: str, secret: bytes, token: str,
+def check_endpoint(post: Post, source: str, key_id: str, secret: bytes, token: str, train: str, station: str,
                    now: Callable[[], datetime] | None = None) -> dict[str, Any]:  # fmt: skip
-    """Send a battery of good and hostile envelopes; each must get the response the contract promises."""
+    """Send a battery of good and hostile envelopes; each must get the response the contract promises.
+
+    `train` and `station`: a train running today on the receiver's timetable and a station it calls at, chosen by
+    the operator running the check (the kit holds no train data of its own)."""
 
     now = now or (lambda: datetime.now(IST))
     seq = [int(time.time() * 1000)]
@@ -200,10 +203,11 @@ def check_endpoint(post: Post, source: str, key_id: str, secret: bytes, token: s
         return env
 
     stamp = now()
-    station = {"type": "STATION", "train_number": "12951", "start_date": stamp.date().isoformat(),
-               "station_code": "MMCT", "event": "DEP", "observed_at": stamp.isoformat()}  # fmt: skip
-    outside = {"type": "POSITION", "train_number": "12951", "start_date": stamp.date().isoformat(), "lat": 51.5,
-               "lon": -0.1, "speed_kmph": 80.0, "observed_at": stamp.isoformat()}  # fmt: skip
+    event = {"type": "STATION", "train_number": train, "start_date": stamp.date().isoformat(),
+             "station_code": station, "event": "DEP", "observed_at": stamp.isoformat()}  # fmt: skip
+    outside = {"type": "POSITION", "train_number": train, "start_date": stamp.date().isoformat(), "lat": 0.0,
+               "lon": 0.0, "speed_kmph": 0.0, "observed_at": stamp.isoformat()}  # 0,0 lies outside India  # fmt: skip
+    station = event
     good = envelope([station])
     battery: list[tuple[str, Any, str | None, Callable[[int, Any], bool], str]] = [
         ("well-formed signed envelope is received", good, token,
@@ -289,6 +293,8 @@ def main(argv: list[str] | None = None) -> int:
     end.add_argument("--key-id", required=True)
     end.add_argument("--key-file", type=Path, required=True)
     end.add_argument("--token-file", type=Path, required=True, help="file holding the feed role token")
+    end.add_argument("--train", required=True, help="a train running today on the receiver's timetable")
+    end.add_argument("--station", required=True, help="a station that train calls at")
     for p in (prod, end):
         p.add_argument("--out", type=Path, help="where to write the certificate (JSON)")
     args = parser.parse_args(argv)
@@ -302,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
         cert["sample_sha256"] = hashlib.sha256(text.encode()).hexdigest()
     else:
         token = args.token_file.read_text(encoding="utf-8").strip()
-        cert = check_endpoint(http_post(args.url), args.source, args.key_id, secret, token)
+        cert = check_endpoint(http_post(args.url), args.source, args.key_id, secret, token, args.train, args.station)
         cert["receiver"] = urlparse(args.url).hostname
     text = json.dumps(cert, indent=2)
     if args.out:

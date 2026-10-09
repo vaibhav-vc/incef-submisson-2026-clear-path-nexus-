@@ -7,7 +7,7 @@ step into review and sign-off.
 
 | Railway step | Pack | Done by this project | Left for the railway |
 |---|---|---|---|
-| Engineering data (loops, block sections) | `india_rail/railguard/register.py`; [../evidence/register](../evidence/register) | Template for 8,550 stations and 10,867 physical sections with OSM/timetable hints; validation; the twin uses a built register (tracks, headway, no wait without a loop) | Fill from Station Working Rules, working time table, signalling plans |
+| Engineering data (loops, block sections) | `india_rail/railguard/register.py` | Empty template (headers only, nothing pre-filled); validation, including against the network the twin runs on; the twin uses a built register (tracks, headway, no wait without a loop) | Enter every row from Station Working Rules, working time table, signalling plans |
 | Feed onboarding | `india_rail/railguard/conformance.py` | Producer and endpoint conformance certificates | CRIS runs both |
 | Audit evidence | `india_rail/audit_pack.py` | SBOM, hashed evidence index, controls mapping, NTP clock control | The audit itself |
 | Live data and CRIS integration | [LIVE_DATA_INTERFACE.md](LIVE_DATA_INTERFACE.md) | Signed gateway, contract, test vector, simulator, IST clock | Authorise access, share spec, issue keys, integration test |

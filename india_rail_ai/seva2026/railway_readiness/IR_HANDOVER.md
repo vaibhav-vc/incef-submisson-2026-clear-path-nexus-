@@ -12,8 +12,8 @@ railway systems and sign.
 | 1 | Host on railway infrastructure | CRIS / IR IT | `docker compose -f docker-compose.railguard.yml up` ([DEPLOYMENT.md](DEPLOYMENT.md)) | `/health/ready` true with UPS, checkpoints and clock configured |
 | 2 | Clock on NIC/NPL time (CERT-In) | IR IT | `RAILGUARD_NTP=samay1.nic.in,time.nplindia.org` | readiness check `clock` true; `railguard_clock_offset_seconds` within 1 s |
 | 3 | Security audit | CERT-In empanelled auditor or STQC | `python -m india_rail audit-pack` inside the production image; [SECURITY_ASVS_CHECKLIST.md](SECURITY_ASVS_CHECKLIST.md); attack tests | the auditor's "safe to host" certificate |
-| 4 | Loop and block-section register | Divisional engineering and S&T | `python -m india_rail register template --out-dir reg/ --pbf <osm extract>`; fill from Station Working Rules, working time table and signalling plans; `register validate --dir reg/`; `register build --dir reg/ --out register.json`; `RAILGUARD_REGISTER=register.json` | twin statistics show the register checksum and the sections and stations it covers |
-| 5 | Live feeds (RTIS, NTES, COA) | CRIS | Share the interface specification; `python -m india_rail feed-conformance producer --file sample.jsonl --source RTIS --key-file k.hex` on CRIS's own sample; exchange keys out of band; `feed-conformance endpoint --url https://<test host> ...` | both certificates `PASS`; [LIVE_DATA_INTERFACE.md](LIVE_DATA_INTERFACE.md) onboarding checklist complete |
+| 4 | Loop and block-section register | Divisional engineering and S&T | `python -m india_rail register template --out-dir reg/` (two empty CSV files, headers only); enter every row from Station Working Rules, working time table and signalling plans, naming the document; `register validate --dir reg/` (also reports stations and sections the twin does not run on); `register build --dir reg/ --out register.json`; `RAILGUARD_REGISTER=register.json` | twin statistics show the register checksum and the sections and stations it covers |
+| 5 | Live feeds (RTIS, NTES, COA) | CRIS | Share the interface specification; `python -m india_rail feed-conformance producer --file sample.jsonl --source RTIS --key-file k.hex` on CRIS's own sample; exchange keys out of band; `feed-conformance endpoint --url https://<test host> --train <a train running today> --station <a stop of it> ...` | both certificates `PASS`; [LIVE_DATA_INTERFACE.md](LIVE_DATA_INTERFACE.md) onboarding checklist complete |
 | 6 | Cab units | Mechanical and S&T | Fit GNSS/NavIC receivers; `python -m india_rail gnss --train N --start-date D --nmea /dev/ttyACM0` with a per-unit key; controllers issue each cab its link (console: **Issue cab link**) | `gnss-verify` re-run on field traces; accepted share and false alarms within the hazard log's limits |
 | 7 | Identity | IR IT | Named accounts (`python -m india_rail accounts add ...`), `RAILGUARD_REQUIRE_ACCOUNTS=1`; or connect IR SSO | every decision in the audit chain carries a named person |
 | 8 | Safety acceptance | Safety directorate, RDSO, independent safety assessor | Hazard workshop on [HAZARD_LOG.md](HAZARD_LOG.md); [SAFETY_CASE.md](SAFETY_CASE.md); section 2 below | acceptance for shadow use, then for advisory use |
@@ -48,7 +48,7 @@ record (tests, simulation, audit passes in [../AUDIT_LOG.md](../AUDIT_LOG.md)) i
 
 * Authorisation to connect to CRIS systems, and the keys for it.
 * Indian Railways' engineering data: loops, block sections, signal positions, gradients, permanent speed
-  restrictions. The register template is pre-filled with hints from OpenStreetMap and the timetable, but only rows
-  that name an Indian Railways document are ever used.
+  restrictions. The register template is empty: nothing is pre-filled, and only rows that name an Indian Railways
+  document are ever used.
 * An independent security audit and an independent safety assessment.
 * Operational experience: the shadow trial is the only way to learn how controllers and the system disagree.

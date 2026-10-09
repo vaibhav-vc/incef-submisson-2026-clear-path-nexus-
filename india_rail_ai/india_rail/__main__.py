@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("freight", help="Dedicated Freight Corridors: network and automated freight pathing (--help)")
     sub.add_parser("shadow-report", help="shadow-trial agreement over the whole persisted audit (--help)")
     sub.add_parser("feed-conformance", help="check a feed (CRIS side) or a receiver against the live-data contract")
-    sub.add_parser("register", help="loop and block-section register: OSM prefill, validate, apply (--help)")
+    sub.add_parser("register", help="loop and block-section register: empty template, validate, build (--help)")
     sub.add_parser("audit-pack", help="build the CERT-In/STQC audit pack: SBOM, evidence index, controls (--help)")
 
     serve = sub.add_parser("serve", help="run the HTTP API")

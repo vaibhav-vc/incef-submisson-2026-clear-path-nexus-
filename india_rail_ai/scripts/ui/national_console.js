@@ -1,9 +1,13 @@
 // National console and cab, end to end in Chromium: live push, every train with PIN codes and its route, the
 // advisor, freight pathing, a delay recorded and ranked, a cab link issued and opened, a decision pushed to the
 // cab, a forged link refused. Fails on any console error or CSP violation.
-//   node scripts/ui/national_console.js <base url> <screenshot path>   (env CTRL: a controller token)
+//   node scripts/ui/national_console.js <base url> <screenshot path>
+//   env: RAILGUARD_CONTROLLER_TOKEN; FEATURE_TRAIN (a train in the twin) and FEATURE_QUERY (a word of a train name),
+//   both discovered from the data by scripts/verify_features.py
 const { chromium } = require("playwright");
 const base = process.argv[2], shot = process.argv[3], controller = process.env.RAILGUARD_CONTROLLER_TOKEN;
+const train = process.env.FEATURE_TRAIN, query = process.env.FEATURE_QUERY;
+if (!train || !query) { console.error("FEATURE_TRAIN and FEATURE_QUERY are required"); process.exit(2); }
 const executablePath = process.env.CHROMIUM || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 (async () => {
   const browser = await chromium.launch({ executablePath });
@@ -19,7 +23,7 @@ const executablePath = process.env.CHROMIUM || "/opt/pw-browsers/chromium-1194/c
   await con.dispatchEvent("#token", "change");
   await con.waitForFunction(() => document.getElementById("liveBadge").textContent === "LIVE PUSH", null, { timeout: 60000 });
   const out = { live_push: true };
-  await con.fill("#tq", "Rajdhani");
+  await con.fill("#tq", query);
   await con.click("#tsearch");
   await con.waitForSelector("#tresults .runitem", { timeout: 30000 });
   out.trains_found = await con.locator("#tresults .runitem").count();
@@ -33,7 +37,7 @@ const executablePath = process.env.CHROMIUM || "/opt/pw-browsers/chromium-1194/c
   await con.click("#fplan");
   await con.waitForFunction(() => document.getElementById("fresult").textContent.includes("pathed"), null, { timeout: 90000 });
   out.freight = (await con.textContent("#fresult")).trim().slice(0, 120);
-  await con.fill("#number", "12951");
+  await con.fill("#number", train);
   await con.click("#find");
   await con.waitForSelector("#runs .runitem", { timeout: 30000 });
   await con.locator("#runs .runitem").first().click();

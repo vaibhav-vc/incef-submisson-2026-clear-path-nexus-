@@ -7,7 +7,7 @@ const executablePath = process.env.CHROMIUM || "/opt/pw-browsers/chromium-1194/c
   const page = await browser.newPage();
   const problems = [];
   page.on("pageerror", (e) => problems.push(e.message));
-  await page.goto(process.argv[2] + "/cab?run=12951@0#cab=abc.def");
+  await page.goto(process.argv[2] + "/cab?run=TEST1@0#cab=abc.def");
   await page.waitForFunction(() => document.getElementById("statusText").textContent === "NORMAL", null, { timeout: 10000 });
   const shown = { status: await page.textContent("#statusText"), band: await page.textContent("#band"), hash: await page.evaluate(() => location.hash) };
   const t0 = Date.now();

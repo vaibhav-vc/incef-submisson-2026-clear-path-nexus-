@@ -87,11 +87,15 @@ def test_the_endpoint_battery_passes_against_the_real_receiver(data, monkeypatch
     _twin, gateway, _sim = _gateway(data, 615.0)
     monkeypatch.setattr(railguard_api, "_gateway", lambda: gateway)
     now = lambda: datetime.fromtimestamp(gateway.clock(), IST)  # noqa: E731 - the receiver's clock
-    cert = conformance.check_endpoint(_Client(TestClient(app)), "RTIS", "k1", SECRET, tokens["feed"], now=now)
+    cert = conformance.check_endpoint(
+        _Client(TestClient(app)), "RTIS", "k1", SECRET, tokens["feed"], "12001", "C", now=now
+    )
     assert cert["result"] == "PASS", [c for c in cert["details"] if not c["passed"]]
     assert cert["checks"] == 10
     # A wrong key fails the battery: the good envelope is refused instead of received.
-    wrong = conformance.check_endpoint(_Client(TestClient(app)), "RTIS", "k1", bytes(32), tokens["feed"], now=now)
+    wrong = conformance.check_endpoint(
+        _Client(TestClient(app)), "RTIS", "k1", bytes(32), tokens["feed"], "12001", "C", now=now
+    )
     assert wrong["result"] == "FAIL"
 
 

@@ -175,7 +175,8 @@ def line_chart(points: list[tuple[int, float, bool]], baseline: float, title: st
     d = Drawing(width, height)
     d.add(String(0, height - 5 * mm, title, fontName=BOLD, fontSize=9, fillColor=TEXT))
     x0, x1, y0, y1 = 14 * mm, width - 30 * mm, 9 * mm, height - 12 * mm
-    lo, hi = 1.3, max(baseline, max(v for _, v, _ in points)) + 0.05
+    values = [v for _, v, _ in points] + [baseline]
+    lo, hi = min(values) - 0.05, max(values) + 0.05  # the axis follows the data
     n = max(r for r, _, _ in points) or 1
 
     def xy(r: float, v: float) -> tuple[float, float]:
@@ -700,31 +701,42 @@ def production_section(audit: dict[str, Any]) -> list[Any]:
     return out
 
 
-def scenarios_section(rv: dict[str, Any]) -> list[Any]:
-    """Section 4: shared track, the 75,556 scenarios, the railway's remaining steps and the feature check."""
+def scenarios_section(rv: dict[str, Any], nat_stats: dict[str, Any]) -> list[Any]:
+    """Section 4: shared track, the scenarios, the railway's remaining steps and the feature check (all figures read
+    from evidence files)."""
 
     bank = load(EVIDENCE / "scenarios" / "scenario_bank.json")
-    register = load(EVIDENCE / "register" / "register_template_summary.json")
+    before = load(EVIDENCE / "real_data" / "before_shared_track.json")
     features = load(EVIDENCE / "features" / "feature_check.json")
-    out: list[Any] = [p("4. Shared track, 75,556 scenarios, and the railway's remaining steps", "h1")]
-    conf = rv.get("conflicts", {}).get("learned_projection_with_real_track_data", {})
-    if conf:
+    n = bank.get("forecasts", {}).get("scenarios")
+    out: list[Any] = [p(f"4. Shared track, {n:,} scenarios, and the railway's remaining steps" if n else
+                        "4. Shared track and the railway's remaining steps", "h1")]  # fmt: skip
+    key = "learned_projection_with_real_track_data"
+    conf, old = rv.get("conflicts", {}).get(key, {}), before.get("conflicts", {}).get(key, {})
+    feed = rv.get("live_feed_replay", {}).get("twin_rule", {}).get("batch_latency_ms", {})
+    composite, sections = nat_stats.get("sections_over_shorter_sections"), nat_stats.get("sections")
+    share = nat_stats.get("run_km_share_over_shorter_sections")
+    if conf and old and composite and sections and share is not None:
         out += [
             p("Trains with different stopping patterns are compared where they share track", "h2"),
             p(
                 "Each train's sections run between its own stops, so an express's one section is a local's several. "
-                "5,084 of 15,951 sections (56.6% of train-km) are such paths over shorter sections; until this build "
-                "an express and a local on the same track were never compared. Every occupation is now registered on "
-                "the pieces of track it runs over and checked there; closures of any piece block every section over "
-                "it; the index of changed trains is kept in time order so a feed batch still takes about 0.1 s."
+                f"{composite:,} of {sections:,} sections ({share * 100:.1f}% of train-km) are such paths over shorter "
+                "sections; until this build an express and a local on the same track were never compared. Every "
+                "occupation is now registered on the pieces of track it runs over and checked there; closures of any "
+                "piece block every section over it; the index of changed trains is kept in time order, so a real "
+                f"morning's feed batch takes {feed.get('p50', 'n/a')} ms at the median."
             ),
             table(
                 [
                     ["Measure (learned projection, real track data, unseen real days)", "Value"],
                     ["Real time losses of 15 min or more warned of in advance", f"{conf['losses_15_min_or_more_flagged_pct']}%"],
-                    ["...before shared track was checked", "2.56%"],
-                    ["Warned trains that really lost 5+ min vs comparable trains", f"{conf['lift']}x"],
-                    ["Warnings (give-way traversals flagged)", f"{conf['flagged_gives_way']:,}"],
+                    ["...before shared track was checked (revision " + before["source_revision"][:7] + ")",
+                     f"{old['losses_15_min_or_more_flagged_pct']}%"],
+                    ["Warned trains that really lost 5+ min vs comparable trains (now / before)",
+                     f"{conf['lift']}x / {old['lift']}x"],
+                    ["Warnings (give-way traversals flagged; now / before)",
+                     f"{conf['flagged_gives_way']:,} / {old['flagged_gives_way']:,}"],
                 ],
                 [120, 50],
             ),
@@ -799,9 +811,9 @@ def scenarios_section(rv: dict[str, Any]) -> list[Any]:
             [
                 ["Step", "What this project now supplies"],
                 ["Loops and block sections",
-                 f"Register template for {register.get('stations', 0):,} stations and {register.get('physical_sections', 0):,} "
-                 "physical sections with OpenStreetMap/timetable hints; validation; a built register sets track counts, "
-                 "per-section headway and refuses waits without a loop. Only rows citing an IR document are used."],
+                 "An empty register template (headers only: nothing is pre-filled); validation, including against the "
+                 "network the twin runs on; a built register sets track counts, per-section headway and refuses waits "
+                 "without a loop. Only rows citing an Indian Railways document are used."],
                 ["Live feeds", "Conformance kit: CRIS certifies its own envelopes offline and a test receiver online."],
                 ["Security audit", "Audit pack: software bill of materials, hashed evidence index, controls mapping; "
                  "clock checked against NIC/NPL NTP (CERT-In)."],
@@ -944,7 +956,7 @@ def build(out: Path) -> Path:
     ]
     story += [PageBreak(), *real_data_section(rv)]
     story += [PageBreak(), *production_section(audit)]
-    story += [PageBreak(), *scenarios_section(rv)]
+    story += [PageBreak(), *scenarios_section(rv, nat_stats)]
 
     # ---- 3. what was built ---------------------------------------------------------------------------------
     story += [
@@ -1124,7 +1136,7 @@ def build(out: Path) -> Path:
                 for k, v, how in [
                     (
                         "stations_total",
-                        nat_stats.get("stations_total", 8990),
+                        nat_stats.get("stations_total", "n/a"),
                         "every station in the open and 2024 data",
                     ),
                     (
@@ -1132,19 +1144,19 @@ def build(out: Path) -> Path:
                         nat_stats.get("stations_located_from_osm", 0),
                         "positioned on the map by their Indian Railways code (OpenStreetMap ref)",
                     ),
-                    ("stations", nat_stats.get("stations", 7679), "stations where at least one train halts"),
+                    ("stations", nat_stats.get("stations", "n/a"), "stations where at least one train halts"),
                     (
                         "stations_without_halt_placed_on_sections",
-                        nat_stats.get("stations_without_halt_placed_on_sections", 914),
+                        nat_stats.get("stations_without_halt_placed_on_sections", "n/a"),
                         "non-halt stations projected onto the section they lie on (≤2 km)",
                     ),
                     (
                         "stations_without_halt_not_placed",
-                        nat_stats.get("stations_without_halt_not_placed", 397),
+                        nat_stats.get("stations_without_halt_not_placed", "n/a"),
                         "no coordinates, or farther than 2 km from every section",
                     ),
-                    ("junctions", nat_stats.get("junctions", 1454), "stations joined to 3 or more neighbours"),
-                    ("sections", nat_stats.get("sections", 8738), "pairs of consecutive stops"),
+                    ("junctions", nat_stats.get("junctions", "n/a"), "stations joined to 3 or more neighbours"),
+                    ("sections", nat_stats.get("sections", "n/a"), "pairs of consecutive stops"),
                     (
                         "sections_with_osm_infrastructure",
                         nat_stats.get("sections_with_osm_infrastructure", 0),
@@ -1162,16 +1174,16 @@ def build(out: Path) -> Path:
                     ),
                     (
                         "sections_inferred_multi_track",
-                        nat_stats.get("sections_inferred_multi_track", 5098),
+                        nat_stats.get("sections_inferred_multi_track", "n/a"),
                         "opposing trains timetabled on it at the same time (they must cross inside it)",
                     ),
                     (
                         "sections_assumed_single",
-                        nat_stats.get("sections_assumed_single", 3640),
+                        nat_stats.get("sections_assumed_single", "n/a"),
                         "no evidence at all: treated as single line (the safe assumption)",
                     ),
-                    ("runs_in_window", nat_stats.get("runs_in_window", 7580), "train numbers x start days in 2 days"),
-                    ("occupations", nat_stats.get("occupations", 843568), "section occupations in the window"),
+                    ("runs_in_window", nat_stats.get("runs_in_window", "n/a"), "train numbers x start days in 2 days"),
+                    ("occupations", nat_stats.get("occupations", "n/a"), "section occupations in the window"),
                 ]
             ],
             [52, 22, 96],
@@ -1245,7 +1257,7 @@ def build(out: Path) -> Path:
     # ---- 4. ML ---------------------------------------------------------------------------------------------
     rounds = tlog.get("rounds", [])
     points = [(r["round"], r["cv"]["mae_min"], r["kept"]) for r in rounds]
-    base_mae = locked.get("baseline_section_median", {}).get("mae_min", 1.957)
+    base_mae = locked.get("baseline_section_median", {}).get("mae_min")
     scores = model.get("scores", {})
     ex = scores.get("gradient_boosting_existing_train", {})
     newp = scores.get("gradient_boosting_new_path", {})
@@ -1268,7 +1280,15 @@ def build(out: Path) -> Path:
     ]
     if points:
         story.append(
-            line_chart(points, base_mae, "Cross-validated mean absolute error by round (minutes; lower is better)")
+            *(
+                [
+                    line_chart(
+                        points, base_mae, "Cross-validated mean absolute error by round (minutes; lower is better)"
+                    )
+                ]
+                if points and base_mae is not None
+                else []
+            )
         )
     story.append(
         table(
@@ -1592,7 +1612,7 @@ def build(out: Path) -> Path:
                 ["Simulation", "python -m india_rail.railguard.simulate --demo 70000 --national 90000"],
                 ["ML training rounds", "python -m india_rail.training"],
                 ["Official data", "python -m india_rail official --file timetable.csv"],
-                ["All-train schedules", "python -m india_rail schedules --audit | --train 12951 | --export DIR"],
+                ["All-train schedules", "python -m india_rail schedules --audit | --train <number> | --export DIR"],
                 ["Shadow trial", "POST /railguard/national/shadow/actual; GET /railguard/national/shadow/report"],
                 ["Verify an audit log", "python -m india_rail.railguard.audit verify <events.jsonl>"],
                 ["Rebuild this report", "python scripts/build_report.py"],

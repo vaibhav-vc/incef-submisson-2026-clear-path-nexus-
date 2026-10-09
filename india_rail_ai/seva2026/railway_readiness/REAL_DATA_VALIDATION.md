@@ -22,9 +22,9 @@ Of 862 trains with the same number, origin and destination in 2016 and 2024, 64.
 | Previous twin rule | 17.24 | 73.21% | 8.97 | 14.99 | 19.82 | 30.01 |
 | Delay stays the same | 18.44 | 70.19% | 8.6 | 15.07 | 20.86 | 35.19 |
 | Train's own history | 15.82 | 75.84% | 7.01 | 12.2 | 17.78 | 31.9 |
-| **Learned from real running** | 13.72 | 80.51% | 6.32 | 10.97 | 15.45 | 26.69 |
+| **Learned from real running** | 13.68 | 80.56% | 6.33 | 10.96 | 15.45 | 26.5 |
 
-1,415,666 forecasts for 18,754 runs on unseen days. Improvement over the previous rule: **3.52 min** (95% interval 3.39 to 3.66, bootstrap over runs). P10-P90 band coverage 81.6% (target 80%). The deployed model (`models/eta_model.joblib`) is the one scored here; it is rebuilt locally by this command and, like the data it learned from, never distributed.
+1,415,666 forecasts for 18,754 runs on unseen days. Improvement over the previous rule: **3.56 min** (95% interval 3.43 to 3.69, bootstrap over runs). P10-P90 band coverage 82.2% (target 80%). The deployed model (`models/eta_model.joblib`) is the one scored here; it is rebuilt locally by this command and, like the data it learned from, never distributed.
 
 ## 4. Do conflict warnings come true?
 At six times of day on four unseen days the national twin was given every train's real delay and flagged conflicts in the next two hours. A correct warning predicts that the train which must give way loses time on that section; it is compared with unflagged trains in the same state (late or not).
@@ -33,7 +33,7 @@ At six times of day on four unseen days the national twin was given every train'
 |---|---|---|---|---|
 | Previous projection, no track data | 13,615 | 27.74% | 24.62% | 1.13x |
 | Previous projection + real track data | 7,638 | 28.28% | 24.88% | 1.14x |
-| Learned projection + real track data | 8,217 | 28.4% | 23.03% | 1.23x |
+| Learned projection + real track data | 8,238 | 28.1% | 23.01% | 1.22x |
 
 Warnings are informative but far from certain: sections between stopping stations cannot show block sections, intermediate loops or signals. Indian Railways' engineering registers and COA data are the next real gain (hazard H14).
 
@@ -41,8 +41,8 @@ Warnings are informative but far from certain: sections between stopping station
 
 | Projection | Reports | Accepted | Batch p50 / p95 | Projection within 15 min of the real arrival |
 |---|---|---|---|---|
-| Previous rule | 7,979 | 96.6% | 96.7 / 114.4 ms | 76.4% |
-| Learned forecast | 7,979 | 96.6% | 125.0 / 187.3 ms | 80.9% |
+| Previous rule | 7,979 | 96.6% | 108.2 / 137.1 ms | 76.4% |
+| Learned forecast | 7,979 | 96.6% | 128.4 / 155.6 ms | 80.9% |
 
 06:00-10:00 IST on 2024-09-24. Refused reports are out of order or for unknown runs, refused on purpose. Disruptions recorded automatically for controllers: 1,029.
 

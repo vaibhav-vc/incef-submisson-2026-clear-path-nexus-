@@ -136,6 +136,7 @@
     "note": "Consecutive timetabled halts that both reported. Early running is recorded as 0 late, so recovery below the timetable is not visible in this data."
   },
   "forecast": {
+    "recipe": "scenario",
     "split": {
       "train_dates": "2024-09-01..2024-09-20",
       "test_dates": "after 2024-09-20",
@@ -179,33 +180,33 @@
         }
       },
       "learned_from_real_running": {
-        "mae_min": 13.72,
-        "within_15_min_pct": 80.51,
-        "bias_min": -5.01,
+        "mae_min": 13.68,
+        "within_15_min_pct": 80.56,
+        "bias_min": -5.25,
         "mae_by_horizon_min": {
-          "<=1h": 6.32,
-          "1-3h": 10.97,
+          "<=1h": 6.33,
+          "1-3h": 10.96,
           "3-6h": 15.45,
-          ">6h": 26.69
+          ">6h": 26.5
         },
-        "cold_start_mae_min": 15.42
+        "cold_start_mae_min": 15.43
       }
     },
-    "interval_p10_p90_coverage_pct": 81.6,
-    "interval_mean_width_min": 36.9,
+    "interval_p10_p90_coverage_pct": 82.2,
+    "interval_mean_width_min": 38.2,
     "mae_reduction_vs": {
       "persistence": {
-        "mae_reduction_min": 4.73,
+        "mae_reduction_min": 4.77,
         "ci95_min": [
-          4.59,
-          4.86
+          4.63,
+          4.9
         ]
       },
       "twin_current_rule": {
-        "mae_reduction_min": 3.52,
+        "mae_reduction_min": 3.56,
         "ci95_min": [
-          3.39,
-          3.66
+          3.43,
+          3.69
         ]
       }
     }
@@ -253,8 +254,8 @@
         "losses_15_min_or_more_flagged_pct": 22.14
       },
       "seconds_per_national_snapshot": {
-        "median": 0.19,
-        "max": 0.4
+        "median": 0.2,
+        "max": 0.44
       }
     },
     "twin_rule_with_real_track_data": {
@@ -299,8 +300,8 @@
         "losses_15_min_or_more_flagged_pct": 11.8
       },
       "seconds_per_national_snapshot": {
-        "median": 0.21,
-        "max": 0.4
+        "median": 0.22,
+        "max": 0.51
       }
     },
     "learned_projection_with_real_track_data": {
@@ -321,32 +322,32 @@
         1260
       ],
       "horizon_min": 120.0,
-      "traversals_scored": 87570,
-      "flagged_gives_way": 8217,
-      "gives_way_lost_5_min_pct": 28.4,
-      "comparable_unflagged_lost_5_min_pct": 23.03,
-      "lift": 1.23,
-      "keeps_way_lost_5_min_pct": 28.64,
-      "losses_15_min_or_more_flagged_pct": 11.93,
+      "traversals_scored": 87745,
+      "flagged_gives_way": 8238,
+      "gives_way_lost_5_min_pct": 28.1,
+      "comparable_unflagged_lost_5_min_pct": 23.01,
+      "lift": 1.22,
+      "keeps_way_lost_5_min_pct": 28.94,
+      "losses_15_min_or_more_flagged_pct": 11.72,
       "single_line": {
-        "flagged_gives_way": 1597,
-        "gives_way_lost_5_min_pct": 26.42,
-        "comparable_unflagged_lost_5_min_pct": 20.43,
-        "lift": 1.29,
-        "keeps_way_lost_5_min_pct": 24.48,
-        "losses_15_min_or_more_flagged_pct": 10.62
+        "flagged_gives_way": 1590,
+        "gives_way_lost_5_min_pct": 25.91,
+        "comparable_unflagged_lost_5_min_pct": 20.52,
+        "lift": 1.26,
+        "keeps_way_lost_5_min_pct": 24.53,
+        "losses_15_min_or_more_flagged_pct": 10.51
       },
       "double_line": {
-        "flagged_gives_way": 6620,
-        "gives_way_lost_5_min_pct": 28.88,
-        "comparable_unflagged_lost_5_min_pct": 23.74,
-        "lift": 1.22,
-        "keeps_way_lost_5_min_pct": 29.24,
-        "losses_15_min_or_more_flagged_pct": 12.22
+        "flagged_gives_way": 6648,
+        "gives_way_lost_5_min_pct": 28.63,
+        "comparable_unflagged_lost_5_min_pct": 23.7,
+        "lift": 1.21,
+        "keeps_way_lost_5_min_pct": 29.58,
+        "losses_15_min_or_more_flagged_pct": 11.98
       },
       "seconds_per_national_snapshot": {
-        "median": 6.05,
-        "max": 6.9
+        "median": 6.25,
+        "max": 7.01
       }
     }
   },
@@ -610,8 +611,8 @@
         "GZB is behind the": 1
       },
       "batch_latency_ms": {
-        "p50": 96.7,
-        "p95": 114.4
+        "p50": 108.2,
+        "p95": 137.1
       },
       "disruptions_recorded_automatically": 1029,
       "projection_error_at_arrival_min": {
@@ -619,8 +620,8 @@
         "within_15_min_pct": 76.4
       },
       "recommendation_seconds": {
-        "median": 0.12,
-        "max": 0.3
+        "median": 0.13,
+        "max": 0.29
       },
       "recommendations_with_options": 19
     },
@@ -883,20 +884,20 @@
         "GZB is behind the": 1
       },
       "batch_latency_ms": {
-        "p50": 125.0,
-        "p95": 187.3
+        "p50": 128.4,
+        "p95": 155.6
       },
       "disruptions_recorded_automatically": 1029,
       "projection_error_at_arrival_min": {
-        "median": 3.9,
+        "median": 3.7,
         "within_15_min_pct": 80.9
       },
       "recommendation_seconds": {
-        "median": 0.14,
-        "max": 0.39
+        "median": 0.15,
+        "max": 0.32
       },
-      "recommendations_with_options": 18
+      "recommendations_with_options": 19
     }
   },
-  "seconds": 434.8
+  "seconds": 679.5
 }
