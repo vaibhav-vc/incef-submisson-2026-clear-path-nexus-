@@ -334,7 +334,7 @@ class RailGuardEngine:
                 setattr(section, key, value)
             self._condition_evidence(sid, section, source)
             self.audit.record(self.t, "SECTION_UPDATED", source, {"section": sid, **changes})
-            self.refresh()
+            self.refresh(settled=True)
             return section
 
     def inject_fault(self, kind: str, train_id: str | None = None, section_id: str | None = None) -> dict[str, Any]:
@@ -360,7 +360,7 @@ class RailGuardEngine:
             self.audit.record(
                 self.t, "FAULT_INJECTED", "demo", {"kind": kind, "train": train_id, "section": section_id}
             )
-            self.refresh()
+            self.refresh(settled=True)
             return {"ok": True, "kind": kind}
 
     # ---- plans and simulation ------------------------------------------------
@@ -482,11 +482,12 @@ class RailGuardEngine:
                         self.audit.record(self.t, "TRAIN_ARRIVED", "twin", {"train": tid, "node": node})
             self.refresh()
 
-    def refresh(self) -> None:
-        """Re-evaluate threats after any state change (and mark earlier recommendations superseded)."""
+    def refresh(self, settled: bool = False) -> None:
+        """Re-evaluate threats after any state change (and mark earlier recommendations superseded). `settled`:
+        after a deliberate change (approval, hold, a section report, a fault injected or cleared)."""
 
         self.version += 1
-        self.threats.update(evaluate(self), self.t)
+        self.threats.update(evaluate(self), self.t, settled)
 
     # ---- recommendation, approval and audit -----------------------------------
     def set_weights(self, preset: str | None = None, weights: dict[str, float] | None = None) -> dict[str, float]:
@@ -616,7 +617,7 @@ class RailGuardEngine:
                     "authority": AUTHORITY,
                 },
             )
-            self.refresh()
+            self.refresh(settled=True)
             return {
                 "status": "APPROVED_FOR_DEMO",
                 "authority": AUTHORITY,
@@ -646,7 +647,7 @@ class RailGuardEngine:
                     stop_by = min(stop_by, previous["stop_by_min"])
                 self.controller_hold[tid] = {"reason": reason, "by": controller, "t": self.t, "stop_by_min": stop_by}
             event = self.audit.record(self.t, "CONTROLLER_HOLD", controller, {"trains": targets, "reason": reason})
-            self.refresh()
+            self.refresh(settled=True)
             return {"status": "HOLD_RECORDED", "trains": targets, "event_hash": event["hash"]}
 
     def acknowledge(self, threat_id: str, by: str) -> dict[str, Any]:

@@ -468,7 +468,7 @@ class Operations:
             alert = POWER_ALERTS.get(self.power.level)
             if alert:
                 twin.system_alerts[alert[0]] = {"severity": alert[1], "detail": alert[2], "power": self.power.to_dict()}
-            twin.refresh()
+            twin.refresh(settled=True)  # a measured power state, not a missed report
 
     def check_clock(self, measure=sntp_offset) -> None:
         """Measure the clock against every configured NTP server; raise CLOCK_DRIFT if it is off.
@@ -521,7 +521,7 @@ class Operations:
                 else:
                     self.twin.system_alerts.pop("CLOCK_DRIFT", None)
                 if drift != had:
-                    self.twin.refresh()
+                    self.twin.refresh(settled=True)  # a fresh measurement
 
     def checkpoint(self, reason: str = "periodic") -> dict[str, Any] | None:
         if self.checkpointer is None or self.twin is None:

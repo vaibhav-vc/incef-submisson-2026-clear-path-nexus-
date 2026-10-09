@@ -151,8 +151,9 @@ function renderThreats(threats) {
   const body = document.getElementById("threats");
   body.replaceChildren(...(threats.length ? threats.slice(0, 40).map(t => el("tr", {},
     el("td", {}, t.id), el("td", {}, t.type), el("td", {}, badge(t.severity)), el("td", {}, t.train_ids.join(", ")),
-    el("td", {class: "muted"}, t.detail),
-    el("td", {}, t.lifecycle === "OPEN" ? el("button", {onclick: () => act(() => api(`/threats/${t.id}/ack`, {by: who()}))}, "Ack") : t.lifecycle))) :
+    el("td", {class: "muted"}, t.detail + (t.reopened ? ` (back ${t.reopened}x)` : "")),
+    el("td", {}, t.absent_since_t !== null && t.absent_since_t !== undefined ? el("span", {class: "muted"}, "clearing") :
+      t.lifecycle === "OPEN" ? el("button", {onclick: () => act(() => api(`/threats/${t.id}/ack`, {by: who()}))}, "Ack") : t.lifecycle))) :
     [el("tr", {}, el("td", {colspan: 6, class: "muted"}, "No active threats."))]));
 }
 async function refresh() {

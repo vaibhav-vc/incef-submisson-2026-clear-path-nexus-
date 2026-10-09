@@ -1745,7 +1745,7 @@ class NationalTwin:
                     "authority": AUTHORITY,
                 },
             )
-            self.refresh()
+            self.refresh(settled=True)
             return {
                 "status": "APPROVED_FOR_" + ("REHEARSAL" if latest["state"] == "PLANNING_ONLY" else "DEMO"),
                 "authority": AUTHORITY,
@@ -1842,7 +1842,8 @@ class NationalTwin:
         self.refresh()  # threats are derived state: rebuild them, then re-apply the controller's acknowledgements
         for key in dynamic.get("acknowledged", []):
             if key in self.threats.threats:
-                self.threats.threats[key].lifecycle = ACKNOWLEDGED
+                threat = self.threats.threats[key]
+                threat.lifecycle, threat.acknowledged_severity = ACKNOWLEDGED, threat.severity
 
     # ---- section events, live feed and simulation ------------------------------------------------
     def update_section(self, sid: str, source: str = "TRACKSENSE_FEED", **changes: Any) -> Section:
@@ -1863,7 +1864,7 @@ class NationalTwin:
                 combined = {f: _combine(f, self.reports[(piece, f)]) for f in changes}
                 self.section_overrides[piece] = replace(self.section(piece), **combined)
             self.audit.record(int(self.now * 60), "SECTION_UPDATED", source, {"section": sid, **changes})
-            self.refresh()
+            self.refresh(settled=True)
             return self.section_overrides[sid]
 
     def ingest_position(
@@ -1917,9 +1918,12 @@ class NationalTwin:
                 self.refresh()
 
     # ---- threats (scalable: O(changed runs + flagged sections + running runs)) -----------------------
-    def refresh(self) -> None:
+    def refresh(self, settled: bool = False) -> None:
+        """Re-evaluate threats. `settled`: after a deliberate change (a plan approved, a section reported), so a
+        threat it no longer finds was resolved and clears at once (threats.CLEAR_AFTER_S otherwise)."""
+
         self.version += 1
-        self.threats.update(self._evaluate(), int(self.now * 60))
+        self.threats.update(self._evaluate(), int(self.now * 60), settled)
 
     def _evaluate(self) -> list[Threat]:
         found: list[Threat] = []

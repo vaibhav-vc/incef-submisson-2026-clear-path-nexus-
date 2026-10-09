@@ -20,6 +20,13 @@ from india_rail.railguard.model import AUTHORITY
 SEVERITY_ORDER = {"INFO": 0, "CAUTION": 1, "WARNING": 2, "CRITICAL": 3}
 OPEN, ACKNOWLEDGED, CLEARED = "OPEN", "ACKNOWLEDGED", "CLEARED"
 MAX_CLEARED_KEPT = 2_000
+# Alert hygiene. A threat a rule stops reporting for a moment (a separation hovering at the headway, a report
+# arriving a few seconds late) must not clear and come back as a new alert the controller has to acknowledge
+# again: a non-critical threat clears only once it has been gone CLEAR_AFTER_S, and one that comes back within
+# REOPEN_S of clearing is the same threat (same id; its acknowledgement stands unless it is now more severe).
+# A CRITICAL threat is raised at once, clears at once, and comes back OPEN: it must be looked at again.
+CLEAR_AFTER_S = 60
+REOPEN_S = 900
 CONFIDENCE = {FRESH: 1.0, AGING: 0.6, STALE: 0.2}
 
 
@@ -42,6 +49,9 @@ class Threat:
     cleared_t: int | None = None
     authority: str = AUTHORITY
     id: str = field(default="")
+    absent_since_t: int | None = None  # no longer reported since then (cleared after CLEAR_AFTER_S)
+    acknowledged_severity: str | None = None
+    reopened: int = 0  # times it came back after clearing
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -256,31 +266,64 @@ def evaluate(engine: Any) -> list[Threat]:
     return found
 
 
+def _above(severity: str, than: str | None) -> bool:
+    return than is not None and SEVERITY_ORDER[severity] > SEVERITY_ORDER[than]
+
+
 class ThreatRegistry:
     def __init__(self) -> None:
         self.threats: dict[str, Threat] = {}
         self._counter = 0
+        self.raised = 0  # new alerts (new ids)
+        self.came_back = 0  # threats that cleared and came back as themselves (no new alert)
+        self.held = 0  # evaluations in which a non-critical threat missing for a moment was kept
 
-    def update(self, current: list[Threat], now: int) -> None:
+    def update(self, current: list[Threat], now: int, settled: bool = False) -> None:
+        """`current`: what the rules report now. `settled`: this evaluation follows a deliberate change (a plan
+        approved, a section reported reopened or cleared): what it no longer reports was resolved, not missed,
+        and clears at once."""
+
         seen = set()
         for threat in current:
             seen.add(threat.key)
             existing = self.threats.get(threat.key)
+            if (existing and existing.lifecycle == CLEARED and existing.cleared_t is not None
+                    and now - existing.cleared_t <= REOPEN_S):  # fmt: skip
+                keeps_ack = (existing.acknowledged_by is not None and threat.severity != "CRITICAL"
+                             and not _above(threat.severity, existing.acknowledged_severity))  # fmt: skip
+                existing.lifecycle = ACKNOWLEDGED if keeps_ack else OPEN
+                if not keeps_ack:
+                    existing.acknowledged_by = existing.acknowledged_severity = None
+                existing.cleared_t = None
+                existing.reopened += 1
+                self.came_back += 1
             if existing and existing.lifecycle != CLEARED:
+                if existing.lifecycle == ACKNOWLEDGED and _above(threat.severity, existing.acknowledged_severity):
+                    # more severe than what the controller acknowledged: it needs acknowledging again
+                    existing.lifecycle, existing.acknowledged_by, existing.acknowledged_severity = OPEN, None, None
                 existing.severity = threat.severity
                 existing.confidence = threat.confidence
                 existing.detail = threat.detail
                 existing.driver_message = threat.driver_message
+                existing.controller_recommendation = threat.controller_recommendation
                 existing.last_seen_t = now
+                existing.absent_since_t = None
                 continue
             self._counter += 1
+            self.raised += 1
             threat.id = f"THR-{self._counter:04d}"
             threat.first_seen_t = threat.last_seen_t = now
             self.threats[threat.key] = threat
         for key, threat in self.threats.items():
-            if key not in seen and threat.lifecycle != CLEARED:
+            if key in seen or threat.lifecycle == CLEARED:
+                continue
+            if threat.absent_since_t is None:
+                threat.absent_since_t = now
+            if settled or threat.severity == "CRITICAL" or now - threat.absent_since_t >= CLEAR_AFTER_S:
                 threat.lifecycle = CLEARED
                 threat.cleared_t = now
+            else:
+                self.held += 1
         cleared = [k for k, t in self.threats.items() if t.lifecycle == CLEARED]
         for key in cleared[: max(len(cleared) - MAX_CLEARED_KEPT, 0)]:  # bounded memory: oldest cleared first
             del self.threats[key]
@@ -292,6 +335,7 @@ class ThreatRegistry:
                     raise ValueError(f"{threat_id} is already cleared")
                 threat.lifecycle = ACKNOWLEDGED
                 threat.acknowledged_by = by
+                threat.acknowledged_severity = threat.severity
                 return threat
         raise KeyError(threat_id)
 
