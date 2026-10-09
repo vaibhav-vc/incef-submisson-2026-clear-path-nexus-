@@ -1,10 +1,10 @@
 {
-  "tests_passed": 215,
+  "tests_passed": 297,
   "tests_failed": 0,
   "attack_tests": 41,
   "bandit_findings": 0,
-  "bandit_lines_scanned": 13555,
-  "bandit_reviewed_suppressions": 18,
+  "bandit_lines_scanned": 16260,
+  "bandit_reviewed_suppressions": 22,
   "pip_audit": {
     "packages": 49,
     "known_vulnerabilities": 0
@@ -27,9 +27,17 @@
     "train_numbers": 10594,
     "trains_with_known_running_days": 10389,
     "trains_with_validity_dates": 10389,
-    "service_date": "2026-10-08",
-    "runs_in_window": 9861,
-    "occupations": 193554,
+    "service_date": "2026-10-09",
+    "runs_in_window": 9915,
+    "occupations": 194209,
+    "sections_over_shorter_sections": 5044,
+    "sections_over_either_of_two_chains": 254,
+    "run_km_share_over_shorter_sections": 0.557,
+    "track_occupations_checked": 442881,
+    "register": "none loaded",
+    "register_sections": 0,
+    "register_stations": 0,
+    "register_rows_not_applied": [],
     "timetable": "current"
   },
   "registry": {
