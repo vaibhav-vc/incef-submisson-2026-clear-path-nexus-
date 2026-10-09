@@ -29,9 +29,10 @@ B. The planner, on 75,556 disruption scenarios on the real network (the current 
    weighted delay of the first-ranked plan against the plan in which the late train simply waits its turn behind
    every other train (not defined for closures and obstacles, where that plan would cross the blocked track).
 
-   The forecast recipe that is deployed is chosen on the rounds whose test days end by 20 September only, with
-   paired intervals; the later rounds and the real validation (which tests after 20 September) are not used to
-   choose it.
+   The forecast recipe that is deployed is chosen on the rounds whose test days end by 20 September only, on every
+   forecast of those days (the everyday mix, not the balanced sample), with intervals resampling whole runs and a
+   stated non-inferiority margin; the later rounds and the real validation (which tests after 20 September) are
+   not used to choose it.
 
 Written to seva2026/evidence/scenarios/scenario_bank.json.
 """
@@ -55,6 +56,10 @@ from india_rail.ingest import PACKAGE_ROOT
 EVIDENCE = PACKAGE_ROOT / "seva2026" / "evidence" / "scenarios" / "scenario_bank.json"
 SCENARIOS = 75_556
 CELL_DIMS = ("time_of_day", "current_delay", "train_class", "line", "network")
+# Training weights balance only situations the model can see in its inputs (the network state is not one of
+# them, so weighting by it would change which outcomes the model is fitted to, not how much each situation counts)
+WEIGHT_DIMS = ("time_of_day", "current_delay", "train_class", "line")
+NON_INFERIORITY = 0.01  # the scenario recipe may be at most 1% worse than the plain one on clean everyday inputs
 STRESS = (
     "cold_start",
     "feed_noise_pm3_min",
@@ -68,13 +73,13 @@ MIN_CELL_SCENARIOS = 30  # a situation type is scored on its own from this many 
 
 
 # ---- A. forecasts ---------------------------------------------------------------------------------------------
-def cells(rows: pd.DataFrame, net_q75: float) -> pd.Series:
+def cells(rows: pd.DataFrame, net_q75: float, dims: tuple[str, ...] = CELL_DIMS) -> pd.Series:
     """The situation type of every row: time of day | how late | train class | line | network."""
 
     from india_rail.scenario_ml import strata
 
     s = strata(rows, net_q75)
-    parts = [pd.Series(s[d], index=rows.index).astype(str) for d in CELL_DIMS]
+    parts = [pd.Series(s[d], index=rows.index).astype(str) for d in dims]
     out = parts[0]
     for p in parts[1:]:
         out = out + " | " + p
@@ -174,15 +179,20 @@ def _scores(err: dict[str, np.ndarray], scen: np.ndarray, cell: np.ndarray) -> d
 SELECTION_END = "2024-09-20"  # the recipe is chosen on rounds whose test days end by then (realval tests after it)
 
 
-def _paired(diff: np.ndarray, seed: int, n: int = 1000) -> dict[str, Any]:
-    """Mean of per-scenario differences (plain minus scenario-trained: positive = the scenario recipe is better),
-    with a 95% bootstrap interval over scenarios."""
+def _paired(runs: np.ndarray, diff: np.ndarray, seed: int, n: int = 1000) -> dict[str, Any]:
+    """Mean of per-forecast differences (plain minus scenario-trained: positive = the scenario recipe is better),
+    with a 95% bootstrap interval resampling whole runs (a run's forecasts are not independent)."""
 
     if not len(diff):
-        return {"scenarios": 0}
+        return {"forecasts": 0}
+    codes, index = np.unique(runs, return_inverse=True)
+    total, count = np.bincount(index, diff), np.bincount(index)
     rng = np.random.default_rng(seed)
-    draws = np.array([diff[rng.integers(0, len(diff), len(diff))].mean() for _ in range(n)])
-    return {"scenarios": int(len(diff)), "mean_gain_min": _r(diff.mean(), 3),
+    draws = []
+    for _ in range(n):
+        pick = rng.integers(0, len(codes), len(codes))
+        draws.append(total[pick].sum() / count[pick].sum())
+    return {"forecasts": int(len(diff)), "runs": int(len(codes)), "mean_gain_min": _r(diff.mean(), 3),
             "ci95_min": [_r(np.percentile(draws, 2.5), 3), _r(np.percentile(draws, 97.5), 3)]}  # fmt: skip
 
 
@@ -209,7 +219,10 @@ def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
     rng = np.random.default_rng(seed)
     rounds, pooled_err, pooled_scen, pooled_cell, offset = [], {}, [], [], 0
     stressed: dict[str, dict[str, list]] = {s: {} for s in STRESS}
-    selection: dict[str, list[np.ndarray]] = {"clean": [], "damaged": []}  # per-scenario gains, selection rounds
+    # Selection (rounds ending by SELECTION_END), on every forecast of those days - the mix the system really
+    # makes - with answers observed by then: per-forecast gains and their runs, clean and per damaged input.
+    selection: dict[str, list[np.ndarray]] = {"runs": [], "clean": [], "plain_clean_err": [], "damaged": [],
+                                              **{f"damaged:{name}": [] for name in STRESS}}  # fmt: skip
     features = realval.FORECAST_FEATURES
     # Quota per round in proportion to the scenarios each round's test days hold (counted below), fixed order.
     tests = []  # test rows first (small); each round's training rows are built only while that round runs
@@ -239,7 +252,7 @@ def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
         fit = train.iloc[rng.choice(len(train), size=min(len(train), FIT_ROWS), replace=False)].copy()
         deployed = realval.cold_start(fit, rng)
         learned = _model(seed).fit(deployed[features], deployed.d_tgt - deployed.d_now)
-        weights = balance_weights(cells(fit, q75))  # situation types of the real rows, before any damage
+        weights = balance_weights(cells(fit, q75, WEIGHT_DIMS))  # the real rows' situations, before any damage
         robust = realval.stress_training(fit, rng)
         scen_trained = _model(seed).fit(robust[features], robust.d_tgt - robust.d_now, sample_weight=weights)
 
@@ -257,17 +270,27 @@ def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
             pooled_err.setdefault(m, []).append(e)
         pooled_scen.append(held_codes + offset)
         pooled_cell.append(held_cell)
-        damaged_gain = np.zeros(int(held_codes.max()) + 1)
         for name in STRESS:
             damaged = damage(held, name, held_codes, rng)
-            errs = {m: np.abs(p - truth) for m, p in predict(damaged).items()}
-            for m, e in errs.items():
-                stressed[name].setdefault(m, []).append(e)
-            damaged_gain += _per_scenario(errs["learned"] - errs["scenario_trained"], held_codes) / len(STRESS)
+            for m, p in predict(damaged).items():
+                stressed[name].setdefault(m, []).append(np.abs(p - truth))
         test_end = (date.fromisoformat(origin) + timedelta(days=TEST_DAYS)).isoformat()
         if test_end <= SELECTION_END:
-            selection["clean"].append(_per_scenario(err["learned"] - err["scenario_trained"], held_codes))
-            selection["damaged"].append(damaged_gain)
+            sel = test[test.tgt_day <= SELECTION_END].reset_index(drop=True)
+            sel_truth = sel.d_tgt.to_numpy(dtype=float)
+            sel_codes = pd.factorize(pd.MultiIndex.from_arrays([sel.run, sel.now_seq]))[0]
+            base = predict(sel)
+            plain_err = np.abs(base["learned"] - sel_truth)
+            selection["runs"].append(sel.run.to_numpy())
+            selection["plain_clean_err"].append(plain_err)
+            selection["clean"].append(plain_err - np.abs(base["scenario_trained"] - sel_truth))
+            mean_damaged = np.zeros(len(sel))
+            for name in STRESS:
+                p = predict(damage(sel, name, sel_codes, rng))
+                gain = np.abs(p["learned"] - sel_truth) - np.abs(p["scenario_trained"] - sel_truth)
+                selection[f"damaged:{name}"].append(gain)
+                mean_damaged += gain / len(STRESS)
+            selection["damaged"].append(mean_damaged)
         offset += int(held_codes.max()) + 1
         rounds.append({
             "origin": origin,
@@ -297,7 +320,11 @@ def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
             for m in s
         }
     counts = Counter(cell[np.unique(scen, return_index=True)[1]])
-    chosen_on = {k: _paired(np.concatenate(v) if v else np.array([]), seed) for k, v in selection.items()}
+    runs = np.concatenate(selection["runs"]) if selection["runs"] else np.array([])
+    chosen_on = {k: _paired(runs, np.concatenate(v) if v else np.array([]), seed)
+                 for k, v in selection.items() if k not in ("runs", "plain_clean_err")}  # fmt: skip
+    plain_mae = float(np.concatenate(selection["plain_clean_err"]).mean()) if selection["plain_clean_err"] else None
+    margin = round(NON_INFERIORITY * plain_mae, 3) if plain_mae else None
     return {
         "scenarios": int(scen.max()) + 1,
         "scenario_variants_scored": (int(scen.max()) + 1) * (1 + len(STRESS)),
@@ -309,25 +336,27 @@ def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
         "damaged_inputs": stress,
         "recipe_selection": {
             "rule": f"chosen only on rounds whose test days end by {SELECTION_END} (the real validation tests on "
-            "later days): the scenario recipe is deployed if it is no worse on clean inputs (the interval "
-            "includes or exceeds 0) and better on damaged inputs (the interval is above 0)",
+            "later days), on every forecast of those days whose answer was observed by then (the everyday mix, not "
+            "the balanced sample), with 95% intervals resampling whole runs: the scenario recipe is deployed if "
+            f"it is not worse than the plain one by more than {NON_INFERIORITY:.0%} of the plain recipe's error on "
+            "clean inputs (the interval's lower end is above minus that margin) and better on the six damaged "
+            "inputs on average (the interval is above 0); otherwise the plain recipe is deployed",
+            "plain_recipe_clean_mae_min": _r(plain_mae, 3) if plain_mae else None,
+            "non_inferiority_margin_min": margin,
             "clean_gain_of_scenario_recipe": chosen_on["clean"],
             "damaged_inputs_gain_of_scenario_recipe": chosen_on["damaged"],
-            "decision": _decide(chosen_on),
+            "gain_by_damaged_input": {name: chosen_on[f"damaged:{name}"] for name in STRESS},
+            "decision": _decide(chosen_on, margin),
         },
         "rounds": rounds,
     }
 
 
-def _per_scenario(diff: np.ndarray, codes: np.ndarray) -> np.ndarray:
-    return np.bincount(codes, diff) / np.maximum(np.bincount(codes), 1)
-
-
-def _decide(chosen_on: dict[str, dict[str, Any]]) -> str:
+def _decide(chosen_on: dict[str, dict[str, Any]], margin: float | None) -> str:
     clean, damaged = chosen_on["clean"].get("ci95_min"), chosen_on["damaged"].get("ci95_min")
-    if not clean or not damaged or None in clean or None in damaged:
+    if not clean or not damaged or None in clean or None in damaged or margin is None:
         return "undecided (no selection rounds)"
-    if clean[1] >= 0 and damaged[0] > 0:
+    if clean[0] >= -margin and damaged[0] > 0:
         return "scenario"
     return "plain"
 
@@ -585,5 +614,7 @@ def run(out: Path = EVIDENCE, scenarios: int = SCENARIOS, planner: int = SCENARI
     ]
     report["seconds"] = round(time.time() - started)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, indent=2, default=str) + "\n")
+    tmp = out.with_suffix(".tmp")  # written whole, then renamed: a reader never sees half a file
+    tmp.write_text(json.dumps(report, indent=2, default=str) + "\n")
+    tmp.replace(out)
     return report

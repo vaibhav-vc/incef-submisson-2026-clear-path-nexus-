@@ -1,8 +1,8 @@
 """Arrival-delay forecasts learned from real running, for trains the live feed reports late.
 
-Trained on observed arrivals of 1-20 September 2024 and scored on 21-30 September (see realval.py):
-average error 13.9 minutes against 17.4 for carrying the delay forward with dwell recovery (the twin's
-rule without it), and 80% of forecasts within 15 minutes. The P10-P90 band covered 82% of real outcomes.
+Trained on observed arrivals of 1-20 September 2024 (cut by when each report was made) and scored on runs started
+after that (realval.py); its scores, against carrying the delay forward with dwell recovery (the twin's rule
+without it), and the coverage of its P10-P90 band are in seva2026/evidence/real_data/real_validation.json.
 
 The forecast moves only the *projection* of a reported-late train (where it will be, so conflicts are
 looked for in the right place). It never approves, holds or releases anything; controllers decide.

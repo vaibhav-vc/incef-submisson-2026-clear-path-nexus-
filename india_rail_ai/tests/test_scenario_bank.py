@@ -83,15 +83,16 @@ def test_planner_scenarios_run_clean_on_shared_track(data):  # noqa: F811
 
 
 def test_the_recipe_is_chosen_only_on_a_clear_interval():
-    win = {"clean": {"ci95_min": [-0.01, 0.05]}, "damaged": {"ci95_min": [0.2, 0.6]}}
-    assert scenario_bank._decide(win) == "scenario"
+    win = {"clean": {"ci95_min": [-0.05, 0.02]}, "damaged": {"ci95_min": [0.2, 0.6]}}
+    assert scenario_bank._decide(win, margin=0.13) == "scenario"  # within 1% of the plain error, better damaged
     worse = {"clean": {"ci95_min": [-0.2, -0.05]}, "damaged": {"ci95_min": [0.2, 0.6]}}
-    assert scenario_bank._decide(worse) == "plain"
+    assert scenario_bank._decide(worse, margin=0.13) == "plain"  # could be worse than the margin allows
     unclear = {"clean": {"ci95_min": [-0.01, 0.05]}, "damaged": {"ci95_min": [-0.1, 0.6]}}
-    assert scenario_bank._decide(unclear) == "plain"
-    assert scenario_bank._decide({"clean": {"scenarios": 0}, "damaged": {"scenarios": 0}}).startswith("undecided")
-    paired = scenario_bank._paired(np.array([0.5, 0.4, 0.6, 0.5]), seed=1)
-    assert paired["scenarios"] == 4 and paired["ci95_min"][0] > 0
+    assert scenario_bank._decide(unclear, margin=0.13) == "plain"
+    assert scenario_bank._decide({"clean": {}, "damaged": {}}, margin=None).startswith("undecided")
+    runs = np.array(["a", "a", "b", "b", "c", "c"])
+    paired = scenario_bank._paired(runs, np.array([0.5, 0.4, 0.6, 0.5, 0.45, 0.55]), seed=1)
+    assert paired["runs"] == 3 and paired["forecasts"] == 6 and paired["ci95_min"][0] > 0
 
 
 def test_scores_never_write_nan_when_no_situation_has_enough_scenarios():

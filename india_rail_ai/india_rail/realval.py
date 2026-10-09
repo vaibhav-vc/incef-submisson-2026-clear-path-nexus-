@@ -334,10 +334,12 @@ def forecast_recipe() -> str:
 
     from india_rail.scenario_bank import EVIDENCE as BANK
 
+    if not BANK.exists():
+        return "plain"
     try:
         decision = json.loads(BANK.read_text())["forecasts"]["recipe_selection"]["decision"]
-    except (OSError, ValueError, KeyError, TypeError):
-        return "plain"
+    except (OSError, ValueError, KeyError, TypeError) as exc:  # a decision that cannot be read is never guessed
+        raise RuntimeError(f"the recorded recipe decision in {BANK} cannot be read: {exc}") from exc
     return decision if decision in ("scenario", "plain") else "plain"
 
 
@@ -360,10 +362,10 @@ def forecast(
     fit = train.iloc[rng.choice(len(train), size=min(len(train), 1_500_000), replace=False)].copy()
     weights = None
     if recipe == "scenario":
-        from india_rail.scenario_bank import balance_weights, cells
+        from india_rail.scenario_bank import WEIGHT_DIMS, balance_weights, cells
 
         # Situation types of the real rows (before any damage), so damaged rows are not a type of their own
-        weights = balance_weights(cells(fit, float(np.nanquantile(train.net_delay_2h, 0.75))))
+        weights = balance_weights(cells(fit, float(np.nanquantile(train.net_delay_2h, 0.75)), WEIGHT_DIMS))
         fit = stress_training(fit, rng)
     else:
         fit = cold_start(fit, rng)  # measured on the cold-start test below and in scenario_ml.py
@@ -549,13 +551,13 @@ def conflict_replay(
                 plan = twin.plan_of(key)
                 if p >= len(plan.sections):
                     continue
+                if d_now < 1:
+                    continue  # both projections re-plan the same trains: those reported late
                 if projection == "learned":
                     new = _learned_plan(twin, key, p, d_now, data.runs[key].number, run_date, model, lookups,
                                         snap + horizon + 240)  # fmt: skip
-                elif d_now >= 1:
-                    new = twin.propagate(plan, {p: d_now})
                 else:
-                    continue
+                    new = twin.propagate(plan, {p: d_now})
                 twin._set_plan(key, new)
                 changed[key] = p
             # Which trains count as late, and which traversals are scored, do not depend on the projection: a
