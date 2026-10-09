@@ -16,7 +16,13 @@ day in FY 2025 (Eastern ~209, Western ~182 in January 2025), sectional average s
 89.5 km/h (Western), 100 km/h line speed. Train-level freight timings are not public (FOIS): the planner takes
 demand from the authorised FOIS interface; the verification uses randomised demand at the published volume.
 
-Planning rules (every one is checked by `check`): trains are pathed in priority order, then ready time; on a
+Deliveries: a train may carry the delivery time promised to its customer (`due_min`, from FOIS). Within a
+priority class the train with the least slack (promised time minus ready time minus its free running time) is
+pathed first, so a train that can still arrive on time is not made late by one that has hours in hand; each plan
+reports whether it arrives by its promised time and by how much it is late.
+
+Planning rules (every one is checked by `check`): trains are pathed in priority order, then least slack to the
+promised delivery time (trains without one after those with one), then ready time; on a
 segment two same-direction trains keep `headway_min` at entry and at exit and never overtake on plain line; on a
 single-line segment opposing trains never overlap; a train may wait only at segment ends (stations with loops),
 at most `loops` trains at once; blocked segments (maintenance, failures) are never entered while blocked.
@@ -295,6 +301,7 @@ class FreightTrain:
     ready_min: float  # earliest departure, minutes from 00:00 of the planning day
     priority: int = 3  # 1 = highest (e.g. time-tabled container), 5 = lowest
     speed_kmph: float | None = None  # sectional speed; default: the corridor's published average
+    due_min: float | None = None  # delivery time promised to the customer (arrival at destination), if any
 
     @property
     def up(self) -> bool:  # travelling towards higher chainage
@@ -317,6 +324,13 @@ class TrainPlan:
     ready_min: float
     legs: list[Leg] = field(default_factory=list)
     status: str = "PLANNED"
+    due_min: float | None = None
+
+    @property
+    def late_min(self) -> float | None:
+        """Minutes after the promised delivery time (0 = on time); None without a promise."""
+
+        return None if self.due_min is None or not self.legs else round(max(self.legs[-1].exit - self.due_min, 0.0), 1)
 
     @property
     def departure(self) -> float:
@@ -392,7 +406,7 @@ class FreightPlanner:
     def path(self, t: FreightTrain) -> TrainPlan:
         speed = t.speed_kmph or self.default_speed
         segs = self._segment_range(t)
-        plan = TrainPlan(t.id, t.up, t.priority, t.ready_min)
+        plan = TrainPlan(t.id, t.up, t.priority, t.ready_min, due_min=t.due_min)
         if not segs:
             plan.status = "NO_SEGMENTS"
             return plan
@@ -425,14 +439,24 @@ class FreightPlanner:
         self.plans[t.id] = plan
         return plan
 
-    def plan(self, trains: list[FreightTrain]) -> dict[str, Any]:
+    def plan(self, trains: list[FreightTrain], order: str = "slack") -> dict[str, Any]:
+        """Path every train. `order`: "slack" (priority, then least slack to the promised delivery time, then
+        ready time) or "ready" (priority, then ready time: promised times ignored, for comparison)."""
+
         self.reset()
         free = {t.id: sum(self._run_min(self.segments[i], t.speed_kmph or self.default_speed, k == 0)
                           for k, i in enumerate(self._segment_range(t))) for t in trains}  # fmt: skip
-        for t in sorted(trains, key=lambda x: (x.priority, x.ready_min, x.id)):
+
+        def slack(t: FreightTrain) -> float:
+            return math.inf if t.due_min is None or order != "slack" else t.due_min - t.ready_min - free[t.id]
+
+        for t in sorted(trains, key=lambda x: (x.priority, slack(x), x.ready_min, x.id)):
             self.path(t)
         planned = [p for p in self.plans.values() if p.status == "PLANNED"]
         delays = [p.arrival - p.ready_min - free[p.id] for p in planned]
+        promised = [t for t in trains if t.due_min is not None]
+        late = sorted((p for p in planned if p.late_min), key=lambda p: -(p.late_min or 0))
+        on_time = sum(1 for t in promised if t.id in self.plans and self.plans[t.id].late_min == 0)
         return {
             "corridor": self.name,
             "trains": len(trains),
@@ -441,6 +465,14 @@ class FreightPlanner:
             "mean_delay_min": round(sum(delays) / len(delays), 1) if delays else None,
             "max_delay_min": round(max(delays), 1) if delays else None,
             "on_free_path_pct": round(100 * sum(1 for x in delays if x < 1) / len(delays), 1) if delays else None,
+            "deliveries": {
+                "with_promised_time": len(promised),
+                "on_time": on_time,
+                "on_time_pct": round(100 * on_time / len(promised), 1) if promised else None,
+                "late": [{"id": p.id, "late_min": p.late_min} for p in late[:20]],
+                "mean_late_min_of_late": round(sum(p.late_min or 0 for p in late) / len(late), 1) if late else 0.0,
+                "order": "priority, then least slack to the promised time" if order == "slack" else "priority, ready",
+            },
             "violations": check(self),
             "capacity": capacity(self),
         }
@@ -550,8 +582,47 @@ def verify(seeds: int = 200) -> dict[str, Any]:
             totals["violations"] += len(result["violations"])
             totals["not_planned"] += len(result["not_planned"])
         day = FreightPlanner(corridor, name).plan(random_demand(corridor, volume, seed=2025))
-        out[name] = {**totals, "published_daily_volume": volume, "day_at_published_volume": day}
+        out[name] = {**totals, "published_daily_volume": volume, "day_at_published_volume": day,
+                     "deliveries": delivery_comparison(corridor, name, volume, seeds=max(seeds // 10, 1))}  # fmt: skip
     return out
+
+
+def with_promises(corridor: dict[str, Any], name: str, trains: list[FreightTrain], seed: int) -> list[FreightTrain]:
+    """Test promised delivery times (real ones come from FOIS): free running time plus a slack of 0-3 hours."""
+
+    rng = random.Random(seed)  # nosec B311 - test demand, not security
+    planner = FreightPlanner(corridor, name)
+    out = []
+    for t in trains:
+        speed = t.speed_kmph or planner.default_speed
+        legs = enumerate(planner._segment_range(t))
+        free = sum(planner._run_min(planner.segments[i], speed, k == 0) for k, i in legs)
+        out.append(FreightTrain(t.id, t.origin_km, t.destination_km, t.ready_min, t.priority, t.speed_kmph,
+                                due_min=t.ready_min + free + rng.uniform(0, 180)))  # fmt: skip
+    return out
+
+
+def delivery_comparison(corridor: dict[str, Any], name: str, volume: int, seeds: int = 20) -> dict[str, Any]:
+    """Deliveries on time when trains are pathed by least slack to their promised time, against by ready time
+    alone, on the same test demand at the published daily volume; both plans checked against every rule."""
+
+    totals = {"slack": [0, 0, 0], "ready": [0, 0, 0]}  # on time, promised, violations
+    for seed in range(seeds):
+        trains = with_promises(corridor, name, random_demand(corridor, volume, seed=10_000 + seed), seed)
+        for order in totals:
+            result = FreightPlanner(corridor, name).plan(trains, order=order)
+            totals[order][0] += result["deliveries"]["on_time"]
+            totals[order][1] += result["deliveries"]["with_promised_time"]
+            totals[order][2] += len(result["violations"])
+    pct = {k: round(100 * v[0] / max(v[1], 1), 1) for k, v in totals.items()}
+    return {
+        "days": seeds,
+        "promised_deliveries": totals["slack"][1],
+        "on_time_pct_least_slack_first": pct["slack"],
+        "on_time_pct_by_ready_time": pct["ready"],
+        "violations": totals["slack"][2] + totals["ready"][2],
+        "promises": "test promises: free running time plus 0-3 h slack (train-level FOIS promises are not public)",
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -585,4 +656,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def plan_to_dict(plan: TrainPlan) -> dict[str, Any]:
-    return asdict(plan) | {"departure": plan.departure, "arrival": plan.arrival, "waiting": plan.waiting}
+    return asdict(plan) | {"departure": plan.departure, "arrival": plan.arrival, "waiting": plan.waiting,
+                           "late_min": plan.late_min}  # fmt: skip

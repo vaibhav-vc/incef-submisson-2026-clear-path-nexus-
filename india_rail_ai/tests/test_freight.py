@@ -94,3 +94,35 @@ def test_api_rejects_bad_freight_requests(bad):
 
     body = {"corridor": "Western", "trains": [{"id": "F1", "origin_km": 0, "destination_km": 50, "ready_min": 0}]}
     assert TestClient(app).post("/railguard/freight/plan", json={**body, **bad}).status_code == 422
+
+
+def test_a_tight_delivery_promise_is_kept_by_pathing_the_train_with_least_slack_first():
+    free = sum(planner()._run_min(s, planner().default_speed, k == 0) for k, s in enumerate(CORRIDOR["segments"]))
+    trains = [FreightTrain("EASY", 100, 0, 0, due_min=free + 300), FreightTrain("TIGHT", 0, 100, 0, due_min=free + 2)]
+    by_ready = planner(headway_min=10)
+    by_ready.plan(trains, order="ready")  # promises ignored: EASY (alphabetically first) takes the single line
+    assert by_ready.plans["TIGHT"].late_min > 0
+    by_slack = planner(headway_min=10)
+    result = by_slack.plan(trains)
+    assert by_slack.plans["TIGHT"].late_min == 0 and by_slack.plans["EASY"].late_min == 0
+    assert result["deliveries"]["on_time_pct"] == 100.0 and check(by_slack) == []
+
+
+def test_priority_still_comes_before_a_promise_and_trains_without_one_are_reported_apart():
+    p = planner(headway_min=10)
+    result = p.plan([FreightTrain("URGENT", 0, 100, 0, priority=1), FreightTrain("PROMISED", 100, 0, 0, priority=3,
+                                                                                due_min=60)])  # fmt: skip
+    assert p.plans["URGENT"].legs[0].enter == 0  # priority first, whatever the promises
+    assert result["deliveries"]["with_promised_time"] == 1 and p.plans["URGENT"].late_min is None
+    assert check(p) == []
+
+
+def test_the_delivery_comparison_plans_are_always_safe():
+    rng = random.Random(3)
+    trains = [FreightTrain(f"T{i}", *rng.sample((0.0, 25.0, 50.0, 75.0, 100.0), 2), rng.uniform(0, 600),
+                           rng.choice((1, 3, 5))) for i in range(40)]  # fmt: skip
+    promised = freight.with_promises(CORRIDOR, "Western", trains, seed=1)
+    for order in ("slack", "ready"):
+        p = planner(headway_min=8)
+        result = p.plan(promised, order=order)
+        assert result["violations"] == [] and result["deliveries"]["with_promised_time"] == 40

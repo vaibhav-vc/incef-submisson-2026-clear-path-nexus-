@@ -612,6 +612,7 @@ class FreightDemand(StrictRequest):
     destination_km: float = Field(ge=0, le=2000)
     ready_min: float = Field(ge=0, le=2880)
     priority: int = Field(3, ge=1, le=5)
+    due_min: float | None = Field(None, ge=0, le=4320)  # delivery time promised to the customer
 
 
 class FreightBlock(StrictRequest):
@@ -703,7 +704,8 @@ def freight_plan(request: FreightPlanRequest) -> dict[str, Any]:
         if b.end_min <= b.start_min or b.segment >= len(corridor["segments"]):
             raise HTTPException(status_code=422, detail="Invalid block")
         planner.block(b.segment, b.start_min, b.end_min)
-    trains = [FreightTrain(t.id, t.origin_km, t.destination_km, t.ready_min, t.priority) for t in request.trains]
+    trains = [FreightTrain(t.id, t.origin_km, t.destination_km, t.ready_min, t.priority, due_min=t.due_min)
+              for t in request.trains]  # fmt: skip
     if len({t.id for t in trains}) != len(trains):
         raise HTTPException(status_code=422, detail="Train ids must be unique")
     summary = planner.plan(trains)
