@@ -819,6 +819,7 @@ class NationalTwin:
     def reset(self) -> None:
         self.now = self.start_min
         self.version = 0  # bumped by every state change; an approval must match the version it was ranked on
+        self.epoch = getattr(self, "epoch", 0) + 1  # bumped by every reset: state derived from the twin starts again
         self.plans: dict[str, Plan] = {}  # changed runs only
         # Occupations of changed runs per piece of track, sorted by entry time so a window is found by bisection:
         # (enter, run, section index, exit, entry station, timetabled enter, timetabled exit). Plans are replaced,

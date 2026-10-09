@@ -102,6 +102,11 @@ def cab_page() -> FileResponse:
     return FileResponse(STATIC / "cab.html")
 
 
+@pages.get("/board", include_in_schema=False)
+def board_page() -> FileResponse:
+    return FileResponse(STATIC / "board.html")
+
+
 # ---- tabletop twin: state and scenarios ---------------------------------------------------------
 @router.get("/state", dependencies=VIEW + DEMO)
 def state() -> dict[str, Any]:
@@ -718,6 +723,37 @@ def national_eta(run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
         if run not in twin.runs:
             raise HTTPException(status_code=404, detail="Unknown run")
         return {"run": run, "basis": twin.eta.source, "stops": twin.eta.forecast(twin, run)}
+
+
+def _publisher():
+    """The twin's publisher (what has been shown is per twin: a new twin starts afresh)."""
+
+    from india_rail.railguard.publish import Publisher
+
+    twin = national()
+    with twin.lock:
+        if getattr(twin, "publisher", None) is None:
+            twin.publisher = Publisher(twin)
+        return twin.publisher
+
+
+@router.get("/national/expected/{run}", dependencies=VIEW)
+def national_expected(run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
+    """Expected arrival and departure at every stop of a run, as published to passengers and customers: later
+    times at once, earlier ones once they hold, never leaving early, honest about old reports (publish.py)."""
+
+    return _run(_publisher().expected, run)
+
+
+@router.get("/national/board/{code}", dependencies=VIEW)
+def national_board(
+    code: str = PathParam(pattern=CODE),
+    window: Annotated[int, Query(ge=30, le=360)] = 180,
+    rows: Annotated[int, Query(ge=1, le=100)] = 40,
+) -> dict[str, Any]:
+    """Trains due at a station in the next `window` minutes (and late ones still to come), soonest first."""
+
+    return _run(_publisher().board, code, float(window), rows)
 
 
 class NationalDisruption(StrictRequest):

@@ -37,6 +37,7 @@ PUBLIC = {
     "/health/live",
     "/health/ready",
     "/cab",
+    "/board",
     "/control",
     "/control/national",
     "/docs",
@@ -137,7 +138,7 @@ def api_checks(feed_secret: bytes) -> dict[str, Any]:
     c("GET", "/docs", None)
     c("GET", "/docs/oauth2-redirect", None)
     c("GET", "/metrics", what="Prometheus metrics")
-    for page in ("/control", "/control/national", "/cab"):
+    for page in ("/control", "/control/national", "/cab", "/board"):
         c("GET", page, None, what="page served")
     c("GET", "/railguard/static/national.js", None, what="static assets")
     h.called.add(("GET", "/railguard/static"))
@@ -213,6 +214,9 @@ def api_checks(feed_secret: bytes) -> dict[str, Any]:
     c("GET", "/railguard/national/stations/{code}", fill={"code": station})
     c("GET", "/railguard/national/plan/{run}", fill={"run": run["run"]})
     c("GET", "/railguard/national/eta/{run}", fill={"run": run["run"]}, expect=(200, 503))
+    c("GET", "/railguard/national/expected/{run}", fill={"run": run["run"]}, what="published expected times")
+    c("GET", "/railguard/national/board/{code}", fill={"code": station}, what="station board")
+    found.update(board_station=station, board_run=run["run"])
     c("GET", "/railguard/national/cab/{run}", fill={"run": run["run"]})
     c(
         "POST",
@@ -664,7 +668,9 @@ def main() -> int:
     if args.ui:
         found = report["api"]["inputs_discovered_from_data"]
         report["pages"] = ui_checks({**env, "FEATURE_TRAIN": found["national_train"],
-                                     "FEATURE_QUERY": found["national_query"].split()[0]}, work)  # fmt: skip
+                                     "FEATURE_QUERY": found["national_query"].split()[0],
+                                     "FEATURE_STATION": found["board_station"], "FEATURE_RUN": found["board_run"]},
+                                    work)  # fmt: skip
     report["seconds"] = round(time.time() - started)
     ok = (
         not report["api"]["failures"]
