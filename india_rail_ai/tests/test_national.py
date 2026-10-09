@@ -291,3 +291,12 @@ def test_forecast_plans_never_overlap_themselves_or_run_impossibly_fast():
         assert out.exit[i] - out.enter[i] >= RUN_FLOOR * (s_exit[i] - s_enter[i]) - 1e-9
         if i:
             assert out.enter[i] >= out.exit[i - 1]
+
+
+def test_every_departure_offered_for_a_delay_is_accepted(data):
+    twin = NationalTwin(data, start_min=605.0)  # 12001 is between A and B: A is behind it
+    run = next(r for r in twin.runs_for("12001") if r["run"] == "12001@0")
+    stations = [d["station"] for d in run["next_departures"]]
+    assert stations and stations[0] == "B"
+    for station in stations:
+        twin.disrupt("12001@0", station, 5)  # the console offers it: the twin accepts it

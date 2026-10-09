@@ -19,6 +19,7 @@ async function login() {
   try { sessionStorage.setItem("rgSession", s.token); } catch (_) { /* storage blocked */ }
   showUser();
   document.getElementById("pwChange").hidden = !s.must_change_password;
+  await loadPanels();
 }
 async function logout() {
   try { await api("/auth/logout", {}); } catch (_) { /* already gone */ }
@@ -214,6 +215,19 @@ async function planFreight() {
 }
 
 // ---- start --------------------------------------------------------------------------------------------
+// Panels loaded once: at start, and again after sign-in or when a token is entered, so a console opened before the
+// controller signs in fills in as soon as they do.
+async function loadPanels() {
+  try { if (!net) { net = await api("/network"); draw(); } } catch (e) { showError(e); }
+  try {
+    const ops = await api("/operators");
+    const top = document.getElementById("top");
+    top.replaceChildren(top.options[0], ...ops.by_operator.map(o => el("option", {value: o.operator}, `${o.operator} (${o.trains})`)));
+  } catch (e) { document.getElementById("tdetail").textContent = e.message; }
+  try { await loadAdvice(); } catch (e) { document.getElementById("asummary").textContent = e.message; }
+  try { await loadCorridors(); } catch (e) { document.getElementById("fsummary").textContent = e.message; }
+}
+
 async function startPlus() {
   overlays.push(drawRoute, drawCorridors, drawFocus);
   document.getElementById("login").onclick = () => act(login);
@@ -227,12 +241,8 @@ async function startPlus() {
   document.getElementById("issueCab").onclick = () => act(issueCab);
   document.getElementById("showDfc").onchange = () => draw();
   await restoreSession();
-  try {
-    const ops = await api("/operators");
-    document.getElementById("top").append(...ops.by_operator.map(o => el("option", {value: o.operator}, `${o.operator} (${o.trains})`)));
-  } catch (e) { document.getElementById("tdetail").textContent = e.message; }
-  try { await loadAdvice(); } catch (e) { document.getElementById("asummary").textContent = e.message; }
-  try { await loadCorridors(); } catch (e) { document.getElementById("fsummary").textContent = e.message; }
+  document.getElementById("token").addEventListener("change", () => loadPanels());
+  await loadPanels();
   health(); setInterval(health, 10000);
   liveLoop();
 }

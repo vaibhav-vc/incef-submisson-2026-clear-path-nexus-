@@ -1985,7 +1985,7 @@ class NationalTwin:
             for day in (0, -1, -2, -3):
                 key = f"{number}@{day}"
                 if key in self.runs:
-                    plan, pos = self.plan_of(key), self.position(key)
+                    plan, pos, first = self.plan_of(key), self.position(key), self.first_open(key)
                     out.append(
                         {
                             "run": key,
@@ -1995,7 +1995,8 @@ class NationalTwin:
                             "position": pos,
                             "next_departures": [
                                 {"station": plan.frm[i], "time": clock(plan.enter[i])}
-                                for i in range(pos["index"], min(pos["index"] + 12, len(plan.sections)))
+                                # from the first departure a delay can still be recorded at (as disrupt() accepts)
+                                for i in range(first, min(first + 12, len(plan.sections)))
                             ],
                         }
                     )

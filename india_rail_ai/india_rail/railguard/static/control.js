@@ -196,10 +196,27 @@ async function act(fn) {
   await refresh();
 }
 
-async function init() {
-  const scenarios = await api("/scenarios");
+// Loaded at start and again when a token is entered: a page opened before the token is set must not stay empty.
+async function loadScenarios() {
   const sel = document.getElementById("scenario");
-  for (const s of scenarios) sel.append(el("option", {value: s.name}, s.title));
+  try {
+    const scenarios = await api("/scenarios");
+    sel.replaceChildren(...scenarios.map(s => el("option", {value: s.name}, s.title)));
+    document.getElementById("simError").textContent = "";
+  } catch (e) {
+    document.getElementById("simError").textContent = `Scenarios unavailable: ${e.message}`;
+  }
+}
+
+async function init() {
+  try { document.getElementById("token").value = localStorage.getItem("rgToken") || ""; } catch (_) { /* storage blocked */ }
+  document.getElementById("token").addEventListener("change", (e) => {
+    try { localStorage.setItem("rgToken", e.target.value); } catch (_) { /* ignore */ }
+    loadScenarios();
+    refresh();
+  });
+  const sel = document.getElementById("scenario");
+  await loadScenarios();
   document.getElementById("loadScenario").onclick = () => act(() => api(`/scenarios/${sel.value}/load`, {}).then(() => { latest = null; }));
   document.querySelectorAll("[data-tick]").forEach(b => b.onclick = () => act(() => api("/tick", {seconds: Number(b.dataset.tick)})));
   document.querySelectorAll("[data-fault]").forEach(b => b.onclick = () => act(() => api("/fault", {kind: b.dataset.fault, train_id: b.dataset.train || null, section_id: b.dataset.section || null})));
@@ -217,8 +234,6 @@ async function init() {
     e.target.textContent = "⏸ Pause";
     playing = setInterval(() => act(() => api("/tick", {seconds: 30})), 1000);
   };
-  try { document.getElementById("token").value = localStorage.getItem("rgToken") || ""; } catch (_) { /* storage blocked */ }
-  document.getElementById("token").addEventListener("change", (e) => { try { localStorage.setItem("rgToken", e.target.value); } catch (_) { /* ignore */ } });
   await refresh();
   setInterval(() => { if (!playing) refresh(); }, 3000);
 }
