@@ -364,67 +364,80 @@ def _effective(rows: pd.DataFrame, out: pd.DataFrame, cold: np.ndarray, which: n
     return _state_code(eff_cold, np.where(changed, which, none))
 
 
-def training_conditions(
-    train: pd.DataFrame, n: int, rng: np.random.Generator
-) -> tuple[pd.DataFrame, np.ndarray, dict[str, Any]]:
+def _condition_keys(rows: pd.DataFrame, pair: np.ndarray) -> np.ndarray:
+    """One 64-bit key per (real pair, what the model sees): two rows of the same pair with the same inputs are one
+    condition, however they were drawn (a missed report equal to the current one, noise clipped at 0, ...)."""
+
+    seen = pd.util.hash_pandas_object(rows[FORECAST_FEATURES].reset_index(drop=True), index=False).to_numpy()
+    return seen ^ (pair.astype(np.uint64) * np.uint64(0x9E3779B97F4A7C15))
+
+
+def training_conditions(train: pd.DataFrame, n: int, seed: int = 0) -> tuple[pd.DataFrame, np.ndarray, dict[str, Any]]:
     """`n` distinct training conditions: a condition is one real (now, target) pair from the training rows under
     one input state (history known or withheld; the report as made, noisy, missed, garbled; train class or route
-    facts unknown). Every real pair is used once in a state drawn as in the recipe; beyond that, pairs are drawn
-    again under input states they do not yet have, so no condition is repeated. Returns the rows, their weights
-    (the recipe's mix of input states restored, times the situation-type balance) and a breakdown."""
+    facts unknown). Every real pair is used once in a state drawn as in the recipe (when n is at least the number
+    of pairs); beyond that, pairs are drawn again under damaged or history-withheld states, and a draw that gives
+    the model the same inputs for the same pair as one already held is refused, so no condition is repeated.
+    Returns the rows, their weights (the recipe's mix of the input states the rows really ended in, restored, times
+    the situation-type balance) and a breakdown. Draws use their own generator from `seed`, so the same call always
+    gives the same conditions."""
 
     from india_rail.scenario_bank import WEIGHT_DIMS, balance_weights, cells
 
+    rng = np.random.default_rng([seed, 1])
     pairs = len(train)
     if n < 1 or n > pairs * N_STATES:
-        raise ValueError(f"{n:,} conditions asked: {pairs:,} real pairs give 1 to {pairs * N_STATES:,}")
+        raise ValueError(f"{n:,} conditions asked: {pairs:,} real pairs give at most {pairs * N_STATES:,}")
     first = np.arange(pairs) if n >= pairs else np.sort(rng.choice(pairs, n, replace=False))
     cold, which = input_states(len(first), rng)
     parts = [apply_input_states(train.iloc[first], cold, which, rng)]
-    pair_of, state_of = [first], [_state_code(cold, which)]
-    effective = [_effective(train.iloc[first], parts[0], cold, which)]
-    seen = np.sort(effective[0].astype(np.int64) * pairs + first)  # (state, pair) keys: distinct conditions
+    pair_of, effective = [first], [_effective(train.iloc[first], parts[0], cold, which)]
+    seen = np.sort(_condition_keys(parts[0], first))
+    held = len(np.unique(seen))
+    # Extra views: the recipe's damaged and history-withheld states in their relative shares (the view as reported
+    # with history known is the one most pairs already have)
     others = recipe_state_shares().copy()
-    others[_state_code(np.array([False]), np.array([len(STRESS_TRAINING)]))[0]] = 0.0  # every pair has "as is"
+    others[_state_code(np.array([False]), np.array([len(STRESS_TRAINING)]))[0]] = 0.0
     others /= others.sum()
     rounds = 0
-    while sum(len(p) for p in pair_of) < n:
+    while held < n:
         rounds += 1
-        need = n - sum(len(p) for p in pair_of)
-        idx = rng.integers(0, pairs, int(need * 1.2) + 64)
+        if rounds > 50:
+            raise ValueError(f"only {held:,} distinct conditions could be drawn from {pairs:,} real pairs")
+        need = n - held
+        idx = rng.integers(0, pairs, int(need * 1.3) + 64)
         code = rng.choice(N_STATES, size=len(idx), p=others)
         c, w = code >= len(STRESS_TRAINING) + 1, code % (len(STRESS_TRAINING) + 1)
         rows = train.iloc[idx]
         out = apply_input_states(rows, c, w, rng)
-        eff = _effective(rows, out, c, w)
-        keys = eff.astype(np.int64) * pairs + idx
-        _, firsts = np.unique(keys, return_index=True)  # one of each key in this draw
+        keys = _condition_keys(out, idx)
+        _, firsts = np.unique(keys, return_index=True)  # one of each in this draw
         keep = np.zeros(len(idx), dtype=bool)
         keep[firsts] = True
         keep &= ~np.isin(keys, seen)  # and none already held
         keep[np.flatnonzero(keep)[need:]] = False
         seen = np.sort(np.concatenate([seen, keys[keep]]))
+        held += int(keep.sum())
         parts.append(out.iloc[keep])
         pair_of.append(idx[keep])
-        state_of.append(code[keep])
-        effective.append(eff[keep])
-        if rounds > 50:
-            raise RuntimeError("could not draw enough distinct conditions")
+        effective.append(_effective(rows, out, c, w)[keep])
     fit = pd.concat(parts, ignore_index=True)
-    pair, state, eff = np.concatenate(pair_of), np.concatenate(state_of), np.concatenate(effective)
-    # Weights: the recipe's mix of input states (by the state each row was drawn in), times the balance of
-    # situation types of the real pairs (before any damage, so a damaged row is not a type of its own)
-    observed = np.bincount(state, minlength=N_STATES) / len(state)
-    target = recipe_state_shares()
-    mix = np.divide(target, observed, out=np.zeros(N_STATES), where=observed > 0)[state]
+    pair, eff = np.concatenate(pair_of), np.concatenate(effective)
+    # Weights: the mix of input states the rows really ended in, as the recipe gives it on these pairs (its draw
+    # over the first pass), restored; times the balance of situation types of the real pairs (before any damage,
+    # so a damaged row is not a type of its own)
+    target = np.bincount(effective[0], minlength=N_STATES) / len(effective[0])
+    observed = np.bincount(eff, minlength=N_STATES) / len(eff)
+    mix = np.divide(target, observed, out=np.zeros(N_STATES), where=observed > 0)[eff]
     real = train.iloc[pair].reset_index(drop=True)
     situation = cells(real, float(np.nanquantile(train.net_delay_2h, 0.75)), WEIGHT_DIMS)
     weights = mix * balance_weights(situation)
     weights /= weights.mean()
     damage_of = eff % (len(STRESS_TRAINING) + 1)
+    fit.attrs["input_state"], fit.attrs["state_weight"] = eff, mix  # for checks; not model inputs
     info = {
         "conditions": int(len(fit)),
-        "distinct": bool(len(np.unique(eff.astype(np.int64) * pairs + pair)) == len(fit)),
+        "distinct": bool(len(np.unique(_condition_keys(fit, pair))) == len(fit)),  # checked on the rows themselves
         "real_pairs_available": int(pairs),
         "real_pairs_used": int(len(np.unique(pair))),
         "runs": int(real.run.nunique()),
@@ -432,13 +445,15 @@ def training_conditions(
         "situation_types": int(situation.nunique()),
         "by_input_state": {
             "history_withheld": int((eff >= len(STRESS_TRAINING) + 1).sum()),
-            "report_as_made": int((damage_of == len(STRESS_TRAINING)).sum()),
+            "history_known": int((eff < len(STRESS_TRAINING) + 1).sum()),
+            "nothing_damaged": int((damage_of == len(STRESS_TRAINING)).sum()),
             **{name: int((damage_of == i).sum()) for i, name in enumerate(STRESS_TRAINING)},
-            "history_known_and_nothing_damaged": int((eff == len(STRESS_TRAINING)).sum()),
         },
+        "rows_without_weight": int((weights == 0).sum()),
         "draw_rounds_after_first": rounds,
-        "weights": "recipe mix of input states restored x square-root balance of situation types (mean 1)",
-    }
+        "weights": "the recipe's mix of the input states rows really ended in, restored, x square-root balance of "
+                   "situation types (mean 1)",
+    }  # fmt: skip
     return fit, weights, info
 
 
@@ -491,27 +506,31 @@ def forecast_conditions() -> int | None:
 
 
 def eta_model(loss: str, seed: int, quantile: float | None = None):
-    """The forecaster's gradient-boosted trees (median: absolute error; band: P10 and P90 quantiles)."""
+    """The forecaster's gradient-boosted trees (median: absolute error; band: P10 and P90 quantiles). A fixed number
+    of rounds, no early stopping: its hold-out would be random rows, and with several conditions of one real pair
+    a copy of a held-out row could sit in training."""
 
     from sklearn.ensemble import HistGradientBoostingRegressor
 
     kw = {"quantile": quantile} if quantile is not None else {}
     return HistGradientBoostingRegressor(
         loss=loss, max_iter=400, learning_rate=0.08, max_leaf_nodes=63, min_samples_leaf=200,
-        l2_regularization=1.0, random_state=seed, **kw
+        l2_regularization=1.0, early_stopping=False, random_state=seed, **kw
     )  # fmt: skip
 
 
 def fit_rows(
-    train: pd.DataFrame, recipe: str, conditions: int | None, rng: np.random.Generator
+    train: pd.DataFrame, recipe: str, conditions: int | None, seed: int
 ) -> tuple[pd.DataFrame, np.ndarray | None, dict[str, Any]]:
     """The rows (and weights) the forecaster is fitted on: `conditions` distinct training conditions, or the
-    recipe's sample of SAMPLE_PAIRS real pairs."""
+    recipe's sample of SAMPLE_PAIRS real pairs. Each draws from its own generator, so the rows depend only on
+    (`train`, `conditions`, `seed`): the model a conditions run tests is the one `real validate` trains."""
 
     if conditions is not None:
         if recipe != "scenario":
             raise ValueError("training conditions are input states of the scenario recipe")
-        return training_conditions(train, conditions, rng)
+        return training_conditions(train, conditions, seed)
+    rng = np.random.default_rng(seed)
     fit = train.iloc[rng.choice(len(train), size=min(len(train), SAMPLE_PAIRS), replace=False)].copy()
     if recipe == "scenario":
         from india_rail.scenario_bank import WEIGHT_DIMS, balance_weights, cells
@@ -527,14 +546,15 @@ def forecast(
     seed: int = 0,
     save_model: bool = True,
     recipe: str | None = None,
-    conditions: int | None = None,
+    conditions: int | None | str = "recorded",
 ) -> tuple[dict[str, Any], dict]:
-    """Score delay forecasts on the test dates; returns (scores, fitted models). `conditions`: train on that
-    many distinct training conditions (default: as recorded by the last conditions run, else the recipe's
-    sample)."""
+    """Score delay forecasts on the test dates; returns (scores, fitted models). `conditions`: a number of distinct
+    training conditions, None for the recipe's sample, "recorded" (default) for what the last conditions run
+    decided to deploy (the sample if it decided against, or for the plain recipe)."""
 
     recipe = recipe or forecast_recipe()
-    conditions = conditions if conditions is not None else forecast_conditions()
+    if conditions == "recorded":
+        conditions = forecast_conditions() if recipe == "scenario" else None
 
     rows = forecast_rows(d)
     if recipe == "scenario":
@@ -542,8 +562,7 @@ def forecast(
     # Training rows: runs started by the split whose answer was also observed by then (a run started on the split
     # day can report the next day); test rows: runs started after it.
     train, test = rows[(rows.date <= SPLIT_DATE) & (rows.tgt_day <= SPLIT_DATE)], rows[rows.date > SPLIT_DATE]
-    rng = np.random.default_rng(seed)
-    fit, weights, fitted_on = fit_rows(train, recipe, conditions, rng)
+    fit, weights, fitted_on = fit_rows(train, recipe, conditions, seed)
 
     def model(loss: str, quantile: float | None = None):
         return eta_model(loss, seed, quantile)
