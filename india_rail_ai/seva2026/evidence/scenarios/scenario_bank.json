@@ -8,180 +8,200 @@
   "forecasts": {
     "scenarios": 75556,
     "scenario_variants_scored": 528892,
-    "forecasts_scored": 253442,
+    "forecasts_scored": 253046,
     "situation_types_covered": 254,
     "situation_types_scored_on_their_own": 221,
     "scenarios_per_situation_type": {
-      "min": 1,
-      "max": 490
+      "min": 2,
+      "max": 485
     },
     "clean": {
       "persistence": {
-        "mae_min": 27.38,
-        "scenario_mae_min": 26.29,
-        "within_15_min_pct": 61.11,
-        "situation_balanced_mae_min": 27.15,
-        "worst_situation_mae_min": 81.31,
+        "mae_min": 27.13,
+        "scenario_mae_min": 25.98,
+        "within_15_min_pct": 61.51,
+        "situation_balanced_mae_min": 26.81,
+        "worst_situation_mae_min": 82.29,
         "situations_better_than_both_baselines": "0/221"
       },
       "twin_rule": {
-        "mae_min": 25.99,
-        "scenario_mae_min": 24.99,
-        "within_15_min_pct": 63.91,
-        "situation_balanced_mae_min": 25.83,
-        "worst_situation_mae_min": 78.35,
+        "mae_min": 25.79,
+        "scenario_mae_min": 24.73,
+        "within_15_min_pct": 64.12,
+        "situation_balanced_mae_min": 25.54,
+        "worst_situation_mae_min": 81.71,
         "situations_better_than_both_baselines": "0/221"
       },
       "learned": {
-        "mae_min": 20.21,
-        "scenario_mae_min": 19.22,
-        "within_15_min_pct": 73.49,
-        "situation_balanced_mae_min": 19.63,
-        "worst_situation_mae_min": 78.54,
-        "situations_better_than_both_baselines": "218/221"
+        "mae_min": 20.33,
+        "scenario_mae_min": 19.26,
+        "within_15_min_pct": 73.48,
+        "situation_balanced_mae_min": 19.67,
+        "worst_situation_mae_min": 79.99,
+        "situations_better_than_both_baselines": "214/221"
       },
       "scenario_trained": {
-        "mae_min": 20.18,
-        "scenario_mae_min": 19.18,
-        "within_15_min_pct": 73.53,
-        "situation_balanced_mae_min": 19.59,
-        "worst_situation_mae_min": 79.22,
-        "situations_better_than_both_baselines": "219/221"
+        "mae_min": 20.33,
+        "scenario_mae_min": 19.25,
+        "within_15_min_pct": 73.42,
+        "situation_balanced_mae_min": 19.63,
+        "worst_situation_mae_min": 78.66,
+        "situations_better_than_both_baselines": "216/221"
       }
     },
     "damaged_inputs": {
       "cold_start": {
         "persistence": {
-          "mae_min": 27.38,
+          "mae_min": 27.13,
           "added_error_min": 0.0,
-          "worst_situation_mae_min": 81.31
+          "worst_situation_mae_min": 82.29
         },
         "twin_rule": {
-          "mae_min": 25.99,
+          "mae_min": 25.79,
           "added_error_min": 0.0,
-          "worst_situation_mae_min": 78.35
+          "worst_situation_mae_min": 81.71
         },
         "learned": {
-          "mae_min": 23.73,
-          "added_error_min": 3.52,
-          "worst_situation_mae_min": 75.46
+          "mae_min": 23.75,
+          "added_error_min": 3.42,
+          "worst_situation_mae_min": 81.96
         },
         "scenario_trained": {
-          "mae_min": 23.7,
-          "added_error_min": 3.52,
-          "worst_situation_mae_min": 74.52
+          "mae_min": 23.71,
+          "added_error_min": 3.38,
+          "worst_situation_mae_min": 81.84
         }
       },
       "feed_noise_pm3_min": {
         "persistence": {
-          "mae_min": 27.49,
-          "added_error_min": 0.11,
-          "worst_situation_mae_min": 81.31
+          "mae_min": 27.25,
+          "added_error_min": 0.12,
+          "worst_situation_mae_min": 82.3
         },
         "twin_rule": {
-          "mae_min": 26.03,
-          "added_error_min": 0.04,
-          "worst_situation_mae_min": 78.33
+          "mae_min": 25.84,
+          "added_error_min": 0.05,
+          "worst_situation_mae_min": 81.67
         },
         "learned": {
-          "mae_min": 20.21,
-          "added_error_min": 0.0,
-          "worst_situation_mae_min": 78.81
+          "mae_min": 20.35,
+          "added_error_min": 0.02,
+          "worst_situation_mae_min": 80.06
         },
         "scenario_trained": {
-          "mae_min": 20.19,
-          "added_error_min": 0.01,
-          "worst_situation_mae_min": 79.48
+          "mae_min": 20.35,
+          "added_error_min": 0.02,
+          "worst_situation_mae_min": 78.93
         }
       },
       "missed_report": {
         "persistence": {
-          "mae_min": 30.33,
-          "added_error_min": 2.95,
+          "mae_min": 30.21,
+          "added_error_min": 3.08,
           "worst_situation_mae_min": 100.84
         },
         "twin_rule": {
-          "mae_min": 29.2,
-          "added_error_min": 3.21,
+          "mae_min": 29.12,
+          "added_error_min": 3.33,
           "worst_situation_mae_min": 100.32
         },
         "learned": {
-          "mae_min": 24.58,
-          "added_error_min": 4.37,
-          "worst_situation_mae_min": 100.62
+          "mae_min": 24.76,
+          "added_error_min": 4.43,
+          "worst_situation_mae_min": 103.89
         },
         "scenario_trained": {
-          "mae_min": 24.49,
-          "added_error_min": 4.31,
-          "worst_situation_mae_min": 100.41
+          "mae_min": 24.7,
+          "added_error_min": 4.37,
+          "worst_situation_mae_min": 102.65
         }
       },
       "garbled_report_pm30_min": {
         "persistence": {
-          "mae_min": 37.86,
-          "added_error_min": 10.48,
-          "worst_situation_mae_min": 90.91
+          "mae_min": 37.49,
+          "added_error_min": 10.36,
+          "worst_situation_mae_min": 90.95
         },
         "twin_rule": {
-          "mae_min": 35.4,
-          "added_error_min": 9.41,
-          "worst_situation_mae_min": 87.31
+          "mae_min": 35.09,
+          "added_error_min": 9.3,
+          "worst_situation_mae_min": 90.2
         },
         "learned": {
-          "mae_min": 29.94,
-          "added_error_min": 9.73,
-          "worst_situation_mae_min": 89.22
+          "mae_min": 29.95,
+          "added_error_min": 9.62,
+          "worst_situation_mae_min": 85.57
         },
         "scenario_trained": {
-          "mae_min": 29.25,
-          "added_error_min": 9.07,
-          "worst_situation_mae_min": 90.49
+          "mae_min": 29.46,
+          "added_error_min": 9.13,
+          "worst_situation_mae_min": 84.36
         }
       },
       "unknown_train_class": {
         "persistence": {
-          "mae_min": 27.38,
+          "mae_min": 27.13,
           "added_error_min": 0.0,
-          "worst_situation_mae_min": 81.31
+          "worst_situation_mae_min": 82.29
         },
         "twin_rule": {
-          "mae_min": 25.99,
+          "mae_min": 25.79,
           "added_error_min": 0.0,
-          "worst_situation_mae_min": 78.35
+          "worst_situation_mae_min": 81.71
         },
         "learned": {
-          "mae_min": 20.29,
+          "mae_min": 20.41,
           "added_error_min": 0.08,
-          "worst_situation_mae_min": 80.33
+          "worst_situation_mae_min": 82.37
         },
         "scenario_trained": {
-          "mae_min": 20.26,
-          "added_error_min": 0.08,
-          "worst_situation_mae_min": 79.55
+          "mae_min": 20.4,
+          "added_error_min": 0.07,
+          "worst_situation_mae_min": 80.08
         }
       },
       "unknown_route_facts": {
         "persistence": {
-          "mae_min": 27.38,
+          "mae_min": 27.13,
           "added_error_min": 0.0,
-          "worst_situation_mae_min": 81.31
+          "worst_situation_mae_min": 82.29
         },
         "twin_rule": {
-          "mae_min": 25.99,
+          "mae_min": 25.79,
           "added_error_min": 0.0,
-          "worst_situation_mae_min": 78.35
+          "worst_situation_mae_min": 81.71
         },
         "learned": {
-          "mae_min": 20.54,
-          "added_error_min": 0.33,
-          "worst_situation_mae_min": 77.65
+          "mae_min": 20.65,
+          "added_error_min": 0.32,
+          "worst_situation_mae_min": 79.05
         },
         "scenario_trained": {
-          "mae_min": 20.52,
-          "added_error_min": 0.34,
-          "worst_situation_mae_min": 79.22
+          "mae_min": 20.66,
+          "added_error_min": 0.33,
+          "worst_situation_mae_min": 78.62
         }
       }
+    },
+    "recipe_selection": {
+      "rule": "chosen only on rounds whose test days end by 2024-09-20 (the real validation tests on later days): the scenario recipe is deployed if it is no worse on clean inputs (the interval includes or exceeds 0) and better on damaged inputs (the interval is above 0)",
+      "clean_gain_of_scenario_recipe": {
+        "scenarios": 45474,
+        "mean_gain_min": -0.012,
+        "ci95_min": [
+          -0.049,
+          0.023
+        ]
+      },
+      "damaged_inputs_gain_of_scenario_recipe": {
+        "scenarios": 45474,
+        "mean_gain_min": 0.09,
+        "ci95_min": [
+          0.06,
+          0.118
+        ]
+      },
+      "decision": "scenario"
     },
     "rounds": [
       {
@@ -190,15 +210,15 @@
         "test_days": "2024-09-09..2024-09-12",
         "scenarios_available": 159301,
         "scenarios_scored": 14932,
-        "forecasts_scored": 50156,
+        "forecasts_scored": 49940,
         "fit_rows": 600000,
         "mae_min": {
-          "persistence": 28.8,
-          "twin_rule": 27.43,
-          "learned": 21.9,
-          "scenario_trained": 21.79
+          "persistence": 28.67,
+          "twin_rule": 27.31,
+          "learned": 22.27,
+          "scenario_trained": 22.33
         },
-        "seconds": 51
+        "seconds": 59
       },
       {
         "origin": "2024-09-12",
@@ -206,15 +226,15 @@
         "test_days": "2024-09-13..2024-09-16",
         "scenarios_available": 162457,
         "scenarios_scored": 15227,
-        "forecasts_scored": 50940,
+        "forecasts_scored": 50752,
         "fit_rows": 600000,
         "mae_min": {
-          "persistence": 27.39,
-          "twin_rule": 25.89,
-          "learned": 19.94,
-          "scenario_trained": 19.94
+          "persistence": 26.8,
+          "twin_rule": 25.39,
+          "learned": 19.69,
+          "scenario_trained": 19.68
         },
-        "seconds": 56
+        "seconds": 67
       },
       {
         "origin": "2024-09-16",
@@ -222,15 +242,15 @@
         "test_days": "2024-09-17..2024-09-20",
         "scenarios_available": 163399,
         "scenarios_scored": 15315,
-        "forecasts_scored": 51593,
+        "forecasts_scored": 51320,
         "fit_rows": 600000,
         "mae_min": {
-          "persistence": 26.84,
-          "twin_rule": 25.47,
-          "learned": 19.49,
-          "scenario_trained": 19.52
+          "persistence": 26.99,
+          "twin_rule": 25.71,
+          "learned": 19.85,
+          "scenario_trained": 19.89
         },
-        "seconds": 60
+        "seconds": 80
       },
       {
         "origin": "2024-09-20",
@@ -238,15 +258,15 @@
         "test_days": "2024-09-21..2024-09-24",
         "scenarios_available": 160311,
         "scenarios_scored": 15025,
-        "forecasts_scored": 50373,
+        "forecasts_scored": 50583,
         "fit_rows": 600000,
         "mae_min": {
-          "persistence": 27.32,
-          "twin_rule": 26.02,
-          "learned": 20.33,
-          "scenario_trained": 20.25
+          "persistence": 27.12,
+          "twin_rule": 25.85,
+          "learned": 20.46,
+          "scenario_trained": 20.44
         },
-        "seconds": 68
+        "seconds": 89
       },
       {
         "origin": "2024-09-24",
@@ -254,120 +274,156 @@
         "test_days": "2024-09-25..2024-09-28",
         "scenarios_available": 160645,
         "scenarios_scored": 15057,
-        "forecasts_scored": 50380,
+        "forecasts_scored": 50451,
         "fit_rows": 600000,
         "mae_min": {
-          "persistence": 26.55,
-          "twin_rule": 25.15,
-          "learned": 19.4,
-          "scenario_trained": 19.42
+          "persistence": 26.07,
+          "twin_rule": 24.73,
+          "learned": 19.43,
+          "scenario_trained": 19.37
         },
-        "seconds": 88
+        "seconds": 99
       }
     ]
   },
   "planner": {
     "scenarios": 75556,
-    "run": 67097,
+    "run": 67125,
     "skipped": {
-      "train at its last section": 8459
+      "train at its last section": 8431
     },
     "crashes": 0,
     "first_crashes": [],
-    "violations": 0,
-    "first_violations": [],
+    "violations": 12,
+    "first_violations": [
+      "shown REROUTE+PATH reroute COR->RPZ via 9 sections; path through: waits at 1 stations (130 min): conflict 12963@-1/00290@-2 on KWP-RPZ",
+      "shown REROUTE+PATH reroute KIN->RPZ via 10 sections; path through: waits at 1 stations (69 min): conflict 12963@-1/00290@-2 on KWP-RPZ",
+      "approved plan: conflict 12963@-1/00290@-2 on KWP-RPZ",
+      "shown REROUTE+PATH reroute CD->GKP via 40 sections; path through: waits at 4 stations (53 min): conflict 15024@-1/22173@0 on MML-NIR",
+      "shown REROUTE+PATH reroute KIN->RPZ via 10 sections; path through: waits at 2 stations (77 min): conflict 19327@0/00290@-2 on KWP-RPZ",
+      "shown REROUTE reroute COR->RPZ via 9 sections: conflict 12963@-1/00290@-2 on KWP-RPZ",
+      "shown REROUTE reroute KIN->RPZ via 10 sections: conflict 12963@-1/00290@-2 on KWP-RPZ",
+      "approved plan: conflict 12963@-1/00290@-2 on KWP-RPZ",
+      "shown REROUTE reroute PLG->MMCT via 8 sections: conflict 22946@0/12268@0 on ADI-MMCT",
+      "shown REROUTE reroute COR->RPZ via 9 sections: conflict 20473@-1/00290@-2 on KWP-RPZ"
+    ],
     "real_delays_drawn_from": {
       "losses_observed": 489436,
       "median_min": 6.0,
       "p90_min": 26.0
     },
     "states": {
-      "PLANNING_ONLY": 62059,
-      "NO_FEASIBLE_PLAN": 790,
-      "REVIEW": 4248
+      "PLANNING_ONLY": 62131,
+      "REVIEW": 4186,
+      "NO_FEASIBLE_PLAN": 808
     },
     "first_ranked_action": {
-      "REROUTE+PATH": 5925,
-      "REROUTE": 7533,
-      "CONTINUE": 39006,
-      "PATH": 4332,
-      "HOLD": 3859,
-      "HOLD+YIELD": 1377,
-      "CONTINUE+YIELD": 2231,
-      "REROUTE+YIELD": 1259,
-      "PRIORITY+YIELD": 764,
-      "PRIORITY": 20,
-      "PATH+YIELD": 1
+      "REROUTE+PATH": 5992,
+      "REROUTE+YIELD": 1282,
+      "HOLD": 3898,
+      "CONTINUE": 39197,
+      "PATH": 4244,
+      "REROUTE": 7346,
+      "CONTINUE+YIELD": 2233,
+      "HOLD+YIELD": 1363,
+      "PRIORITY+YIELD": 740,
+      "PRIORITY": 22
     },
-    "approved_and_rechecked": 62059,
+    "approved_and_rechecked": 62131,
     "by_condition": {
       "none": {
-        "scenarios": 40720,
-        "ranked": 40720,
+        "scenarios": 40254,
+        "ranked": 40254,
         "states": {
-          "PLANNING_ONLY": 39871,
-          "REVIEW": 849
+          "PLANNING_ONLY": 39461,
+          "REVIEW": 793
         },
-        "ranked_pct": 100.0
+        "ranked_pct": 100.0,
+        "compared_with_wait_your_turn": 40249,
+        "first_ranked_saves_weighted_min_median": 0.0
       },
       "closure ahead": {
-        "scenarios": 6703,
-        "ranked": 6178,
+        "scenarios": 6725,
+        "ranked": 6176,
         "states": {
-          "PLANNING_ONLY": 4130,
-          "NO_FEASIBLE_PLAN": 525,
-          "REVIEW": 2048
+          "PLANNING_ONLY": 4127,
+          "REVIEW": 2049,
+          "NO_FEASIBLE_PLAN": 549
         },
-        "ranked_pct": 92.2
+        "ranked_pct": 91.8,
+        "compared_with_wait_your_turn": 0,
+        "first_ranked_saves_weighted_min_median": null,
+        "note": "no wait-your-turn baseline: waiting one's turn would run through the blocked track; the ranked plans go round it (independently checked)"
       },
       "weather alert ahead": {
-        "scenarios": 3297,
-        "ranked": 3297,
+        "scenarios": 3344,
+        "ranked": 3344,
         "states": {
-          "PLANNING_ONLY": 3228,
-          "REVIEW": 69
+          "PLANNING_ONLY": 3269,
+          "REVIEW": 75
         },
-        "ranked_pct": 100.0
+        "ranked_pct": 100.0,
+        "compared_with_wait_your_turn": 3344,
+        "first_ranked_saves_weighted_min_median": 0.0
       },
       "speed restriction ahead": {
-        "scenarios": 6850,
-        "ranked": 6850,
+        "scenarios": 6811,
+        "ranked": 6811,
         "states": {
-          "PLANNING_ONLY": 6721,
-          "REVIEW": 129
+          "PLANNING_ONLY": 6672,
+          "REVIEW": 139
         },
-        "ranked_pct": 100.0
-      },
-      "obstacle ahead": {
-        "scenarios": 3363,
-        "ranked": 3100,
-        "states": {
-          "PLANNING_ONLY": 2074,
-          "REVIEW": 1026,
-          "NO_FEASIBLE_PLAN": 263
-        },
-        "ranked_pct": 92.2
+        "ranked_pct": 100.0,
+        "compared_with_wait_your_turn": 6809,
+        "first_ranked_saves_weighted_min_median": 0.0
       },
       "second train delayed nearby": {
-        "scenarios": 6164,
-        "ranked": 6162,
+        "scenarios": 6227,
+        "ranked": 6225,
         "states": {
-          "PLANNING_ONLY": 6035,
-          "REVIEW": 127,
+          "PLANNING_ONLY": 6117,
+          "REVIEW": 108,
           "NO_FEASIBLE_PLAN": 2
         },
-        "ranked_pct": 100.0
+        "ranked_pct": 100.0,
+        "compared_with_wait_your_turn": 6224,
+        "first_ranked_saves_weighted_min_median": 0.0
+      },
+      "obstacle ahead": {
+        "scenarios": 3311,
+        "ranked": 3054,
+        "states": {
+          "PLANNING_ONLY": 2038,
+          "REVIEW": 1016,
+          "NO_FEASIBLE_PLAN": 257
+        },
+        "ranked_pct": 92.2,
+        "compared_with_wait_your_turn": 0,
+        "first_ranked_saves_weighted_min_median": null,
+        "note": "no wait-your-turn baseline: waiting one's turn would run through the blocked track; the ranked plans go round it (independently checked)"
+      },
+      "second train drawn, none near": {
+        "scenarios": 453,
+        "ranked": 453,
+        "states": {
+          "PLANNING_ONLY": 447,
+          "REVIEW": 6
+        },
+        "ranked_pct": 100.0,
+        "compared_with_wait_your_turn": 453,
+        "first_ranked_saves_weighted_min_median": 0.0
       }
     },
     "delay_vs_wait_your_turn": {
-      "scenarios_compared": 57026,
+      "scenarios_compared": 57079,
+      "not_compared": "closure and obstacle scenarios (see by_condition): the baseline would cross the blocked track",
       "first_ranked_saves_weighted_min": {
         "median": 0.0,
         "mean": 7.5,
-        "total_per_1000_scenarios": 7535,
-        "better_pct": 14.3,
+        "total_per_1000_scenarios": 7528,
+        "better_pct": 14.4,
         "same_pct": 78.7,
-        "worse_pct": 7.0
+        "worse_pct": 6.9
       },
       "best_shown_saves_weighted_min": {
         "median": 0.0,
@@ -377,11 +433,11 @@
     },
     "seconds_per_scenario": {
       "median": 0.002,
-      "p95": 0.195
+      "p95": 0.241
     },
     "seed": 2026,
-    "wall_seconds": 911,
+    "wall_seconds": 1265,
     "timetable": "current"
   },
-  "seconds": 1278
+  "seconds": 1716
 }
