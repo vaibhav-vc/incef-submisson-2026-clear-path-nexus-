@@ -354,19 +354,8 @@
     },
     "crashes": 0,
     "first_crashes": [],
-    "violations": 426,
-    "first_violations": [
-      "shown REROUTE reroute PJ->BNY via 3 sections; 55070@0 yields 15 min, 55040@0 yields 6 min, 55075@0 yields 10 min: conflict 55075@0/15082@0 on ANDN-LPW",
-      "shown REROUTE reroute PJ->BNY via 3 sections; 55070@0 yields 15 min, 55040@0 yields 6 min, 55075@0 yields 10 min: conflict 55075@0/75108@0 on MVKR-RCRA",
-      "shown HOLD 20 min at ANDN; 55076@0 yields 20 min, 55075@0 yields 2 min (with buffer): conflict 55075@0/55070@0 on JKI-PJ",
-      "shown HOLD 20 min at ANDN; 55076@0 yields 20 min, 55075@0 yields 2 min (with buffer): conflict 55075@0/75108@0 on MVKR-RCRA",
-      "shown HOLD 20 min at ANDN; 55076@0 yields 20 min, 55075@0 yields 2 min (with buffer): conflict 55075@0/15082@0 on ANDN-LPW",
-      "shown HOLD 15 min at ANDN; 55076@0 yields 15 min, 55075@0 yields 2 min (with buffer): conflict 55075@0/55070@0 on JKI-PJ",
-      "shown HOLD 15 min at ANDN; 55076@0 yields 15 min, 55075@0 yields 2 min (with buffer): conflict 55075@0/75108@0 on MVKR-RCRA",
-      "shown HOLD 15 min at ANDN; 55076@0 yields 15 min, 55075@0 yields 2 min (with buffer): conflict 55075@0/15082@0 on ANDN-LPW",
-      "shown HOLD 30 min at KPGM; 13419@0 yields 15 min, 15530@-1 yields 30 min, 15555@0 yields 10 min, 15212@-1 yields 15 min (with buffer): conflict 15530@-1/63313@0 on KXRA-PPA",
-      "shown HOLD 30 min at KPGM; 13419@0 yields 15 min, 15530@-1 yields 30 min, 15555@0 yields 10 min, 15212@-1 yields 15 min (with buffer): conflict 15212@-1/63313@0 on SGL-SRA"
-    ],
+    "violations": 0,
+    "first_violations": [],
     "real_delays_drawn_from": {
       "losses_observed": 489436,
       "median_min": 6.0,
@@ -493,11 +482,11 @@
     },
     "seconds_per_scenario": {
       "median": 0.002,
-      "p95": 0.235
+      "p95": 0.228
     },
     "seed": 2026,
-    "wall_seconds": 1339,
+    "wall_seconds": 1370,
     "timetable": "current"
   },
-  "seconds": 1902
+  "seconds": 1377
 }
