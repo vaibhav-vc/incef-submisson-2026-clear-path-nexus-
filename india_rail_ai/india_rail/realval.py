@@ -289,17 +289,24 @@ def cold_start(fit: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
     return fit
 
 
-def stress_training(fit: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
-    """cold_start, plus rows with the damaged inputs of STRESS_TRAINING (at most one per row, in the shares
-    given): the target stays the real outcome, so the model learns how far to trust a report that may be noisy,
-    stale or wrong."""
+def input_states(n: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+    """The recipe's input state of `n` rows: (no history?, damaged input: an index into STRESS_TRAINING, or its
+    length for none). History is withheld from COLD_START_SHARE of rows; at most one damage per row, in the
+    shares STRESS_TRAINING gives."""
 
-    out = cold_start(fit, rng)
-    n, d_now = len(out), out.d_now.to_numpy(dtype=float).copy()
-    names = list(STRESS_TRAINING)
-    edges = np.cumsum([STRESS_TRAINING[k] for k in names])
-    which = np.searchsorted(edges, rng.random(n), side="right")  # index into names; len(names) = undamaged
-    pick = {k: which == i for i, k in enumerate(names)}
+    cold = rng.random(n) < COLD_START_SHARE
+    edges = np.cumsum(list(STRESS_TRAINING.values()))
+    return cold, np.searchsorted(edges, rng.random(n), side="right")
+
+
+def apply_input_states(rows: pd.DataFrame, cold: np.ndarray, which: np.ndarray, rng: np.random.Generator):
+    """`rows` as a live forecaster would see them in the given input states (the target stays the real outcome)."""
+
+    out = rows.copy()
+    out.loc[cold, ["hist_q", "hist_change"]] = np.nan
+    out.loc[cold, "hist_n_q"] = 0
+    d_now = out.d_now.to_numpy(dtype=float).copy()
+    pick = {k: which == i for i, k in enumerate(STRESS_TRAINING)}
     noisy = pick["feed_noise_pm3_min"]
     d_now[noisy] = np.maximum(d_now[noisy] + rng.uniform(-3, 3, int(noisy.sum())), 0)
     missed = pick["missed_report"] & out.d_prev.notna().to_numpy()
@@ -310,6 +317,129 @@ def stress_training(fit: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame
     out.loc[pick["unknown_train_class"], "priority"] = np.nan
     out.loc[pick["unknown_route_facts"], ["km_gap", "single_km_gap"]] = np.nan
     return out
+
+
+def stress_training(fit: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """cold_start, plus rows with the damaged inputs of STRESS_TRAINING (at most one per row, in the shares
+    given): the target stays the real outcome, so the model learns how far to trust a report that may be noisy,
+    stale or wrong."""
+
+    cold, which = input_states(len(fit), rng)
+    return apply_input_states(fit, cold, which, rng)
+
+
+# ---- training conditions: real pairs under input states ------------------------------------------------------
+N_STATES = 2 * (len(STRESS_TRAINING) + 1)  # history known or withheld x (no damage or one of the damages)
+
+
+def _state_code(cold: np.ndarray, which: np.ndarray) -> np.ndarray:
+    return cold.astype(np.int64) * (len(STRESS_TRAINING) + 1) + which
+
+
+def recipe_state_shares() -> np.ndarray:
+    """Share of each input state (by _state_code) in the recipe."""
+
+    damage = np.array([*STRESS_TRAINING.values(), 1 - sum(STRESS_TRAINING.values())])
+    return np.concatenate([(1 - COLD_START_SHARE) * damage, COLD_START_SHARE * damage])
+
+
+def _effective(rows: pd.DataFrame, out: pd.DataFrame, cold: np.ndarray, which: np.ndarray) -> np.ndarray:
+    """The input state each row really ended in (a damage that changed nothing - a missed report with no earlier
+    report, an unknown class already unknown - leaves the row as it was)."""
+
+    none = len(STRESS_TRAINING)
+    had_history = (rows.hist_n_q.to_numpy() > 0) | rows.hist_q.notna().to_numpy() | rows.hist_change.notna().to_numpy()
+    eff_cold = cold & had_history
+    names = list(STRESS_TRAINING)
+    changed = np.zeros(len(rows), dtype=bool)
+    moved = out.d_now.to_numpy(dtype=float) != rows.d_now.to_numpy(dtype=float)
+    for i, name in enumerate(names):
+        m = which == i
+        if name in ("feed_noise_pm3_min", "missed_report", "garbled_report_pm30_min"):
+            changed[m] = moved[m]
+        elif name == "unknown_train_class":
+            changed[m] = rows.priority.notna().to_numpy()[m]
+        else:
+            changed[m] = (rows.km_gap.notna() | rows.single_km_gap.notna()).to_numpy()[m]
+    return _state_code(eff_cold, np.where(changed, which, none))
+
+
+def training_conditions(
+    train: pd.DataFrame, n: int, rng: np.random.Generator
+) -> tuple[pd.DataFrame, np.ndarray, dict[str, Any]]:
+    """`n` distinct training conditions: a condition is one real (now, target) pair from the training rows under
+    one input state (history known or withheld; the report as made, noisy, missed, garbled; train class or route
+    facts unknown). Every real pair is used once in a state drawn as in the recipe; beyond that, pairs are drawn
+    again under input states they do not yet have, so no condition is repeated. Returns the rows, their weights
+    (the recipe's mix of input states restored, times the situation-type balance) and a breakdown."""
+
+    from india_rail.scenario_bank import WEIGHT_DIMS, balance_weights, cells
+
+    pairs = len(train)
+    if n < 1 or n > pairs * N_STATES:
+        raise ValueError(f"{n:,} conditions asked: {pairs:,} real pairs give 1 to {pairs * N_STATES:,}")
+    first = np.arange(pairs) if n >= pairs else np.sort(rng.choice(pairs, n, replace=False))
+    cold, which = input_states(len(first), rng)
+    parts = [apply_input_states(train.iloc[first], cold, which, rng)]
+    pair_of, state_of = [first], [_state_code(cold, which)]
+    effective = [_effective(train.iloc[first], parts[0], cold, which)]
+    seen = np.sort(effective[0].astype(np.int64) * pairs + first)  # (state, pair) keys: distinct conditions
+    others = recipe_state_shares().copy()
+    others[_state_code(np.array([False]), np.array([len(STRESS_TRAINING)]))[0]] = 0.0  # every pair has "as is"
+    others /= others.sum()
+    rounds = 0
+    while sum(len(p) for p in pair_of) < n:
+        rounds += 1
+        need = n - sum(len(p) for p in pair_of)
+        idx = rng.integers(0, pairs, int(need * 1.2) + 64)
+        code = rng.choice(N_STATES, size=len(idx), p=others)
+        c, w = code >= len(STRESS_TRAINING) + 1, code % (len(STRESS_TRAINING) + 1)
+        rows = train.iloc[idx]
+        out = apply_input_states(rows, c, w, rng)
+        eff = _effective(rows, out, c, w)
+        keys = eff.astype(np.int64) * pairs + idx
+        _, firsts = np.unique(keys, return_index=True)  # one of each key in this draw
+        keep = np.zeros(len(idx), dtype=bool)
+        keep[firsts] = True
+        keep &= ~np.isin(keys, seen)  # and none already held
+        keep[np.flatnonzero(keep)[need:]] = False
+        seen = np.sort(np.concatenate([seen, keys[keep]]))
+        parts.append(out.iloc[keep])
+        pair_of.append(idx[keep])
+        state_of.append(code[keep])
+        effective.append(eff[keep])
+        if rounds > 50:
+            raise RuntimeError("could not draw enough distinct conditions")
+    fit = pd.concat(parts, ignore_index=True)
+    pair, state, eff = np.concatenate(pair_of), np.concatenate(state_of), np.concatenate(effective)
+    # Weights: the recipe's mix of input states (by the state each row was drawn in), times the balance of
+    # situation types of the real pairs (before any damage, so a damaged row is not a type of its own)
+    observed = np.bincount(state, minlength=N_STATES) / len(state)
+    target = recipe_state_shares()
+    mix = np.divide(target, observed, out=np.zeros(N_STATES), where=observed > 0)[state]
+    real = train.iloc[pair].reset_index(drop=True)
+    situation = cells(real, float(np.nanquantile(train.net_delay_2h, 0.75)), WEIGHT_DIMS)
+    weights = mix * balance_weights(situation)
+    weights /= weights.mean()
+    damage_of = eff % (len(STRESS_TRAINING) + 1)
+    info = {
+        "conditions": int(len(fit)),
+        "distinct": bool(len(np.unique(eff.astype(np.int64) * pairs + pair)) == len(fit)),
+        "real_pairs_available": int(pairs),
+        "real_pairs_used": int(len(np.unique(pair))),
+        "runs": int(real.run.nunique()),
+        "days": sorted(real.date.unique().tolist()),
+        "situation_types": int(situation.nunique()),
+        "by_input_state": {
+            "history_withheld": int((eff >= len(STRESS_TRAINING) + 1).sum()),
+            "report_as_made": int((damage_of == len(STRESS_TRAINING)).sum()),
+            **{name: int((damage_of == i).sum()) for i, name in enumerate(STRESS_TRAINING)},
+            "history_known_and_nothing_damaged": int((eff == len(STRESS_TRAINING)).sum()),
+        },
+        "draw_rounds_after_first": rounds,
+        "weights": "recipe mix of input states restored x square-root balance of situation types (mean 1)",
+    }
+    return fit, weights, info
 
 
 def _with_network_state(d: dict[str, pd.DataFrame], rows: pd.DataFrame) -> pd.DataFrame:
@@ -343,14 +473,68 @@ def forecast_recipe() -> str:
     return decision if decision in ("scenario", "plain") else "plain"
 
 
-def forecast(
-    d: dict[str, pd.DataFrame], seed: int = 0, save_model: bool = True, recipe: str | None = None
-) -> tuple[dict[str, Any], dict]:
-    """Score delay forecasts on the test dates; returns (scores, fitted models)."""
+CONDITIONS_EVIDENCE = PACKAGE_ROOT / "seva2026" / "evidence" / "real_data" / "forecaster_conditions.json"
+SAMPLE_PAIRS = 1_500_000  # real pairs sampled for the recipes the scenario bank compared
+
+
+def forecast_conditions() -> int | None:
+    """Training conditions of the deployed forecaster, when a conditions run (forecast_conditions.py) decided
+    to deploy them; None: the recipe's sample of SAMPLE_PAIRS real pairs."""
+
+    if not CONDITIONS_EVIDENCE.exists():
+        return None
+    try:
+        recorded = json.loads(CONDITIONS_EVIDENCE.read_text())
+        return int(recorded["conditions"]) if recorded["decision"] == "deploy" else None
+    except (OSError, ValueError, KeyError, TypeError) as exc:  # a decision that cannot be read is never guessed
+        raise RuntimeError(f"the recorded conditions decision in {CONDITIONS_EVIDENCE} cannot be read: {exc}") from exc
+
+
+def eta_model(loss: str, seed: int, quantile: float | None = None):
+    """The forecaster's gradient-boosted trees (median: absolute error; band: P10 and P90 quantiles)."""
 
     from sklearn.ensemble import HistGradientBoostingRegressor
 
+    kw = {"quantile": quantile} if quantile is not None else {}
+    return HistGradientBoostingRegressor(
+        loss=loss, max_iter=400, learning_rate=0.08, max_leaf_nodes=63, min_samples_leaf=200,
+        l2_regularization=1.0, random_state=seed, **kw
+    )  # fmt: skip
+
+
+def fit_rows(
+    train: pd.DataFrame, recipe: str, conditions: int | None, rng: np.random.Generator
+) -> tuple[pd.DataFrame, np.ndarray | None, dict[str, Any]]:
+    """The rows (and weights) the forecaster is fitted on: `conditions` distinct training conditions, or the
+    recipe's sample of SAMPLE_PAIRS real pairs."""
+
+    if conditions is not None:
+        if recipe != "scenario":
+            raise ValueError("training conditions are input states of the scenario recipe")
+        return training_conditions(train, conditions, rng)
+    fit = train.iloc[rng.choice(len(train), size=min(len(train), SAMPLE_PAIRS), replace=False)].copy()
+    if recipe == "scenario":
+        from india_rail.scenario_bank import WEIGHT_DIMS, balance_weights, cells
+
+        # Situation types of the real rows (before any damage), so damaged rows are not a type of their own
+        weights = balance_weights(cells(fit, float(np.nanquantile(train.net_delay_2h, 0.75)), WEIGHT_DIMS))
+        return stress_training(fit, rng), weights, {"real_pairs_sampled": len(fit)}
+    return cold_start(fit, rng), None, {"real_pairs_sampled": len(fit)}  # cold start measured below
+
+
+def forecast(
+    d: dict[str, pd.DataFrame],
+    seed: int = 0,
+    save_model: bool = True,
+    recipe: str | None = None,
+    conditions: int | None = None,
+) -> tuple[dict[str, Any], dict]:
+    """Score delay forecasts on the test dates; returns (scores, fitted models). `conditions`: train on that
+    many distinct training conditions (default: as recorded by the last conditions run, else the recipe's
+    sample)."""
+
     recipe = recipe or forecast_recipe()
+    conditions = conditions if conditions is not None else forecast_conditions()
 
     rows = forecast_rows(d)
     if recipe == "scenario":
@@ -359,23 +543,10 @@ def forecast(
     # day can report the next day); test rows: runs started after it.
     train, test = rows[(rows.date <= SPLIT_DATE) & (rows.tgt_day <= SPLIT_DATE)], rows[rows.date > SPLIT_DATE]
     rng = np.random.default_rng(seed)
-    fit = train.iloc[rng.choice(len(train), size=min(len(train), 1_500_000), replace=False)].copy()
-    weights = None
-    if recipe == "scenario":
-        from india_rail.scenario_bank import WEIGHT_DIMS, balance_weights, cells
+    fit, weights, fitted_on = fit_rows(train, recipe, conditions, rng)
 
-        # Situation types of the real rows (before any damage), so damaged rows are not a type of their own
-        weights = balance_weights(cells(fit, float(np.nanquantile(train.net_delay_2h, 0.75)), WEIGHT_DIMS))
-        fit = stress_training(fit, rng)
-    else:
-        fit = cold_start(fit, rng)  # measured on the cold-start test below and in scenario_ml.py
-
-    def model(loss: str, quantile: float | None = None) -> HistGradientBoostingRegressor:
-        kw = {"quantile": quantile} if quantile is not None else {}
-        return HistGradientBoostingRegressor(
-            loss=loss, max_iter=400, learning_rate=0.08, max_leaf_nodes=63, min_samples_leaf=200,
-            l2_regularization=1.0, random_state=seed, **kw
-        )  # fmt: skip
+    def model(loss: str, quantile: float | None = None):
+        return eta_model(loss, seed, quantile)
 
     y = fit.d_tgt - fit.d_now
     median = model("absolute_error").fit(fit[FORECAST_FEATURES], y, sample_weight=weights)
@@ -416,10 +587,11 @@ def forecast(
         ci[base] = _bootstrap_gain(test.run.to_numpy(), np.abs(preds[base] - truth), learned_err, seed)
     result = {
         "recipe": recipe,
+        "trained_on": {k: v for k, v in fitted_on.items() if k != "days"},
         "split": {
             "train_dates": f"2024-09-01..{SPLIT_DATE}",
             "test_dates": f"after {SPLIT_DATE}",
-            "train_pairs_used": len(fit),
+            "train_rows_used": len(fit),
             "test_pairs": len(test),
             "test_runs": int(test.run.nunique()),
         },
@@ -431,13 +603,20 @@ def forecast(
         "mae_reduction_vs": ci,
     }
     if save_model:
-        import joblib
-
-        ETA_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump({"median": median, "p10": lo, "p90": hi, "features": FORECAST_FEATURES, "recipe": recipe,
-                     "trained_on": f"observed running 2024-09-01..{SPLIT_DATE}", "source": OBSERVED["publisher"]},
-                    ETA_MODEL_PATH, compress=3)  # fmt: skip
+        save_eta_model({"median": median, "p10": lo, "p90": hi}, recipe, len(fit) if conditions else None)
     return result, {"median": median, "p10": lo, "p90": hi}
+
+
+def save_eta_model(models: dict, recipe: str, conditions: int | None) -> None:
+    import joblib
+
+    ETA_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = ETA_MODEL_PATH.with_suffix(".tmp")
+    joblib.dump({**models, "features": FORECAST_FEATURES, "recipe": recipe, "conditions": conditions,
+                 "trained_on": f"observed running 2024-09-01..{SPLIT_DATE}"
+                 + (f", {conditions:,} training conditions" if conditions else ""),
+                 "source": OBSERVED["publisher"]}, tmp, compress=3)  # fmt: skip
+    tmp.replace(ETA_MODEL_PATH)  # a reader never sees half a model
 
 
 def _coverage_detail(test, truth, inside, lo, hi, train, seed: int) -> dict[str, Any]:
@@ -739,7 +918,35 @@ def feed_replay(
         },
         "recommendation_seconds": _spread(rank_times, 2) if rank_times else None,
         "recommendations_with_options": feasible,
+        "alerts": {
+            "raised": twin.threats.raised,
+            "came_back_as_the_same_alert": twin.threats.came_back,
+            "evaluations_a_missing_threat_was_kept": twin.threats.held,
+            "active_at_end": len(twin.threats.active()),
+        },
     }
+
+
+def alert_hygiene(d: dict[str, pd.DataFrame]) -> dict[str, Any]:
+    """Alerts a controller would get on a real morning's feed with the hygiene rules (threats.CLEAR_AFTER_S,
+    REOPEN_S) and without them (every disappearance a clear, every return a new alert to acknowledge)."""
+
+    from india_rail.railguard import threats
+
+    with_rules = feed_replay(d)["alerts"]
+    saved = threats.CLEAR_AFTER_S, threats.REOPEN_S
+    threats.CLEAR_AFTER_S, threats.REOPEN_S = 0, -1
+    try:
+        without = feed_replay(d)["alerts"]
+    finally:
+        threats.CLEAR_AFTER_S, threats.REOPEN_S = saved
+    return {
+        "with_rules": with_rules,
+        "without_rules": without,
+        "alerts_avoided": without["raised"] - with_rules["raised"],
+        "rules": f"non-critical threats clear after {saved[0]} s gone; one back within {saved[1]} s keeps its id and "
+                 "acknowledgement unless more severe; critical threats clear at once and come back open",
+    }  # fmt: skip
 
 
 def build_metadata(db: Path = REAL_DB_PATH) -> dict[str, Any]:
@@ -781,6 +988,7 @@ def validate_all(out: Path | None = None, conflict_dates: int = 4) -> dict[str, 
             ),  # fmt: skip
         },
         "live_feed_replay": {"twin_rule": feed_replay(d), "learned_projection": feed_replay(d, eta=eta)},
+        "alert_hygiene": alert_hygiene(d),
         "seconds": round(time.time() - started, 1),
     }
     out = out or EVIDENCE

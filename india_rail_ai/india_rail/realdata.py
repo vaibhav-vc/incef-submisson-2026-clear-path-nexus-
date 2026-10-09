@@ -335,6 +335,10 @@ def main(argv: list[str] | None = None) -> int:
     bank.add_argument("--planner", type=int, default=75_556, help="planner disruption scenarios (0 to skip)")
     bank.add_argument("--workers", type=int, default=4)
     bank.add_argument("--out", type=Path, default=None)
+    cond = sub.add_parser("conditions", help="train the deployed forecaster under N training conditions and decide")
+    cond.add_argument("--conditions", type=int, required=True, help="distinct training conditions")
+    cond.add_argument("--seed", type=int, default=0)
+    cond.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
     if args.command == "fetch":
         print(fetch())
@@ -352,6 +356,11 @@ def main(argv: list[str] | None = None) -> int:
         report = scenario_bank.run(args.out or scenario_bank.EVIDENCE, args.scenarios, args.planner, args.workers)
         shown = {k: v for k, v in report.items() if k in ("forecasts", "planner")}
         print(json.dumps(shown, indent=1, default=str)[:4000])
+    elif args.command == "conditions":
+        from india_rail import forecast_conditions
+
+        report = forecast_conditions.run(args.conditions, args.seed, args.out)
+        print(json.dumps({k: report[k] for k in ("decision", "deployed_model", "seconds")}, indent=1)[:4000])
     elif args.command == "scenarios":
         from india_rail import scenario_ml
 
