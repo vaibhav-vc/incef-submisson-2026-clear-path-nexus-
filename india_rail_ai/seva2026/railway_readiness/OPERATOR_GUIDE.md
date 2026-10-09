@@ -22,9 +22,12 @@
   and your rules always take precedence.**
 * `DATA UNAVAILABLE` or `HOLD-FOR-CONTROLLER` means: no advice; follow signals and the controller. The screen
   shows `DATA UNAVAILABLE` by itself when it has heard nothing from Nexus for 25 seconds.
-* The cab unit is opened with a link the controller issues for this train only (**Issue cab link** on the
-  console, valid up to 24 h). If the screen says the link is not valid for this train, ask the controller for
-  a new one; never reuse another train's link.
+* The cab unit is opened with a link the controller issues for this train's journey only (**Issue cab link**
+  on the console, valid up to 24 h). If the screen says the link is not valid for this train, ask the controller
+  for a new one; never reuse another train's link.
+* Controllers: if a cab unit is lost, moved to another loco or its link may have been copied, press **Revoke
+  this link** (or **Revoke its cab links** for every link of the train) and issue a new one. A revoked link stops
+  at once, also on a screen that is open, and stays revoked after a restart.
 * The speed band is a target range for smooth running, never a permission.
 
 ## Training modules (half a day each)
