@@ -6,7 +6,7 @@
 | Only a named controller approves, and only the latest reviewable snapshot | `engine.approve` raises on an empty controller name, a superseded snapshot, or a non-REVIEWABLE state. The API adds `RAILGUARD_CONTROLLER_TOKEN`. |
 | Driver never chooses a route | `cab.build_advisory` reads only `engine.approved`. Cab endpoints are GET-only (`test_api_cab_is_read_only_and_controller_token_enforced`). |
 | Fail closed on stale or missing evidence | `EvidenceStore.assess` returns HOLD or UNAVAILABLE, and the approve button is disabled. The cab shows DATA UNAVAILABLE and withholds the speed band. If the cab loses its link, it blanks its guidance. |
-| GPS is not collision protection | GNSS-sim reports are compared, never applied (`ingest_position`). Proximity rules run on the twin, and nearby-train awareness is labelled "not collision protection". |
+| GPS is not collision protection | In the tabletop twin, simulated GNSS reports are compared, never applied. In the national twin, a signed cab-unit fix that passes every gate (receiver quality, map-matching to the planned route's track, plausible movement) becomes FRESH position evidence for that train: it can make a ranking reviewable and is shown on the cab, but it never moves another train, never changes a plan by itself, and a fix that fails a gate raises a threat for the controller instead. Proximity rules run on the twin, and nearby-train awareness is labelled "not collision protection". |
 | Hardware feed cannot approve | The feed endpoints only report observations. An obstacle report can raise a threat; only a controller can clear it. |
 | Tabletop only | The firmware header and hardware README forbid connection to, or testing near, railway equipment. |
 

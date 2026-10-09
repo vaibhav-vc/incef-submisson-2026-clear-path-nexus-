@@ -25,7 +25,17 @@ Canonical JSON = keys sorted, no whitespace (`","` and `":"` separators), UTF-8,
 ## Events
 **POSITION** (e.g. RTIS): `train_number`, `start_date` (journey start, `YYYY-MM-DD`), `lat`, `lon` (WGS84),
 `speed_kmph` (0-250), `observed_at` (ISO 8601 with offset; no older than 3 minutes, no later than 2 minutes ahead).
-Map-matched to the train's planned route within 3 km; otherwise a ROUTE_DEVIATION threat is raised.
+Optional receiver quality: `satellites` (integer, at least 4) and `hdop` (above 0, at most 5); a fix below
+either is refused. Accuracy is taken as HDOP x 5 m (30 m when HDOP is not sent).
+
+Each fix is map-matched to the track of the train's planned route ahead of its last accepted position: within
+max(50 m, 3 x accuracy) of mapped (OpenStreetMap) track, widened to 300 m within 1.5 km of a station (yard
+lines), and within 3 km of the straight line on sections with no mapped track. A fix that matches nothing is
+refused; if it is 1 km or more from the route, or is the second unmatched fix in a row, a ROUTE_DEVIATION threat
+is raised. A matched fix must also be plausible against the train's last accepted fix (no implied speed above
+200 km/h, no backward move beyond max(200 m, 3 x accuracy, 300 m in a station zone)); otherwise it is refused
+and a GNSS_IMPLAUSIBLE threat is raised. The gateway tallies every fix by outcome (`railguard_gnss_fixes{type=...}`
+on `/metrics`), which is how a field trial of cab units is measured.
 
 **STATION** (e.g. NTES/COA): `train_number`, `start_date`, `station_code`, `event` (`ARR` | `DEP` | `PASS`),
 `observed_at`. Lateness of 5 minutes or more is recorded as a disruption for the controller; the feed approves

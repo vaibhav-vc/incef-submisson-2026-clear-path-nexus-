@@ -67,6 +67,9 @@ def test_bad_events_are_rejected_one_by_one(data):  # noqa: F811
     result = gateway.receive(sim.envelope([off_route, future, unknown, {"type": "NOPE"}, "x", event]))
     assert [r["accepted"] for r in result["results"]] == [False, False, False, False, False, True]
     assert "ROUTE_DEVIATION" in {t.type for t in twin.threats.active()}
+    # every position fix is tallied by outcome (a field trial of cab units is measured on these)
+    assert gateway.fix_outcomes == {"route_deviation": 1, "refused_stale_or_future": 1, "refused_unknown_run": 1,
+                                    "accepted": 1}  # fmt: skip
 
 
 def test_late_departure_is_recorded_as_a_disruption_for_the_controller(data):  # noqa: F811

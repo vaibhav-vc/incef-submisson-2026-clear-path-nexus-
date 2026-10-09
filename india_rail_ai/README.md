@@ -2,7 +2,7 @@
 
 Planning automation for Indian Railways traffic control, built on open data:
 
-1. **Data pipeline.** It ingests the open Indian Railways timetable (about 9,000 stations, 5,200 trains and 394,000 timed stops) into SQLite, with every source file's SHA-256 pinned. The national twin runs on **real data**: the September 2024 timetable with every train's observed running days, and real track data from OpenStreetMap. It is verified against 1.26 million actual arrival times ([Real-life data and verification](#real-life-data-and-verification)).
+1. **Data pipeline.** It ingests the open Indian Railways timetable (about 9,000 stations, 5,200 trains and 394,000 timed stops) into SQLite, with every source file's SHA-256 pinned. The national twin runs on **real data**: by default the current all-India timetable (10,594 trains with their running days and validity dates), with real track data from OpenStreetMap; the September 2024 timetable, whose running was observed, is used to verify it against 1.26 million actual arrival times ([Real-life data and verification](#real-life-data-and-verification)).
 2. **ML run-time model.** Gradient-boosted trees predict how many minutes a train needs between two stops, with a calibrated P10–P90 interval.
 3. **Disruption planner.** When a train runs late, it spreads the delay through the network, finds trains that would come too close, and proposes priority-based holds to restore separation.
 4. **Assistant.** Answers questions like "which trains run Delhi to Mumbai?" or "12002 is 30 minutes late at NDLS — what should we hold?" by calling all of the above. It's free by default: built-in offline, or a local open-source AI model.
@@ -49,7 +49,7 @@ Tests run offline on a hand-made three-station network: `python -m pytest -q`.
 - 780 small backward clock steps (for example 08:30 followed by 08:29) were clamped rather than read as a 24-hour section.
 - 1,220 rows disagree with the published `day` field. Spot checks show the published day is the faulty field: train 59298 increments its day at most stops within four hours.
 
-The open timetable is a **community snapshot from about 2016** with **no running-days field**. The national twin therefore runs on the **September 2024 timetable** instead whenever it has been built (`RAILGUARD_TIMETABLE=real`, required in production): every train's running days come from the days it was actually seen running, and the line count of each section from OpenStreetMap. See [Real-life data and verification](#real-life-data-and-verification).
+The open timetable is a **community snapshot from about 2016** with **no running-days field**. The national twin therefore runs on a real timetable whenever one has been built: by default the **current timetable** (`RAILGUARD_TIMETABLE=current`: every train with its running days and validity dates), or the **September 2024 timetable** (`RAILGUARD_TIMETABLE=2024`), whose running days come from the days each train was actually seen running. Production accepts only these two, never the 2016 data. The line count of each section comes from OpenStreetMap. See [Real-life data and verification](#real-life-data-and-verification).
 
 ## ML model: section run time
 
@@ -118,7 +118,7 @@ None of them can change anything; plans are proposals.
 ## Nexus RailGuard (SEVA 2026 build)
 
 `india_rail/railguard/` is a controller decision-support and driver-advisory layer with two digital twins:
-- **National twin:** runs on **real data**: the September 2024 timetable (3,549 trains, 9,065 sections between halts, 2,000+ junctions), every train's running days as observed, station positions and single/double line from OpenStreetMap on 90% of sections, and rail distances from the timetable. Every attribute is labelled with its evidence. Without the real data it falls back to the 2016 open timetable (production refuses that). Console: `/control/national`.
+- **National twin:** runs on **real data**: by default the current timetable (10,594 trains, 8,550 stations, 15,951 sections between halts, 3,868 junctions), every train's running days and validity dates, station positions and single/double line from OpenStreetMap on 89% of sections, and rail distances from the timetable; an express's stop-to-stop section is split into the shorter sections it runs over, so it is compared with the locals on the same track. Every attribute is labelled with its evidence. Without real data it falls back to the 2016 open timetable (production refuses that). Console: `/control/national`.
 - **Tabletop twin:** two trains on ten sections, with the TwinTrack ESP32 node and six judge scenarios. Console: `/control`; driver screens: `/cab?train=A|B` or `/cab?run=<train>@<day>`.
 
 The parts:

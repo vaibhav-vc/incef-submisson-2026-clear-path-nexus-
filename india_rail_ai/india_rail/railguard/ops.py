@@ -567,7 +567,11 @@ class Operations:
             gauges["twin_minute"] = self.twin.now
             for t in self.twin.threats.active():
                 threats[t.type] += 1
-        return gauges, {"threats_active": dict(threats)}
+        labelled = {"threats_active": dict(threats)}
+        fixes = getattr(self.gateway, "fix_outcomes", None)
+        if fixes:
+            labelled["gnss_fixes"] = {k: float(v) for k, v in fixes.items()}  # since start: a field trial's tally
+        return gauges, labelled
 
 
 OPS = Operations()

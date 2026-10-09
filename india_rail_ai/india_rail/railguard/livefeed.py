@@ -38,7 +38,7 @@ import os
 import re
 import secrets
 import time
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -120,6 +120,9 @@ class FeedGateway:
         self.tracks: dict[str, gps.Track] = {}
         self.off_route: dict[str, int] = {}  # consecutive off-route fixes per run
         self.matcher = gps.TrackMatcher(twin)
+        # What became of every position fix (exported as railguard_gnss_fixes{type=...}): a field trial of cab
+        # units is measured on these - the share accepted, and why the others were refused.
+        self.fix_outcomes: Counter[str] = Counter()
 
     # ---- envelope ----------------------------------------------------------------------------------
     def receive(self, envelope: dict[str, Any]) -> dict[str, Any]:
@@ -195,11 +198,15 @@ class FeedGateway:
             if minute < self.twin.now - 3:
                 raise ValueError("observation older than the 3-minute position policy")
             if kind == "POSITION":
-                return self._position(source, key, event)
+                result = self._position(source, key, event)
+                self.fix_outcomes[_fix_outcome(result)] += 1
+                return result
             if kind == "STATION":
                 return self._station(source, key, event, minute)
             raise ValueError("type must be POSITION or STATION")
         except (ValueError, TypeError, KeyError) as exc:
+            if isinstance(event, dict) and event.get("type") == "POSITION":
+                self.fix_outcomes["refused_" + _fix_reason(str(exc))] += 1
             return {"accepted": False, "reason": str(exc)[:200]}
 
     def _run_key(self, number: Any, start: Any) -> str:
@@ -376,3 +383,28 @@ class FeedSimulator:
             "hdop": hdop,
             "observed_at": (midnight + timedelta(minutes=twin.now)).isoformat(),
         }
+
+
+def _fix_reason(text: str) -> str:
+    if text.startswith("GNSS:"):
+        return "receiver_quality"
+    if "outside India" in text:
+        return "outside_india"
+    if "older than" in text or "future" in text:
+        return "stale_or_future"
+    if "no timetabled run" in text or "train_number" in text or "start_date" in text:
+        return "unknown_run"
+    return "malformed"
+
+
+def _fix_outcome(result: dict[str, Any]) -> str:
+    if result.get("accepted"):
+        return "accepted"
+    reason = str(result.get("reason", ""))
+    if reason.startswith("implausible"):
+        return "refused_implausible_movement"
+    if "a second in a row is a deviation" in reason:
+        return "refused_off_track_once"
+    if "km from the planned route" in reason:
+        return "route_deviation"
+    return "refused_other"
