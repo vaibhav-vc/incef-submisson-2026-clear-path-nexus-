@@ -223,47 +223,120 @@ def git_head() -> str:
 
 
 # ---- judgements, stated as such --------------------------------------------------------------------
-SOFTWARE_READINESS = [
-    ("Decision core (twin, planner, gates, cab)", 100,
-     "Built; runs on the current all-India timetable with mapped track; final code verified by simulation"),
-    ("Verification (tests, simulation, real data)", 97,
-     "215 tests; 9 invariants incl. GNSS_GATE; 56,395 real train runs; formal V&V plan needs IR"),
-    ("Security engineering", 96,
-     "Named accounts, cab capabilities, hardened container, 41 attack tests, SAST/SCA clean; external audit pending"),
-    ("Every train and its route", 96,
-     "10,594 current trains with operator, days, validity, PIN codes and routes on mapped track (90% of sections)"),
-    ("GNSS tracking", 92,
-     "Receiver agent, quality gates, map-matching, spoof rejection; real-network check; field units not yet fitted"),
-    ("Live one-to-one push", 95, "Console and per-cab streams; 550 streams on the real network, push p50 0.35 s"),
-    ("Production operations", 95,
-     "UPS via NUT, signed checkpoints and restore, health, metrics, JSON logs, container restart-tested"),
-    ("Delay-minimisation advisor", 92,
-     "Five finding types with levers; 92% of the worst sections recur on held-out days; IR's own data next"),
-    ("Machine learning under different situations", 93,
-     "Rolling-origin rounds; beats baselines in 44/44 situations; cold-start trained; fog/monsoon not in data"),
-    ("Freight corridors", 85, "DFC from OSM; 0 conflicts in 200 random days; needs DFCCIL block and loop data"),
-    ("Docs, compliance, readiness packs", 96, "Register, 20-hazard log, safety case, deployment guide, operator guide"),
-    ("Live-data integration", 93, "Real morning replayed: 96.6% accepted; GNSS agent ready; CRIS mapping remains"),
-    ("Official data", 85, "Pipeline ready; data.gov.in refuses this build network; checked against Ministry figure"),
-    ("Infrastructure data", 80, "OSM line count on 90% of sections; block sections and loops need IR registers"),
-    ("Conflict prediction on real days", 70, "Warnings 1.23x as likely to precede real time loss; needs IR block data"),
-]  # fmt: skip
+# The percentages are the developer's judgements. Every fact quoted beside them is read from an evidence file or
+# from the code when the report is built, so no figure here can go stale.
+def _facts() -> dict[str, Any]:
+    import re
+
+    audit = load(EVIDENCE / "audit" / "audit_summary.json")
+    rv = load(EVIDENCE / "real_data" / "real_validation.json")
+    reg = audit.get("registry", {})
+    stats = audit.get("national_stats", {})
+    gnss = load(EVIDENCE / "gnss" / "gnss_verification.json").get("genuine_fixes", {})
+    lt = load(EVIDENCE / "live" / "loadtest.json")
+    adv = load(EVIDENCE / "real_data" / "delay_advisor_summary.json").get("summary", {}).get("persistence", {})
+    sml = load(EVIDENCE / "real_data" / "scenario_ml.json").get("summary", {})
+    bank = load(EVIDENCE / "scenarios" / "scenario_bank.json")
+    freight = load(EVIDENCE / "freight" / "freight_verification.json")
+    feed = rv.get("live_feed_replay", {}).get("twin_rule", {})
+    sim_doc = (ROOT / "india_rail" / "railguard" / "simulate.py").read_text().split('"""')[1]
+    hazards = (ROOT / "seva2026" / "railway_readiness" / "HAZARD_LOG.md").read_text()
+    conf = rv.get("conflicts", {}).get("learned_projection_with_real_track_data", {})
+    mapped, sections = reg.get("sections_with_mapped_track"), stats.get("sections")
+    return {
+        "tests": audit.get("tests_passed", "n/a"),
+        "attack_tests": audit.get("attack_tests", "n/a"),
+        "invariants": len(re.findall(r"^  ([A-Z_]{4,}) {2,}", sim_doc, flags=re.M)),
+        "real_runs": f"{rv.get('credibility', {}).get('runs_observed', 0):,}",
+        "trains": f"{reg.get('trains_current', 0):,}",
+        "mapped_pct": f"{100 * mapped / sections:.0f}%" if mapped and sections else "n/a",
+        "gnss_accepted": gnss.get("accepted_pct", "n/a"),
+        "streams": (lt.get("consoles", 0) + lt.get("cab_streams", 0)) or "n/a",
+        "push_p50_s": round(lt.get("push_latency_ms", {}).get("p50", 0) / 1000, 2) or "n/a",
+        "advisor_recur": adv.get("sections", {}).get("top_50_found_again_in_top_100_pct", "n/a"),
+        "ml_situations": sml.get("situations_where_learned_network_beats_both_baselines", "n/a"),
+        "bank_scenarios": f"{bank.get('forecasts', {}).get('scenarios', 0):,}",
+        "bank_situations": bank.get("forecasts", {})
+        .get("clean", {})
+        .get("scenario_trained", {})
+        .get("situations_better_than_both_baselines", "n/a"),
+        "planner_scenarios": f"{bank.get('planner', {}).get('run', 0):,}",
+        "planner_violations": bank.get("planner", {}).get("violations", "n/a"),
+        "freight_days": sum(v.get("plans", 0) for v in freight.values()),
+        "freight_conflicts": sum(v.get("violations", 0) for v in freight.values()),
+        "hazards": len(re.findall(r"^\| H\d+ \|", hazards, flags=re.M)),
+        "feed_accepted": (f"{100 * feed['accepted'] / feed['events_sent']:.1f}%" if feed.get("events_sent") else "n/a"),
+        "lift": conf.get("lift", "n/a"),
+        "big_losses_warned": conf.get("losses_15_min_or_more_flagged_pct", "n/a"),
+    }
+
+
+def software_readiness(f: dict[str, Any]) -> list[tuple[str, int, str]]:
+    return [
+        ("Decision core (twin, planner, gates, cab)", 100,
+         "Built; runs on the current all-India timetable with mapped track; trains compared on the track they share"),
+        ("Verification (tests, simulation, real data)", 98,
+         f"{f['tests']} tests; {f['invariants']} simulation invariants; {f['real_runs']} real train runs; every API "
+         "route, command and page exercised; formal V&V plan needs IR"),
+        ("Security engineering", 97,
+         f"Named accounts, cab capabilities, hardened container, {f['attack_tests']} attack tests, SAST/SCA clean, "
+         "audit pack and NTP clock control; external audit pending"),
+        ("Every train and its route", 96,
+         f"{f['trains']} current trains with operator, days, validity, PIN codes and routes on mapped track "
+         f"({f['mapped_pct']} of sections)"),
+        ("GNSS tracking", 92,
+         f"Receiver agent, quality gates, map-matching, spoof rejection; {f['gnss_accepted']}% of genuine fixes "
+         "accepted on the real network; field units not yet fitted"),
+        ("Live one-to-one push", 96,
+         f"Console and per-cab streams on run-scoped capabilities; {f['streams']} streams on the real network, push "
+         f"p50 {f['push_p50_s']} s; a silent link blanks the cab"),
+        ("Production operations", 96,
+         "UPS via NUT, signed checkpoints and restore, health, metrics, JSON logs, NTP clock check, container "
+         "restart-tested"),
+        ("Delay-minimisation advisor", 92,
+         f"Five finding types with levers; {f['advisor_recur']}% of the worst sections recur on held-out days"),
+        ("Machine learning under different situations", 95,
+         f"{f['bank_scenarios']} real scenarios with six damaged inputs: better than both baselines in "
+         f"{f['bank_situations']} situation types (rolling origins: {f['ml_situations']}); fog/monsoon not in data"),
+        ("Freight corridors", 85,
+         f"DFC from OSM; {f['freight_conflicts']} conflicts in {f['freight_days']} random days; needs DFCCIL block "
+         "and loop data"),
+        ("Docs, compliance, readiness packs", 97,
+         f"Register, {f['hazards']}-hazard log, safety case, handover runbook and safety dossier, guides"),
+        ("Live-data integration", 95,
+         f"Real morning replayed: {f['feed_accepted']} accepted; conformance kit for CRIS; CRIS mapping remains"),
+        ("Official data", 85, "Pipeline ready; data.gov.in refuses this build network; checked against Ministry figure"),
+        ("Infrastructure data", 85,
+         f"OSM line count on {f['mapped_pct']} of sections; the register importer is ready, the loops and block "
+         "sections must come from IR"),
+        ("Conflict prediction on real days", 75,
+         f"Warnings {f['lift']}x as likely to precede real time loss; {f['big_losses_warned']}% of real 15+ min "
+         "losses warned of; needs IR block data"),
+    ]  # fmt: skip
+
+
 # (stage, weight %, done %, what this project has done, what only the railway can do)
-DEPLOYMENT_PATH = [
-    ("Software built and verified", 35, 96, "This repository, verified on real running data and the real network", "-"),
-    ("Live data and CRIS integration", 15, 50,
-     "Signed gateway proven on a real morning; GNSS cab agent; live push to cabs; contract; test vector",
-     "Authorise access; share spec and block-section data; issue keys; fit cab units; test in CRIS environment"),
-    ("Security audit and hosting", 10, 45,
-     "ASVS self-assessment, 41 attack tests, SAST/SCA, named accounts, hardened container restart-tested",
-     "CERT-In/STQC audit; host on IR infrastructure; connect IR identity"),
-    ("Safety acceptance", 15, 38, "Hazard log (20 hazards) and safety case with real-data evidence",
-     "Hazard workshop; scoring; independent assessment; RDSO/IR acceptance"),
-    ("Shadow-mode trial", 20, 25, "Retrospective shadow run on real days; trial tooling, protocol, metrics",
-     "Run 3-12 months on a division with live data; review disagreements"),
-    ("Roll-out and training", 5, 40, "Console with sign-in and live push; operator and deployment guides",
-     "Deliver training; issue procedures"),
-]  # fmt: skip
+def deployment_path(f: dict[str, Any]) -> list[tuple[str, int, int, str, str]]:
+    return [
+        ("Software built and verified", 35, 97, "This repository, verified on real running data and the real network",
+         "-"),
+        ("Live data and CRIS integration", 15, 55,
+         "Signed gateway proven on a real morning; conformance kit; GNSS cab agent; live push to cabs; contract",
+         "Authorise access; share spec and block-section data; issue keys; fit cab units; test in CRIS environment"),
+        ("Security audit and hosting", 10, 55,
+         f"ASVS self-assessment, {f['attack_tests']} attack tests, SAST/SCA, audit pack (SBOM, controls), NTP clock "
+         "control, hardened container",
+         "CERT-In/STQC audit; host on IR infrastructure; connect IR identity"),
+        ("Safety acceptance", 15, 42,
+         f"Hazard log ({f['hazards']} hazards), safety case and EN 50126 dossier with real-data evidence",
+         "Hazard workshop; scoring; independent assessment; RDSO/IR acceptance"),
+        ("Shadow-mode trial", 20, 30,
+         "Retrospective shadow run on real days; decision import from the control office; report over the whole "
+         "persisted trial",
+         "Run 3-12 months on a division with live data; review disagreements"),
+        ("Roll-out and training", 5, 40, "Console with sign-in and live push; operator and deployment guides",
+         "Deliver training; issue procedures"),
+    ]  # fmt: skip
 
 
 REAL_FINDINGS = [
@@ -855,8 +928,10 @@ def build(out: Path) -> Path:
     sched = load(EVIDENCE / "schedules" / "schedule_audit.json")
     rv = load(EVIDENCE / "real_data" / "real_validation.json")
     nat_stats = audit.get("national_stats", {})
-    software_pct = sum(v for _, v, _ in SOFTWARE_READINESS) / len(SOFTWARE_READINESS)
-    path_pct = sum(w * done / 100 for _, w, done, _, _ in DEPLOYMENT_PATH)
+    facts = _facts()
+    readiness, path = software_readiness(facts), deployment_path(facts)
+    software_pct = sum(v for _, v, _ in readiness) / len(readiness)
+    path_pct = sum(w * done / 100 for _, w, done, _, _ in path)
 
     story: list[Any] = []
     # ---- cover ---------------------------------------------------------------------------------------
@@ -934,18 +1009,18 @@ def build(out: Path) -> Path:
             "What is left is authorisation, an independent audit, safety acceptance and a field trial. Software alone "
             "cannot complete those, so this figure cannot honestly reach 90% before Indian Railways acts."
         ),
-        bar_chart([(k, v) for k, v, _ in SOFTWARE_READINESS], "Software readiness by work package (judgement)"),
+        bar_chart([(k, v) for k, v, _ in readiness], "Software readiness by work package (judgement)"),
         Spacer(1, 3 * mm),
         table(
-            [["Work package", "Done", "Why this figure"]] + [[k, f"{v}%", why] for k, v, why in SOFTWARE_READINESS],
+            [["Work package", "Done", "Why this figure"]] + [[k, f"{v}%", why] for k, v, why in readiness],
             [62, 14, 94],
         ),  # fmt: skip
         Spacer(1, 4 * mm),
         p("Path to railway use (weights are shares of total effort)", "h2"),
-        bar_chart([(k, d) for k, _w, d, _a, _b in DEPLOYMENT_PATH], "Done per stage (judgement)"),
+        bar_chart([(k, d) for k, _w, d, _a, _b in path], "Done per stage (judgement)"),
         table(
             [["Stage", "Weight", "Done", "Done by this project", "Left: only the railway can do"]]
-            + [[k, f"{w}%", f"{d}%", a, b] for k, w, d, a, b in DEPLOYMENT_PATH],
+            + [[k, f"{w}%", f"{d}%", a, b] for k, w, d, a, b in path],
             [34, 16, 12, 50, 58],
         ),  # fmt: skip
         p(
