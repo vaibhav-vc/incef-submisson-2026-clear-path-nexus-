@@ -496,8 +496,9 @@ def real_data_section(rv: dict[str, Any]) -> list[Any]:
             f"{fc['split']['test_pairs']:,} forecasts for {fc['split']['test_runs']:,} real runs on days the model "
             f"never saw. Improvement over the previous rule: {gain['mae_reduction_min']} min "
             f"(95% interval {gain['ci95_min'][0]}-{gain['ci95_min'][1]}, bootstrap over runs). The P10-P90 band "
-            f"covered {fc['interval_p10_p90_coverage_pct']}% of real outcomes (target 80%). The deployed model is "
-            "exactly the one scored here; it is rebuilt locally and not distributed.",
+            f"covered {fc['interval_p10_p90_coverage_pct']}% of real outcomes (target 80%)"
+            + _coverage_note(fc.get("interval_coverage_detail"))
+            + ". The deployed model is exactly the one scored here; it is rebuilt locally and not distributed.",
             "small",
         ),
         p("Do conflict warnings come true? (retrospective shadow run on real days)", "h2"),
@@ -774,6 +775,20 @@ def production_section(audit: dict[str, Any]) -> list[Any]:
     return out
 
 
+def _coverage_note(detail: dict[str, Any] | None) -> str:
+    """How far the band's coverage ranges over situations and under damaged inputs (from the evidence)."""
+
+    if not detail or not detail.get("range_over_situations_pct"):
+        return ""
+    lo, hi = detail["range_over_situations_pct"]
+    damaged = detail.get("under_damaged_inputs_pct", {})
+    worst = min(damaged.items(), key=lambda kv: kv[1]) if damaged else None
+    text = f"; by situation it ranged from {lo}% to {hi}%"
+    if worst:
+        text += f", and under damaged inputs it fell as low as {worst[1]}% ({worst[0].replace('_', ' ')})"
+    return text
+
+
 def scenarios_section(rv: dict[str, Any], nat_stats: dict[str, Any]) -> list[Any]:
     """Section 4: shared track, the scenarios, the railway's remaining steps and the feature check (all figures read
     from evidence files)."""
@@ -825,8 +840,9 @@ def scenarios_section(rv: dict[str, Any], nat_stats: dict[str, Any]) -> list[Any
                 f"held out in five rolling-origin rounds and spread evenly over {f['situation_types_covered']} "
                 "situation types (time of day x how late x train class x line x network disrupted or not), so rare "
                 "situations count. Each was also scored under six damaged inputs: "
-                f"{f['scenario_variants_scored']:,} scored scenario-variants in all. The model trained on damaged "
-                "inputs with every situation type weighted in is now the deployed forecaster."
+                f"{f['scenario_variants_scored']:,} scored scenario-variants in all. Training rows are cut by when "
+                "their answer was observed, so no round learns from a report made after its origin. Errors here are "
+                "over a sample balanced across situation types, so they are higher than on the everyday mix."
             ),
             table(
                 [["Model", "Mean error (min)", "Within 15 min", "Situation types better than both baselines",
@@ -844,6 +860,21 @@ def scenarios_section(rv: dict[str, Any], nat_stats: dict[str, Any]) -> list[Any
                 [46, 30, 30, 32, 32],
             ),
         ]  # fmt: skip
+        sel = f.get("recipe_selection")
+        if sel:
+            c, dm = sel["clean_gain_of_scenario_recipe"], sel["damaged_inputs_gain_of_scenario_recipe"]
+            out.append(
+                p(
+                    "Which recipe is deployed was decided on the first three rounds only (test days up to 20 September; "
+                    f"the real validation tests after that date), over {c['scenarios']:,} paired scenarios. Gain of the "
+                    f"scenario recipe, minutes per forecast (95% interval): clean inputs {c['mean_gain_min']} "
+                    f"[{c['ci95_min'][0]}, {c['ci95_min'][1]}], damaged inputs {dm['mean_gain_min']} "
+                    f"[{dm['ci95_min'][0]}, {dm['ci95_min'][1]}]. Rule: deploy it if no worse on clean inputs and better "
+                    f"on damaged ones. Decision: {sel['decision']}. The gain is small: its value is robustness to bad "
+                    "reports, not everyday accuracy.",
+                    "small",
+                )
+            )  # fmt: skip
     pl = bank.get("planner", {})
     if pl:
         d = pl["delay_vs_wait_your_turn"]["first_ranked_saves_weighted_min"]
@@ -854,8 +885,10 @@ def scenarios_section(rv: dict[str, Any], nat_stats: dict[str, Any]) -> list[Any
                 "A train running at a random time of day is delayed at a station ahead by a real delay (drawn from "
                 f"{pl['real_delays_drawn_from']['losses_observed']:,} time losses observed between consecutive reports), "
                 "in some scenarios with a section ahead closed, obstructed, speed-restricted or under a weather alert, "
-                "or with a second train delayed nearby. Every candidate shown was checked independently and the first "
-                "was approved and checked again."
+                "or with a second train delayed nearby. Every candidate shown was checked by a separate brute-force "
+                "checker that shares no search code with the planner (railguard/independent.py), and the first was "
+                "approved and the plans in force checked again. Closures and obstructions have no 'wait your turn' "
+                "comparison: that plan would cross the blocked track."
             ),
             tiles(
                 [
