@@ -28,6 +28,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -197,24 +198,36 @@ def _decompose(
             u = best[u][1]
         chain.reverse()
         stations = [frm for _s, frm in chain[1:]]
-        if len(chain) < 2 or not {a, b} <= located:
+        if len(chain) < 2 or not {a, b} <= located or not all(c in located for c in stations):
             continue
         tolerance = max(COMPOSITE_OFFSET_KM, 0.08 * length)
-        if all(c in located and _offset_km(nodes[c], nodes[a], nodes[b]) <= tolerance for c in stations):
+        along = [_along(nodes[c], nodes[a], nodes[b]) for c in stations]
+        # Every station strictly between A and D, in order: a chain that starts beyond A and doubles back is not
+        # the A-D track (it would make A-D a piece of B-D and B-D a piece of A-D).
+        if all(0.0 < t < 1.0 and off <= tolerance for t, off in along) and all(
+            t0 < t1 for (t0, _o0), (t1, _o1) in pairwise(along)
+        ):
             chains[sid] = chain
 
-    def expand(sid: str, frm: str, depth: int = 0) -> list[tuple[str, str]]:
-        if sid not in chains or depth > 8:
+    def expand(sid: str, frm: str, path: frozenset[str]) -> list[tuple[str, str]]:
+        if sid not in chains:
             return [(sid, frm)]
+        if sid in path:
+            raise ValueError(f"{sid} is a piece of itself")
         a = sid.split("-", 1)[0]
         chain = chains[sid] if frm == a else [(s, sections[s].other(f)) for s, f in reversed(chains[sid])]
-        return [leaf for s, f in chain for leaf in expand(s, f, depth + 1)]
+        return [leaf for s, f in chain for leaf in expand(s, f, path | {sid})]
 
     out: dict[str, tuple] = {}
     for sid in chains:
         oriented = []
         for frm in sid.split("-", 1):
-            leaves = expand(sid, frm)
+            try:
+                leaves = expand(sid, frm, frozenset())
+            except ValueError:
+                break
+            if len({s for s, _f in leaves}) != len(leaves):
+                break  # a piece of track run over twice is not one section's track: the section stays whole
             total = sum(sections[s].length_km for s, _f in leaves) or 1.0
             run, parts = 0.0, []
             for s, f in leaves:
@@ -222,18 +235,21 @@ def _decompose(
                 parts.append((s, round(run, 6), round(min(run + share, 1.0), 6), f))
                 run += share
             oriented.append(tuple(parts))
-        out[sid] = (oriented[0], oriented[1])
+        if len(oriented) == 2:
+            out[sid] = (oriented[0], oriented[1])
     return out
 
 
-def _offset_km(p: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> float:
-    """Distance (km) from point p to the segment a-b, all (lon, lat)."""
+def _along(p: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> tuple[float, float]:
+    """Where point p lies along the line a-b, all (lon, lat): the fraction of the way from a to b of its
+    projection (not clamped: below 0 lies before a, above 1 beyond b) and its distance (km) from the segment."""
 
     k = 111.32 * math.cos(math.radians((a[1] + b[1]) / 2))
     px, py, dx, dy = (p[0] - a[0]) * k, (p[1] - a[1]) * 110.57, (b[0] - a[0]) * k, (b[1] - a[1]) * 110.57
     span = dx * dx + dy * dy
-    t = 0.0 if span == 0 else min(max((px * dx + py * dy) / span, 0.0), 1.0)
-    return math.hypot(px - t * dx, py - t * dy)
+    t = 0.0 if span == 0 else (px * dx + py * dy) / span
+    c = min(max(t, 0.0), 1.0)
+    return t, math.hypot(px - c * dx, py - c * dy)
 
 
 def _oriented(parts: dict[str, tuple], sid: str, frm: str) -> tuple[Part, ...]:
@@ -243,6 +259,22 @@ def _oriented(parts: dict[str, tuple], sid: str, frm: str) -> tuple[Part, ...]:
     if p is None:
         return ((sid, 0.0, 1.0, frm),)
     return p[0] if sid.split("-", 1)[0] == frm else p[1]
+
+
+def _combine(field: str, reports: dict[str, Any]) -> Any:
+    """The most restrictive of what the reports on one piece of track say about `field`."""
+
+    values = [v for _k, v in sorted(reports.items())]
+    if field == "available":
+        return all(values)
+    if field == "obstacle":
+        return any(values)
+    if field == "condition":
+        return min(values)
+    if field == "temp_restriction_kmph":
+        limits = [v for v in values if v]
+        return min(limits) if limits else None
+    return next((v for v in values if v), None)  # weather_alert
 
 
 def _section_id(a: str, b: str) -> str:
@@ -277,17 +309,6 @@ def build_national(
 
     sections, by_train, inferred_multi = _build_sections(rows, official_km, osm_sections)
     register = register or {}
-    for sid, row in register.get("sections", {}).items():
-        if sid in sections and row.get("tracks"):
-            sec = sections[sid]
-            quality = "|".join(
-                f"tracks:IR_REGISTER({row['source']})" if q.startswith("tracks:") else q
-                for q in sec.data_quality.split("|")
-            )
-            sections[sid] = replace(sec, tracks=int(row["tracks"]), data_quality=quality)
-    headway = {sid: float(r["headway_min"]) for sid, r in register.get("sections", {}).items()
-               if sid in sections and r.get("headway_min")}  # fmt: skip
-    loops = {c: int(r["loops"]) for c, r in register.get("stations", {}).items() if r.get("loops") is not None}
     nodes_used = {n for sid in sections for n in sid.split("-", 1)}
     neighbours: dict[str, set[str]] = defaultdict(set)
     for sid in sections:
@@ -297,6 +318,24 @@ def build_national(
     network = Network(nodes=_place_nodes(stations, nodes_used, neighbours), sections=sections)
     own = {n for n in nodes_used if stations.get(n, (None,))[0] is not None}
     parts = _decompose(sections, network.nodes, own)
+    # A register row for an express's stop-to-stop path is not applied: separation is checked on the physical
+    # sections it runs over, so the row would change nothing. `register validate` asks for those sections.
+    left_out = sorted(sid for sid in register.get("sections", {}) if sid in parts or sid not in sections)
+    left_out += sorted(c for c in register.get("stations", {}) if c not in nodes_used)
+    register_sections = {
+        sid: r for sid, r in register.get("sections", {}).items() if sid in sections and sid not in parts
+    }
+    for sid, row in register_sections.items():
+        if row.get("tracks"):
+            sec = sections[sid]
+            quality = "|".join(
+                f"tracks:IR_REGISTER({row['source']})" if q.startswith("tracks:") else q
+                for q in sec.data_quality.split("|")
+            )
+            sections[sid] = replace(sec, tracks=int(row["tracks"]), data_quality=quality)
+    headway = {sid: float(r["headway_min"]) for sid, r in register_sections.items() if r.get("headway_min")}
+    loops = {c: int(r["loops"]) for c, r in register.get("stations", {}).items()
+             if c in nodes_used and r.get("loops") is not None}  # fmt: skip
     runs, index = _build_runs(by_train, trains, running_days, service_date, validity)
     occupancy = _build_occupancy(runs, index, parts)
     run_km = sum(sections[sid].length_km for r in runs.values() for sid in r.sections) or 1.0
@@ -328,8 +367,9 @@ def build_national(
         "run_km_share_over_shorter_sections": round(composite_km / run_km, 3),
         "track_occupations_checked": sum(len(o.keys) for o in occupancy.values()),
         "register": register.get("checksum", "none loaded"),
-        "register_sections": len(register.get("sections", {})),
-        "register_stations": len(register.get("stations", {})),
+        "register_sections": len(register_sections),
+        "register_stations": len(loops),
+        "register_rows_not_applied": left_out[:50],
     }
     digest = checksum(
         {
@@ -724,6 +764,8 @@ class NationalTwin:
         self.changed_index: dict[str, list[tuple]] = defaultdict(list)
         self.changed_span: dict[str, float] = defaultdict(float)  # longest changed occupation per piece (a bound)
         self.section_overrides: dict[str, Section] = {}
+        # (piece of track, field) -> {reported section: value}: what each report said about that piece
+        self.reports: dict[tuple[str, str], dict[str, Any]] = {}
         self.evidence = EvidenceStore()  # live-feed positions only; absence = PROJECTED
         self.threats = ThreatRegistry()
         self.audit = AuditLog()
@@ -1039,19 +1081,60 @@ class NationalTwin:
             insort(self.changed_index[psid], entry)
             self.changed_span[psid] = max(self.changed_span[psid], entry[3] - entry[0])
 
-    def _violations(self, plan: Plan, start: int, run: Run) -> list[str]:
+    def _no_loop_waits(self, key: str, plan: Plan, start: int, other: bool = False) -> list[str]:
+        """Indian Railways' register: a new planned wait (a hold, a yield, a wait for a path) on single line at a
+        station with no loop is refused - the train could not stand clear of the line there. Waits are compared
+        per station with the run's current plan, so a diversion's renumbered sections are compared correctly."""
+
+        if not self.data.loops:
+            return []
+        current = self.plan_of(key)
+        before: dict[str, float] = defaultdict(float)
+        for i, v in current.sources.items():
+            if i < len(current.frm):
+                before[current.frm[i]] += v
+        after: dict[str, float] = defaultdict(float)
+        for i, v in plan.sources.items():
+            if i < len(plan.frm):
+                after[plan.frm[i]] += v
         out = []
-        if self.data.loops:  # Indian Railways' register: no planned wait on single line where there is no loop
-            current = self.plan_of(run.key).sources
-            for i in range(start, len(plan.sections)):
-                code = plan.frm[i]
-                if self.data.loops.get(code, 1) > 0 or plan.sources.get(i, 0.0) <= current.get(i, 0.0) + 1e-6:
-                    continue
-                lines = [self.section(p).tracks for p, *_ in self.parts(plan.sections[i], code)[:1]]
-                if i:
-                    lines.append(self.section(self.parts(plan.sections[i - 1], plan.frm[i - 1])[-1][0]).tracks)
-                if min(lines) == 1:
-                    out.append(f"no loop at {code} to wait in on single line")
+        for i in range(start, len(plan.sections)):
+            code = plan.frm[i]
+            if self.data.loops.get(code, 1) > 0 or after[code] <= before[code] + 1e-6:
+                continue
+            lines = [self.section(p).tracks for p, *_ in self.parts(plan.sections[i], code)[:1]]
+            if i:
+                lines.append(self.section(self.parts(plan.sections[i - 1], plan.frm[i - 1])[-1][0]).tracks)
+            if min(lines) == 1:
+                text = f"no loop at {code} to wait in on single line"
+                out.append(f"{key} (told to wait): {text}" if other else text)
+                before[code] = after[code]  # reported once per station
+        return out
+
+    def _committed(self, key: str, start: int) -> list[tuple[str, str, bool, str]]:
+        """Closed or obstructed track the train can no longer plan round: the rest of the section it is running
+        on when that section is fixed (it has entered it, so the plan starts after it). A non-stop section runs
+        over shorter ones, so a closure can lie ahead on it. (piece, station it is entered from, train already
+        on it, what is wrong)."""
+
+        pos = self.position(key)
+        if pos["state"] != "RUNNING" or pos["index"] >= start:
+            return []
+        sid, frm = pos["section_id"], pos["from_node"]
+        fraction = pos["offset_km"] / max(self.section(sid).length_km, 1e-6)
+        out = []
+        for psid, f0, f1, pfrm in self.parts(sid, frm):
+            sec = self.section(psid)
+            if f1 > fraction and (not sec.available or sec.obstacle):
+                out.append(
+                    (psid, pfrm, f0 <= fraction, "closed" if not sec.available else "obstacle pending inspection")
+                )
+        return out
+
+    def _violations(self, plan: Plan, start: int, run: Run) -> list[str]:
+        out = self._no_loop_waits(run.key, plan, start)
+        for psid, _pfrm, _on, what in self._committed(run.key, start):
+            out.append(f"{psid} {what}, ahead on the section the train is running on")
         for sid in plan.sections[start:]:
             sec = self.physical(sid)
             if not sec.available:
@@ -1142,7 +1225,8 @@ class NationalTwin:
             se,
             sx,
             min(plan.prefix, s),
-            dict(plan.sources),
+            # Waits keep their stations: those after the diversion are renumbered, those it bypasses are dropped
+            {i if i <= s else i + len(route) - (g - s + 1): v for i, v in plan.sources.items() if i <= s or i > g},
             note=f"reroute {plan.frm[s]}->{plan.to[g]} via {len(route)} sections",
         )
 
@@ -1365,15 +1449,29 @@ class NationalTwin:
                 }
             )
         # Every option must avoid closed, obstructed or axle-limited sections (yields only re-time other trains
-        # on their unchanged routes, so they cannot add such a section).
+        # on their unchanged routes, so they cannot add such a section) - and no train it makes wait may be told
+        # to wait on single line where there is no loop.
         for cand in out:
-            if cand["feasible"] and (reasons := self._violations(cand["plan"], start, run)):
+            if not cand["feasible"]:
+                continue
+            reasons = self._violations(cand["plan"], start, run)
+            for okey, (oplan, _h) in sorted(cand["yields"].items()):
+                reasons += self._no_loop_waits(okey, oplan, self.position(okey)["index"], other=True)
+            if reasons:
                 cand.update(feasible=False, reasons=reasons)
         return out
 
     def _hold_short(self, key: str, start: int) -> str | None:
         """When nothing gets the train round a closed or obstructed section: where it should wait for it."""
 
+        for psid, pfrm, on, what in self._committed(key, start):
+            sid = self.position(key)["section_id"]
+            if on:
+                return (f"{key} is running on {psid}, reported {what}: the controller to instruct the loco pilot "
+                        "at once (no diversion possible from here)")  # fmt: skip
+            how = "reopens" if what == "closed" else "is inspected and cleared"
+            return (f"Stop {key} at {pfrm}, the last station before {psid} on its run over {sid}, until the "
+                    f"section {how}: no diversion possible from here")  # fmt: skip
         plan = self.plan_of(key)
         for i in range(start, len(plan.sections)):
             sec = self.physical(plan.sections[i])
@@ -1598,6 +1696,7 @@ class NationalTwin:
                 }
                 for s, v in sorted(self.section_overrides.items())
             },
+            "reports": {f"{p}|{f}": dict(sorted(v.items())) for (p, f), v in sorted(self.reports.items())},
             "pending": self.pending,
             "evidence": [r.to_dict() for _k, r in sorted(self.evidence.records.items())],
             "flags": {k: v for k, v in sorted(self.flags.items()) if v},
@@ -1643,6 +1742,9 @@ class NationalTwin:
             )
         for sid, v in dynamic["sections"].items():
             self.section_overrides[sid] = replace(self.net.sections[sid], **v)
+        for k, v in dynamic.get("reports", {}).items():
+            piece, field = k.split("|", 1)
+            self.reports[(piece, field)] = dict(v)
         self.pending = {k: dict(v) for k, v in dynamic["pending"].items()}
         for record in dynamic["evidence"]:
             self.evidence.records[record["key"]] = EvidenceRecord(**record)
@@ -1660,8 +1762,17 @@ class NationalTwin:
             if set(changes) - allowed:
                 raise ValueError(f"fields {sorted(set(changes) - allowed)} cannot be changed")
             self.section_overrides[sid] = replace(self.section(sid), **changes)
-            for piece in sorted(self.members.get(sid, ())):  # it is the track of those shorter sections too
-                self.section_overrides[piece] = replace(self.section(piece), **changes)
+            pieces = sorted(self.members.get(sid, ()))
+            for field, value in changes.items():
+                if not pieces:  # a report on a piece of track itself settles that piece
+                    self.reports[(sid, field)] = {sid: value}
+                for piece in pieces:  # it is the track of those shorter sections too
+                    self.reports.setdefault((piece, field), {})[sid] = value
+            for piece in pieces:
+                # Each piece keeps the most restrictive state any report on it still holds: clearing the long
+                # section does not clear an obstacle reported on one of its pieces on its own.
+                combined = {f: _combine(f, self.reports[(piece, f)]) for f in changes}
+                self.section_overrides[piece] = replace(self.section(piece), **combined)
             self.audit.record(int(self.now * 60), "SECTION_UPDATED", source, {"section": sid, **changes})
             self.refresh()
             return self.section_overrides[sid]

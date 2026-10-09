@@ -37,7 +37,10 @@ RAJ, LOCAL, OPPOSING = "12951@0", "59001@0", "59004@0"
 
 @pytest.fixture(scope="module")
 def data(tmp_path_factory):
-    tmp: Path = tmp_path_factory.mktemp("shared")
+    return _build(tmp_path_factory.mktemp("shared"), STATIONS, TRAINS)
+
+
+def _build(tmp: Path, station_xy: dict, train_stops: dict, register: dict | None = None):
     stations = {
         "type": "FeatureCollection",
         "features": [
@@ -46,7 +49,7 @@ def data(tmp_path_factory):
                 "geometry": {"type": "Point", "coordinates": list(xy)},
                 "properties": {"code": c, "name": f"Station {c}", "zone": "NR", "state": "Delhi"},
             }
-            for c, xy in STATIONS.items()
+            for c, xy in station_xy.items()
         ],
     }
     trains = {
@@ -64,11 +67,11 @@ def data(tmp_path_factory):
                     "return_train": "",
                 },
             }  # fmt: skip
-            for n, (t, _stops) in TRAINS.items()
+            for n, (t, _stops) in train_stops.items()
         ],
     }
     schedules, row_id = [], 1
-    for number, (_t, stops) in TRAINS.items():
+    for number, (_t, stops) in train_stops.items():
         for code, arr, dep in stops:
             schedules.append(
                 {
@@ -88,7 +91,7 @@ def data(tmp_path_factory):
         paths[key] = tmp / f"{key}.json"
         paths[key].write_text(json.dumps(payload))
     build_database(paths, tmp / "rail.sqlite")
-    return build_national(tmp / "rail.sqlite")
+    return build_national(tmp / "rail.sqlite", register=register)
 
 
 @pytest.fixture()
@@ -209,3 +212,71 @@ def test_a_diverted_train_may_wait_for_paths_on_the_diversion(twin):
     for c in cands:  # every feasible option avoids the closed track, waits or not
         if c["feasible"]:
             assert "B-C" not in c["plan"].sections and "A-D" not in c["plan"].sections
+
+
+def test_a_chain_that_doubles_back_is_not_the_section_track(tmp_path):
+    # B lies 1.5 km beyond A: B-D runs through A, so B-D is B-A then A-D - but A-D is not B-D "through" B.
+    stations = {"A": (77.0, 28.0), "B": (76.985, 28.0), "D": (77.5, 28.0)}
+    trains = {
+        "12001": ("Raj", [("A", "None", "10:00"), ("D", "10:40", "None")]),
+        "12002": ("Raj", [("B", "None", "11:00"), ("D", "11:26", "None")]),
+        "59001": ("Pass", [("B", "None", "08:00"), ("A", "08:05", "None")]),
+    }
+    data = _build(tmp_path, stations, trains)
+    assert "A-D" not in data.parts  # its chain via B doubles back
+    assert [p[0] for p in data.parts["B-D"][0]] == ["A-B", "A-D"]
+    for forward, backward in data.parts.values():  # every piece is physical track, once
+        for pieces in (forward, backward):
+            assert len({p[0] for p in pieces}) == len(pieces) and not {p[0] for p in pieces} & set(data.parts)
+    twin = NationalTwin(data, start_min=590.0)
+    twin.disrupt("12001@0", "A", 45)  # now on A-D 10:45-11:25 while 12002 runs through A from about 11:01
+    found = twin.conflicts("12001@0", twin.plan_of("12001@0"), 0)
+    assert any(c["other"] == "12002@0" and c["section_id"] == "A-D" and c["is_conflict"] for c in found)
+
+
+def test_a_closure_ahead_on_the_section_the_train_is_running_on_is_not_ignored(tmp_path):
+    trains = dict(TRAINS)
+    trains["12951"] = ("Raj", [("A", "None", "10:00"), ("D", "13:00", "None")])  # slow: C-D far ahead
+    trains["59001"] = ("Pass", [("A", "None", "14:30"), ("B", "14:42", "14:43"), ("C", "14:55", "14:56"),
+                                ("D", "15:08", "None")])  # fmt: skip
+    twin = NationalTwin(_build(tmp_path, STATIONS, trains), start_min=603.0)  # 10:03, on the A-B piece of A-D
+    assert twin.position(RAJ)["section_id"] == "A-D" and twin.first_open(RAJ) == 1
+    twin.update_section("C-D", available=False)
+    rec = twin.recommend(RAJ)
+    assert rec["state"] == "NO_FEASIBLE_PLAN" and not rec["approvable"]
+    assert any("C-D closed, ahead on the section the train is running on" in r for x in rec["ranking"]["rejected"]
+               for r in x["reasons"])  # fmt: skip
+    assert rec["ranking"]["fallback"].startswith(f"Stop {RAJ} at C, the last station before C-D on its run over A-D")
+
+
+def test_trains_told_to_wait_may_not_wait_where_there_is_no_loop(tmp_path):
+    register = {"sections": {}, "stations": {c: {"loops": 0, "source": "IR_SWR"} for c in "AB"}, "checksum": "t"}
+    twin = NationalTwin(_build(tmp_path, STATIONS, TRAINS, register), start_min=590.0)
+    twin.disrupt(RAJ, "A", 30)
+    rec = twin.recommend(RAJ)
+    for (_key, _cid), cand in twin._cache.items():
+        for okey, (oplan, _h) in cand["yields"].items():
+            current = twin.plan_of(okey)
+            for i, v in oplan.sources.items():
+                if v > current.sources.get(i, 0.0) + 1e-6:
+                    assert oplan.frm[i] not in "AB", (cand["label"], okey, oplan.frm[i])
+    rejected = [r for x in rec["ranking"]["rejected"] for r in x["reasons"]]
+    assert any("(told to wait): no loop at A" in r for r in rejected)
+
+
+def test_clearing_the_express_section_keeps_an_obstacle_reported_on_a_piece(twin):
+    twin.update_section("B-C", obstacle=True)
+    twin.update_section("A-D", obstacle=True)
+    twin.update_section("A-D", obstacle=False)
+    assert twin.section("B-C").obstacle and twin.physical("A-D").obstacle
+    assert not twin.section("A-B").obstacle and not twin.section("C-D").obstacle
+    twin.update_section("B-C", obstacle=False)  # the piece itself inspected and cleared
+    assert not twin.physical("A-D").obstacle
+
+
+def test_a_register_row_for_an_express_path_is_not_applied(tmp_path):
+    register = {"sections": {"A-D": {"tracks": 2, "headway_min": 1.0, "source": "IR_WTT"}}, "stations": {},
+                "checksum": "t"}  # fmt: skip
+    data = _build(tmp_path, STATIONS, TRAINS, register)
+    assert "A-D" not in data.headway and data.network.sections["A-D"].tracks == 1
+    assert data.stats["register_rows_not_applied"] == ["A-D"]
