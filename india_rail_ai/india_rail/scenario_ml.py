@@ -91,22 +91,38 @@ def rows_with_state(
     return rows
 
 
+def training_rows(d: dict[str, pd.DataFrame], lookups: Any, state: pd.DataFrame, origin: str) -> pd.DataFrame:
+    """Rows a model trained at `origin` may learn from: runs started by then whose answer was observed by then
+    (a run started on the origin day can report the next day, after the forecasts it would be scored on)."""
+
+    rows = rows_with_state(d, lookups, state, ("2024-09-01", origin))
+    return rows[rows.tgt_day <= origin].reset_index(drop=True)
+
+
 # ---- scenarios -----------------------------------------------------------------------------------------
 def strata(rows: pd.DataFrame, net_q75: float) -> dict[str, pd.Series]:
     hour = rows.hour
     tod = np.select([(hour >= 22) | (hour < 6), hour < 10, hour < 17], ["night 22-06", "morning 06-10", "day 10-17"],
                     "evening 17-22")  # fmt: skip
-    single_share = (rows.single_km_gap / rows.km_gap.replace(0, np.nan)).fillna(0)
+    single_share = rows.single_km_gap / rows.km_gap.replace(0, np.nan)
     return {
         "time_of_day": pd.Series(tod, index=rows.index),
         "day_type": pd.Series(np.where(rows.weekday >= 5, "weekend", "weekday"), index=rows.index),
-        "current_delay": pd.cut(rows.d_now, [-1e9, 5, 30, 120, 1e9], labels=["<5 min", "5-30", "30-120", ">120"]),
+        # 5 minutes late counts as late, as in the twin's rule
+        "current_delay": pd.cut(
+            rows.d_now, [-1e9, 5, 30, 120, 1e9], labels=["<5 min", "5-30", "30-120", ">=120"], right=False
+        ),  # fmt: skip
         "train_class": rows.priority.map(
             {1: "premium", 2: "superfast", 3: "mail/express", 4: "passenger/suburban", 5: "hill"}
         ).fillna("other"),  # fmt: skip
         "line": pd.Series(
-            np.where(single_share >= 0.5, "mostly single line", "mostly double/multiple"), index=rows.index
-        ),
+            np.select(
+                [single_share.isna() & rows.km_gap.isna(), single_share.fillna(0) >= 0.5],
+                ["route facts unknown", "mostly single line"],
+                "mostly double/multiple",
+            ),
+            index=rows.index,
+        ),  # fmt: skip
         "horizon": pd.cut(rows.sch_gap, [-1, 60, 180, 360, 1e9], labels=["<=1h", "1-3h", "3-6h", ">6h"]),
         "network": pd.Series(
             np.where(rows.net_delay_2h >= net_q75, "disrupted (top quarter)", "normal"), index=rows.index
@@ -140,7 +156,7 @@ def run_round(d, state, origin: str, seed: int = 0) -> dict[str, Any]:
 
     lk = realval.Lookups(d, history_until=origin)
     end = (date.fromisoformat(origin) + timedelta(days=TEST_DAYS)).isoformat()
-    train = rows_with_state(d, lk, state, ("2024-09-01", origin))
+    train = training_rows(d, lk, state, origin)
     test = rows_with_state(d, lk, state, ((date.fromisoformat(origin) + timedelta(days=1)).isoformat(), end))
     rng = np.random.default_rng(seed)
     fit = train.iloc[rng.choice(len(train), size=min(len(train), FIT_ROWS), replace=False)]

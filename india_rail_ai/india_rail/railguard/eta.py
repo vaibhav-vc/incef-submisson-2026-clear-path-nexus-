@@ -35,7 +35,7 @@ class EtaForecaster:
         self.features = bundle["features"]
         data = realval.load(db or timetable_source()[1], obs_db=REAL_DB_PATH)
         # In operation the history is every real day available; validation passes the training cut-off.
-        self.lookups = realval.Lookups(data, history_until=history_until or max(data["obs"].date))
+        self.lookups = realval.Lookups(data, history_until=history_until or max(data["obs"].obs_day))
         self.source = bundle.get("trained_on", "")
 
     def _rows(self, train: str, run_date: str, p: int, d_now: float, targets: list[int]) -> pd.DataFrame:

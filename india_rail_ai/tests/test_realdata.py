@@ -117,6 +117,7 @@ def _frames() -> dict[str, pd.DataFrame]:
     )
     obs["act"] = obs.sch + obs.delay
     obs["run"] = obs.train + "|" + obs.date
+    obs["obs_day"] = obs.date
     stops = pd.DataFrame(
         {"train": ["1"] * 3 + ["2"] * 3, "seq": [0, 1, 2] * 2, "station": list("ABCABC"), "arr_min": [0, 30, 60] * 2,
          "dep_min": [0, 32, 60] * 2, "dwell_min": [0, 2, 0] * 2}
@@ -148,6 +149,27 @@ def test_forecast_history_never_contains_the_rows_own_answer():
     # the same train on a later (test) date sees the training day's delay as history
     later = lookups.rows("1", "2024-09-25", 0, 0.0, [2])
     assert later["hist_q"][0] == 20.0 and later["km_gap"][0] == 60.0 and later["single_km_gap"][0] == 30.0
+
+
+def test_a_report_made_after_the_cut_off_is_neither_history_nor_a_training_answer():
+    d = _frames()
+    obs = d["obs"]
+    # train 1 started on the 2nd; say its last report came in on the 3rd (an overnight run)
+    obs.loc[(obs.train == "1") & (obs.seq == 2), "obs_day"] = "2024-09-03"
+    cut = realval.Lookups(d, history_until="2024-09-02")
+    assert cut.hist_n.get(("1", "C"), 0) == 0 and cut.hist_n[("1", "B")] == 1  # by when it was observed
+    rows = realval.forecast_rows(d, cut)
+    first = rows[rows.run == "1|2024-09-02"]
+    assert set(first.tgt_day) == {"2024-09-02", "2024-09-03"}  # each answer carries the day it was observed
+    trainable = first[first.tgt_day <= "2024-09-02"]
+    assert (trainable.d_tgt == 8.0).all()  # only the answer known by the cut-off may be learned from
+
+
+def test_an_unknown_train_class_is_unknown_to_the_forecaster():
+    d = _frames()
+    d["trains"] = pd.DataFrame({"train": ["1", "2"], "type": ["Exp", "Pass"], "priority": [3.0, np.nan]})
+    row = realval.Lookups(d).rows("2", "2024-09-25", 0, 0.0, [2])
+    assert np.isnan(row["priority"][0])  # not silently Mail/Express
 
 
 def test_flag_scores_compare_with_trains_in_the_same_state():

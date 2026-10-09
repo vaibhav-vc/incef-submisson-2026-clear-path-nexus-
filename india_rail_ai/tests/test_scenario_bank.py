@@ -8,7 +8,6 @@ import pytest
 from test_shared_track import data  # noqa: F401 - synthetic network with an express over a local's track
 
 from india_rail import realval, scenario_bank
-from india_rail.network import UNKNOWN_PRIORITY
 from india_rail.railguard.national import NationalTwin
 
 
@@ -42,7 +41,7 @@ def test_each_damaged_input_changes_only_what_it_names():
     assert set(np.abs(garbled.d_now - f.d_now).round(6)) <= {0.0, 10.0, 30.0}  # +-30, floored at 0
     cold = scenario_bank.damage(f, "cold_start", codes, rng)
     assert cold.hist_q.isna().all() and (cold.hist_n_q == 0).all() and cold.d_now.equals(f.d_now)
-    assert (scenario_bank.damage(f, "unknown_train_class", codes, rng).priority == UNKNOWN_PRIORITY).all()
+    assert scenario_bank.damage(f, "unknown_train_class", codes, rng).priority.isna().all()  # unknown, not 3
     route = scenario_bank.damage(f, "unknown_route_facts", codes, rng)
     assert route.km_gap.isna().all() and route.single_km_gap.isna().all() and route.d_now.equals(f.d_now)
     with pytest.raises(ValueError):
@@ -61,7 +60,10 @@ def test_stress_training_keeps_the_real_answer_and_the_deployed_recipe_is_unchan
     f["d_tgt"] = 12.0
     out = realval.stress_training(f, np.random.default_rng(3))
     assert (out.d_tgt == 12.0).all() and len(out) == len(f)  # the target is always the real outcome
-    assert (out.d_now != f.d_now).any() and (out.priority == UNKNOWN_PRIORITY).any() and out.km_gap.isna().any()
+    assert (out.d_now != f.d_now).any() and out.priority.isna().any() and out.km_gap.isna().any()
+    # at most one damage per row: a row whose class or route facts were blanked kept its real report
+    blanked = out.priority.isna() | out.km_gap.isna()
+    assert (out.d_now[blanked] == f.d_now[blanked]).all() and not (out.priority.isna() & out.km_gap.isna()).any()
     # cold_start draws exactly as the deployed training always did: same rows lose their history
     a, b = realval.cold_start(f, np.random.default_rng(9)), realval.cold_start(f, np.random.default_rng(9))
     assert a.hist_q.isna().equals(b.hist_q.isna()) and 0.05 < a.hist_q.isna().mean() < 0.3
@@ -78,3 +80,21 @@ def test_planner_scenarios_run_clean_on_shared_track(data):  # noqa: F811
     summary = scenario_bank.summarise_planner(results, losses, 1.0, 7)
     assert summary["violations"] == 0 and summary["crashes"] == 0
     assert summary["run"] + sum(summary["skipped"].values()) == len(results)
+
+
+def test_the_recipe_is_chosen_only_on_a_clear_interval():
+    win = {"clean": {"ci95_min": [-0.01, 0.05]}, "damaged": {"ci95_min": [0.2, 0.6]}}
+    assert scenario_bank._decide(win) == "scenario"
+    worse = {"clean": {"ci95_min": [-0.2, -0.05]}, "damaged": {"ci95_min": [0.2, 0.6]}}
+    assert scenario_bank._decide(worse) == "plain"
+    unclear = {"clean": {"ci95_min": [-0.01, 0.05]}, "damaged": {"ci95_min": [-0.1, 0.6]}}
+    assert scenario_bank._decide(unclear) == "plain"
+    assert scenario_bank._decide({"clean": {"scenarios": 0}, "damaged": {"scenarios": 0}}).startswith("undecided")
+    paired = scenario_bank._paired(np.array([0.5, 0.4, 0.6, 0.5]), seed=1)
+    assert paired["scenarios"] == 4 and paired["ci95_min"][0] > 0
+
+
+def test_scores_never_write_nan_when_no_situation_has_enough_scenarios():
+    err = {m: np.array([1.0, 2.0]) for m in ("persistence", "twin_rule", "learned")}
+    out = scenario_bank._scores(err, np.array([0, 1]), np.array(["a", "b"]))
+    assert out["learned"]["worst_situation_mae_min"] is None and out["learned"]["mae_min"] == 1.5

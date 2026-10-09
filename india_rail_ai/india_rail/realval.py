@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 
 from india_rail.ingest import DB_PATH, PACKAGE_ROOT
-from india_rail.network import DEFAULT_PRIORITY, UNKNOWN_PRIORITY
+from india_rail.network import DEFAULT_PRIORITY
 from india_rail.realdata import EXTREME_DELAY_MIN, OBSERVED, REAL_DB_PATH
 
 EVIDENCE = PACKAGE_ROOT / "seva2026" / "evidence" / "real_data" / "real_validation.json"
@@ -77,8 +77,14 @@ def load(db: Path = REAL_DB_PATH, obs_db: Path | None = None) -> dict[str, pd.Da
     sections["km"] = sections["km"].fillna(sections.crow_km * 1.03)
     sections["single"] = [lines.get(e) == 1 for e in edge]
     sections["osm_lines"] = [lines.get(e) for e in edge]
-    trains["priority"] = trains.type.map(DEFAULT_PRIORITY).fillna(UNKNOWN_PRIORITY).astype(int)
+    # An unknown train class stays unknown (NaN) for the forecaster, not the Mail/Express value the twin assumes
+    trains["priority"] = trains.type.map(DEFAULT_PRIORITY).astype(float)
     obs["run"] = obs.train + "|" + obs.date
+    # The day each report was made (a run started on the 20th can report on the 21st): history and training rows
+    # are cut by when a report was observed, not by the day its run started.
+    at = obs.act.where(obs.act.notna(), obs.sch + obs.delay).fillna(0.0).to_numpy(dtype=float)
+    start = pd.to_datetime(obs.date).to_numpy()
+    obs["obs_day"] = pd.DatetimeIndex(start + pd.to_timedelta(np.floor(at / 1440), unit="D")).strftime("%Y-%m-%d")
     return {"obs": obs, "stops": stops, "sections": sections, "trains": trains}
 
 
@@ -189,7 +195,7 @@ class Lookups:
         self.sch = {(t, s): a for t, s, a in zip(st.train, st.seq, st.arr_min, strict=True)}
         self.station = {(t, s): c for t, s, c in zip(st.train, st.seq, st.station, strict=True)}
         self.priority = dict(zip(trains.train, trains.priority, strict=True))
-        hist = obs[(obs.date <= history_until) & (obs.delay <= EXTREME_DELAY_MIN)]
+        hist = obs[(obs.obs_day <= history_until) & (obs.delay <= EXTREME_DELAY_MIN)]
         agg = hist.groupby(["train", "station"]).delay.agg(["sum", "count"])
         self.hist_sum = agg["sum"].to_dict()
         self.hist_n = agg["count"].to_dict()
@@ -197,11 +203,11 @@ class Lookups:
     def rows(self, train: str, day: str, p: int, d_now: float, targets: list[int], own: dict | None = None) -> dict:
         """Feature rows for a train at stop `p` with delay `d_now`, forecasting the given later stops.
 
-        `own` (seq -> delay) is this run's own observations, left out of the history when the run's date is in
-        the history, so no row ever sees its own answer."""
+        `own` (seq -> delay) is this run's own reports that are in the history (observed by `history_until`):
+        they are left out of it, so no row ever sees its own answer."""
 
         km, single, cum_r = self.km, self.single, self.cum_r
-        leave_out = own if (own is not None and day <= self.history_until) else {}
+        leave_out = own or {}
 
         def hist(seq: int) -> tuple[float, int]:
             code = self.station.get((train, seq))
@@ -227,7 +233,7 @@ class Lookups:
             out["hist_change"].append(h_q - h_p)
         n = len(targets)
         out["d_now"] = [d_now] * n
-        out["priority"] = [self.priority.get(train, UNKNOWN_PRIORITY)] * n
+        out["priority"] = [self.priority.get(train, np.nan)] * n
         out["hour"] = [(sch_p % 1440) / 60] * n
         out["weekday"] = [date.fromisoformat(day).weekday()] * n
         return out
@@ -240,16 +246,17 @@ def forecast_rows(d: dict[str, pd.DataFrame], lookups: Lookups | None = None) ->
     o = d["obs"][d["obs"].delay <= EXTREME_DELAY_MIN]
     columns: dict[str, list] = {}
     for run, g in o.groupby("run", sort=False):
-        seq, delay = g.seq.to_numpy(), g.delay.to_numpy()
+        seq, delay, seen = g.seq.to_numpy(), g.delay.to_numpy(), g.obs_day.to_numpy()
         n = len(seq)
         if n < 2:
             continue
         train, day = g.train.iloc[0], g.date.iloc[0]
-        own = dict(zip(seq.tolist(), delay.tolist(), strict=True))
+        own = {int(s): float(v) for s, v, o in zip(seq, delay, seen, strict=True) if o <= lk.history_until}
         for p in range(n - 1):
             qs = sorted(q for q in {p + 1, p + 3, p + 6, n - 1} if p < q < n)
             block = lk.rows(train, day, int(seq[p]), float(delay[p]), [int(seq[q]) for q in qs], own)
             block["d_tgt"] = [float(delay[q]) for q in qs]
+            block["tgt_day"] = [seen[q] for q in qs]  # when the answer was observed
             block["d_prev"] = [float(delay[p - 1]) if p else np.nan] * len(qs)  # the run's previous report
             block["now_seq"] = [int(seq[p])] * len(qs)
             block["run"], block["date"] = [run] * len(qs), [day] * len(qs)
@@ -283,20 +290,25 @@ def cold_start(fit: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
 
 
 def stress_training(fit: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
-    """cold_start, plus rows with the damaged inputs of STRESS_TRAINING: the target stays the real outcome, so
-    the model learns how far to trust a report that may be noisy, stale or wrong."""
+    """cold_start, plus rows with the damaged inputs of STRESS_TRAINING (at most one per row, in the shares
+    given): the target stays the real outcome, so the model learns how far to trust a report that may be noisy,
+    stale or wrong."""
 
     out = cold_start(fit, rng)
     n, d_now = len(out), out.d_now.to_numpy(dtype=float).copy()
-    noisy = rng.random(n) < STRESS_TRAINING["feed_noise_pm3_min"]
+    names = list(STRESS_TRAINING)
+    edges = np.cumsum([STRESS_TRAINING[k] for k in names])
+    which = np.searchsorted(edges, rng.random(n), side="right")  # index into names; len(names) = undamaged
+    pick = {k: which == i for i, k in enumerate(names)}
+    noisy = pick["feed_noise_pm3_min"]
     d_now[noisy] = np.maximum(d_now[noisy] + rng.uniform(-3, 3, int(noisy.sum())), 0)
-    missed = (rng.random(n) < STRESS_TRAINING["missed_report"]) & out.d_prev.notna().to_numpy()
+    missed = pick["missed_report"] & out.d_prev.notna().to_numpy()
     d_now[missed] = out.d_prev.to_numpy(dtype=float)[missed]
-    garbled = rng.random(n) < STRESS_TRAINING["garbled_report_pm30_min"]
+    garbled = pick["garbled_report_pm30_min"]
     d_now[garbled] = np.maximum(d_now[garbled] + rng.choice([-30.0, 30.0], int(garbled.sum())), 0)
     out["d_now"] = d_now
-    out.loc[rng.random(n) < STRESS_TRAINING["unknown_train_class"], "priority"] = UNKNOWN_PRIORITY
-    out.loc[rng.random(n) < STRESS_TRAINING["unknown_route_facts"], ["km_gap", "single_km_gap"]] = np.nan
+    out.loc[pick["unknown_train_class"], "priority"] = np.nan
+    out.loc[pick["unknown_route_facts"], ["km_gap", "single_km_gap"]] = np.nan
     return out
 
 
@@ -315,30 +327,44 @@ def _with_network_state(d: dict[str, pd.DataFrame], rows: pd.DataFrame) -> pd.Da
     return rows
 
 
-# How the deployed forecaster is trained: "scenario" = on the six damaged inputs, with every situation type weighted
-# in (chosen on 75,556 held-out real scenarios, scenario_bank.py); "plain" = random rows, 15% without history.
-FORECAST_RECIPE = "scenario"
+def forecast_recipe() -> str:
+    """How the deployed forecaster is trained, as decided by the scenario bank on its selection rounds (days
+    before the test days used here): "scenario" = on the six damaged inputs, every situation type weighted in;
+    "plain" = random rows, 15% without history (also when no decision has been recorded)."""
+
+    from india_rail.scenario_bank import EVIDENCE as BANK
+
+    try:
+        decision = json.loads(BANK.read_text())["forecasts"]["recipe_selection"]["decision"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return "plain"
+    return decision if decision in ("scenario", "plain") else "plain"
 
 
 def forecast(
-    d: dict[str, pd.DataFrame], seed: int = 0, save_model: bool = True, recipe: str = FORECAST_RECIPE
+    d: dict[str, pd.DataFrame], seed: int = 0, save_model: bool = True, recipe: str | None = None
 ) -> tuple[dict[str, Any], dict]:
     """Score delay forecasts on the test dates; returns (scores, fitted models)."""
 
     from sklearn.ensemble import HistGradientBoostingRegressor
 
+    recipe = recipe or forecast_recipe()
+
     rows = forecast_rows(d)
     if recipe == "scenario":
         rows = _with_network_state(d, rows)
-    train, test = rows[rows.date <= SPLIT_DATE], rows[rows.date > SPLIT_DATE]
+    # Training rows: runs started by the split whose answer was also observed by then (a run started on the split
+    # day can report the next day); test rows: runs started after it.
+    train, test = rows[(rows.date <= SPLIT_DATE) & (rows.tgt_day <= SPLIT_DATE)], rows[rows.date > SPLIT_DATE]
     rng = np.random.default_rng(seed)
     fit = train.iloc[rng.choice(len(train), size=min(len(train), 1_500_000), replace=False)].copy()
     weights = None
     if recipe == "scenario":
         from india_rail.scenario_bank import balance_weights, cells
 
-        fit = stress_training(fit, rng)
+        # Situation types of the real rows (before any damage), so damaged rows are not a type of their own
         weights = balance_weights(cells(fit, float(np.nanquantile(train.net_delay_2h, 0.75))))
+        fit = stress_training(fit, rng)
     else:
         fit = cold_start(fit, rng)  # measured on the cold-start test below and in scenario_ml.py
 
@@ -379,7 +405,9 @@ def forecast(
     scores["learned_from_real_running"]["cold_start_mae_min"] = round(float(cold_err.mean()), 2)
     p_lo = np.maximum(test.d_now + lo.predict(test[FORECAST_FEATURES]), 0)
     p_hi = np.maximum(test.d_now + hi.predict(test[FORECAST_FEATURES]), 0)
-    coverage = float(((truth >= p_lo) & (truth <= p_hi)).mean() * 100)
+    inside = (truth >= p_lo) & (truth <= p_hi)
+    coverage = float(inside.mean() * 100)
+    coverage_detail = _coverage_detail(test, truth, inside, lo, hi, train, seed) if recipe == "scenario" else None
     learned_err = np.abs(preds["learned_from_real_running"] - truth)
     ci = {}
     for base in ("persistence", "twin_current_rule"):
@@ -397,6 +425,7 @@ def forecast(
         "scores": scores,
         "interval_p10_p90_coverage_pct": round(coverage, 1),
         "interval_mean_width_min": round(float((p_hi - p_lo).mean()), 1),
+        **({"interval_coverage_detail": coverage_detail} if coverage_detail else {}),
         "mae_reduction_vs": ci,
     }
     if save_model:
@@ -407,6 +436,33 @@ def forecast(
                      "trained_on": f"observed running 2024-09-01..{SPLIT_DATE}", "source": OBSERVED["publisher"]},
                     ETA_MODEL_PATH, compress=3)  # fmt: skip
     return result, {"median": median, "p10": lo, "p90": hi}
+
+
+def _coverage_detail(test, truth, inside, lo, hi, train, seed: int) -> dict[str, Any]:
+    """How often the P10-P90 band holds the real outcome, by situation and under the six damaged inputs (one
+    overall figure can hide a situation where the band is too narrow)."""
+
+    from india_rail.scenario_bank import STRESS, damage
+    from india_rail.scenario_ml import strata
+
+    by: dict[str, dict[str, Any]] = {}
+    for dim, labels in strata(test, float(np.nanquantile(train.net_delay_2h, 0.75))).items():
+        if dim not in ("time_of_day", "current_delay", "train_class", "line", "horizon", "network"):
+            continue
+        labels = pd.Series(labels).astype(str).to_numpy()
+        by[dim] = {str(lab): {"n": int((labels == lab).sum()), "coverage_pct": round(float(inside[labels == lab].mean()
+                   * 100), 1)} for lab in pd.unique(labels) if (labels == lab).sum() >= 500}  # fmt: skip
+    rng = np.random.default_rng(seed)
+    codes = pd.factorize(test.run)[0]
+    damaged = {}
+    for name in STRESS:
+        f = damage(test, name, codes, rng)
+        d_lo = np.maximum(f.d_now + lo.predict(f[FORECAST_FEATURES]), 0)
+        d_hi = np.maximum(f.d_now + hi.predict(f[FORECAST_FEATURES]), 0)
+        damaged[name] = round(float(((truth >= d_lo) & (truth <= d_hi)).mean() * 100), 1)
+    shares = [v["coverage_pct"] for dim in by.values() for v in dim.values()]
+    return {"range_over_situations_pct": [min(shares), max(shares)] if shares else None, "by_situation": by,
+            "under_damaged_inputs_pct": damaged}  # fmt: skip
 
 
 def _bootstrap_gain(runs: np.ndarray, base_err: np.ndarray, new_err: np.ndarray, seed: int, n: int = 200) -> dict:
@@ -502,6 +558,11 @@ def conflict_replay(
                     continue
                 twin._set_plan(key, new)
                 changed[key] = p
+            # Which trains count as late, and which traversals are scored, do not depend on the projection: a
+            # train is late if its latest fresh report says so; a traversal is scored if it really began in the
+            # window. So the rule and the learned projection are compared on the same traversals.
+            late = {k for k, (_o, _rd, seq, delay, act) in observed_runs.items() if _fresh_delay(seq, delay, act
+                    + observed_runs[k][0] * 1440, snap) >= 1}  # fmt: skip
             role: dict[tuple[str, int], str] = {}
             for key, p in changed.items():
                 plan = twin.plans[key]
@@ -517,12 +578,13 @@ def conflict_replay(
                     if role.get(keeps) != "gives_way":
                         role[keeps] = "keeps_way"
             timings.append(time.perf_counter() - started)
-            for key, (_offset, _rd, seq, delay, _act) in observed_runs.items():
+            for key, (offset, _rd, seq, delay, act) in observed_runs.items():
                 plan = twin.plan_of(key)
                 pos = {int(s): float(v) for s, v in zip(seq, delay, strict=True)}
+                began = {int(s): float(a) + offset * 1440 for s, a in zip(seq, act, strict=True)}
                 for i in range(len(plan.sections)):
-                    if snap <= plan.enter[i] <= snap + horizon and i in pos and i + 1 in pos:
-                        rows.append((key in changed, role.get((key, i), "none"), pos[i + 1] - pos[i],
+                    if i in pos and i + 1 in pos and snap <= began[i] <= snap + horizon:
+                        rows.append((key in late, role.get((key, i), "none"), pos[i + 1] - pos[i],
                                      twin.section(plan.sections[i]).tracks == 1))  # fmt: skip
     frame = pd.DataFrame(rows, columns=["late", "role", "loss", "single"])
     return {
@@ -537,6 +599,15 @@ def conflict_replay(
         "double_line": _flag_scores(frame[~frame.single]),
         "seconds_per_national_snapshot": _spread(timings, 2),
     }
+
+
+def _fresh_delay(seq, delay, t_act, snap: float) -> float:
+    """The delay in a run's latest report at or before `snap`, if no older than 180 minutes (else 0)."""
+
+    seen = np.nonzero(t_act <= snap)[0]
+    if not len(seen) or snap - t_act[seen[-1]] > 180:
+        return 0.0
+    return float(delay[seen[-1]])
 
 
 def _spread(values: list[float], digits: int) -> dict[str, float]:

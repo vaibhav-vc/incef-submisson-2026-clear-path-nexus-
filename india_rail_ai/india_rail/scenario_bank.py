@@ -12,18 +12,26 @@ A. Delay forecasts, on 75,556 real scenarios. A scenario is one real train at on
    route facts (a diversion the twin does not know).
 
    Two learned models are compared with the baselines (persistence; the twin's dwell-recovery rule):
-   * `learned`: the deployed recipe (realval.forecast): random rows, 15% without history;
+   * `learned`: the plain recipe: random rows, 15% without history;
    * `scenario_trained`: rows weighted so every situation type counts (square-root inverse frequency, capped),
-     and trained on the six damaged inputs too (realval.STRESS_TRAINING).
+     and trained on the damaged inputs too (realval.STRESS_TRAINING, at most one per row).
+
+   Training rows are cut by when their answer was observed, not by when their run started, so a run that
+   started before a round's origin and reported after it is not learned from.
 
 B. The planner, on 75,556 disruption scenarios on the real network (the current timetable, every train). A
    train running at a random time of day is delayed at a station ahead by a real delay - drawn from the time
    losses actually observed between consecutive reports in September 2024 - with, in some scenarios, a section
    ahead closed, obstructed, speed-restricted or under a weather alert, or a second train delayed nearby. The
-   planner ranks alternatives; every candidate shown is checked independently (no conflict for the train or any
-   train it re-times, no closed or obstructed track), the first is approved and checked again. Outcome: the
+   planner ranks alternatives; every candidate shown is checked by a separate brute-force checker
+   (railguard/independent.py: no conflict within the planning horizon for the train or any train it re-times, no
+   closed or obstructed track ahead), the first is approved and the plans in force are checked again. Outcome: the
    weighted delay of the first-ranked plan against the plan in which the late train simply waits its turn behind
-   every other train.
+   every other train (not defined for closures and obstacles, where that plan would cross the blocked track).
+
+   The forecast recipe that is deployed is chosen on the rounds whose test days end by 20 September only, with
+   paired intervals; the later rounds and the real validation (which tests after 20 September) are not used to
+   choose it.
 
 Written to seva2026/evidence/scenarios/scenario_bank.json.
 """
@@ -98,8 +106,6 @@ def pick_scenarios(scenario_cell: pd.Series, quota: int, rng: np.random.Generato
 def damage(frame: pd.DataFrame, name: str, scenario_codes: np.ndarray, rng: np.random.Generator) -> pd.DataFrame:
     """One of the six damaged inputs, applied per scenario (all of a scenario's targets see the same damage)."""
 
-    from india_rail.network import UNKNOWN_PRIORITY
-
     f = frame.copy()
     n = int(scenario_codes.max()) + 1 if len(scenario_codes) else 0
     if name == "cold_start":
@@ -112,9 +118,9 @@ def damage(frame: pd.DataFrame, name: str, scenario_codes: np.ndarray, rng: np.r
     elif name == "garbled_report_pm30_min":
         f["d_now"] = np.maximum(f.d_now + rng.choice([-30.0, 30.0], n)[scenario_codes], 0)
     elif name == "unknown_train_class":
-        f["priority"] = UNKNOWN_PRIORITY
+        f["priority"] = np.nan  # unknown, not the Mail/Express value the twin assumes for planning
     elif name == "unknown_route_facts":
-        f[["km_gap", "single_km_gap"]] = np.nan
+        f[["km_gap", "single_km_gap"]] = np.nan  # distances unknown; timetable times and history still known
     else:
         raise ValueError(name)
     return f
@@ -137,7 +143,14 @@ def _baselines(f: pd.DataFrame) -> dict[str, np.ndarray]:
     }
 
 
+def _r(value: float, digits: int = 2) -> float | None:
+    return round(float(value), digits) if np.isfinite(value) else None
+
+
 def _scores(err: dict[str, np.ndarray], scen: np.ndarray, cell: np.ndarray) -> dict[str, Any]:
+    """`mae_min` is over the scenarios drawn, which are spread evenly over situation types: a balanced sample,
+    not the everyday mix of the network (real_validation.json scores that)."""
+
     out: dict[str, Any] = {}
     frame = pd.DataFrame({"scen": scen, "cell": cell, **err})
     per_scen = frame.groupby("scen").agg({"cell": "first", **{m: "mean" for m in err}})
@@ -148,14 +161,29 @@ def _scores(err: dict[str, np.ndarray], scen: np.ndarray, cell: np.ndarray) -> d
     best_base = cell_mae[["persistence", "twin_rule"]].min(axis=1)
     for m in err:
         out[m] = {
-            "mae_min": round(float(frame[m].mean()), 2),
-            "scenario_mae_min": round(float(per_scen[m].mean()), 2),
-            "within_15_min_pct": round(float((frame[m] <= 15).mean() * 100), 2),
-            "situation_balanced_mae_min": round(float(cell_mae[m].mean()), 2),
-            "worst_situation_mae_min": round(float(cell_mae[m].max()), 2),
+            "mae_min": _r(frame[m].mean()),
+            "scenario_mae_min": _r(per_scen[m].mean()),
+            "within_15_min_pct": _r((frame[m] <= 15).mean() * 100),
+            "situation_balanced_mae_min": _r(cell_mae[m].mean()) if len(cell_mae) else None,
+            "worst_situation_mae_min": _r(cell_mae[m].max()) if len(cell_mae) else None,
             "situations_better_than_both_baselines": f"{int((cell_mae[m] < best_base).sum())}/{len(cell_mae)}",
         }
     return out
+
+
+SELECTION_END = "2024-09-20"  # the recipe is chosen on rounds whose test days end by then (realval tests after it)
+
+
+def _paired(diff: np.ndarray, seed: int, n: int = 1000) -> dict[str, Any]:
+    """Mean of per-scenario differences (plain minus scenario-trained: positive = the scenario recipe is better),
+    with a 95% bootstrap interval over scenarios."""
+
+    if not len(diff):
+        return {"scenarios": 0}
+    rng = np.random.default_rng(seed)
+    draws = np.array([diff[rng.integers(0, len(diff), len(diff))].mean() for _ in range(n)])
+    return {"scenarios": int(len(diff)), "mean_gain_min": _r(diff.mean(), 3),
+            "ci95_min": [_r(np.percentile(draws, 2.5), 3), _r(np.percentile(draws, 97.5), 3)]}  # fmt: skip
 
 
 def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
@@ -163,7 +191,15 @@ def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
 
     from india_rail import realval
     from india_rail.realdata import REAL_DB_PATH
-    from india_rail.scenario_ml import FIT_ROWS, ORIGINS, TEST_DAYS, _model, network_state, rows_with_state
+    from india_rail.scenario_ml import (
+        FIT_ROWS,
+        ORIGINS,
+        TEST_DAYS,
+        _model,
+        network_state,
+        rows_with_state,
+        training_rows,
+    )
 
     d = realval.load(REAL_DB_PATH)
     con = sqlite3.connect(f"file:{REAL_DB_PATH}?mode=ro", uri=True)
@@ -173,6 +209,7 @@ def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
     rng = np.random.default_rng(seed)
     rounds, pooled_err, pooled_scen, pooled_cell, offset = [], {}, [], [], 0
     stressed: dict[str, dict[str, list]] = {s: {} for s in STRESS}
+    selection: dict[str, list[np.ndarray]] = {"clean": [], "damaged": []}  # per-scenario gains, selection rounds
     features = realval.FORECAST_FEATURES
     # Quota per round in proportion to the scenarios each round's test days hold (counted below), fixed order.
     tests = []  # test rows first (small); each round's training rows are built only while that round runs
@@ -185,8 +222,10 @@ def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
     quotas = np.floor(np.array(available) / sum(available) * quota).astype(int)
     quotas[: quota - quotas.sum()] += 1
     for (origin, lk, test), q in zip(tests, quotas, strict=True):
+        if q <= 0:
+            continue
         started = time.time()
-        train = rows_with_state(d, lk, state, ("2024-09-01", origin))
+        train = training_rows(d, lk, state, origin)
         q75 = float(np.nanquantile(train.net_delay_2h, 0.75))
         test_cell = cells(test, q75)
         scen_codes, _ = pd.factorize(pd.MultiIndex.from_arrays([test.run, test.now_seq]))
@@ -200,8 +239,8 @@ def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
         fit = train.iloc[rng.choice(len(train), size=min(len(train), FIT_ROWS), replace=False)].copy()
         deployed = realval.cold_start(fit, rng)
         learned = _model(seed).fit(deployed[features], deployed.d_tgt - deployed.d_now)
+        weights = balance_weights(cells(fit, q75))  # situation types of the real rows, before any damage
         robust = realval.stress_training(fit, rng)
-        weights = balance_weights(cells(robust, q75))
         scen_trained = _model(seed).fit(robust[features], robust.d_tgt - robust.d_now, sample_weight=weights)
 
         def predict(f: pd.DataFrame, learned=learned, scen_trained=scen_trained) -> dict[str, np.ndarray]:
@@ -218,10 +257,17 @@ def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
             pooled_err.setdefault(m, []).append(e)
         pooled_scen.append(held_codes + offset)
         pooled_cell.append(held_cell)
+        damaged_gain = np.zeros(int(held_codes.max()) + 1)
         for name in STRESS:
             damaged = damage(held, name, held_codes, rng)
-            for m, p in predict(damaged).items():
-                stressed[name].setdefault(m, []).append(np.abs(p - truth))
+            errs = {m: np.abs(p - truth) for m, p in predict(damaged).items()}
+            for m, e in errs.items():
+                stressed[name].setdefault(m, []).append(e)
+            damaged_gain += _per_scenario(errs["learned"] - errs["scenario_trained"], held_codes) / len(STRESS)
+        test_end = (date.fromisoformat(origin) + timedelta(days=TEST_DAYS)).isoformat()
+        if test_end <= SELECTION_END:
+            selection["clean"].append(_per_scenario(err["learned"] - err["scenario_trained"], held_codes))
+            selection["damaged"].append(damaged_gain)
         offset += int(held_codes.max()) + 1
         rounds.append({
             "origin": origin,
@@ -251,6 +297,7 @@ def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
             for m in s
         }
     counts = Counter(cell[np.unique(scen, return_index=True)[1]])
+    chosen_on = {k: _paired(np.concatenate(v) if v else np.array([]), seed) for k, v in selection.items()}
     return {
         "scenarios": int(scen.max()) + 1,
         "scenario_variants_scored": (int(scen.max()) + 1) * (1 + len(STRESS)),
@@ -260,8 +307,29 @@ def forecast_bank(quota: int = SCENARIOS, seed: int = 0) -> dict[str, Any]:
         "scenarios_per_situation_type": {"min": min(counts.values()), "max": max(counts.values())},
         "clean": clean,
         "damaged_inputs": stress,
+        "recipe_selection": {
+            "rule": f"chosen only on rounds whose test days end by {SELECTION_END} (the real validation tests on "
+            "later days): the scenario recipe is deployed if it is no worse on clean inputs (the interval "
+            "includes or exceeds 0) and better on damaged inputs (the interval is above 0)",
+            "clean_gain_of_scenario_recipe": chosen_on["clean"],
+            "damaged_inputs_gain_of_scenario_recipe": chosen_on["damaged"],
+            "decision": _decide(chosen_on),
+        },
         "rounds": rounds,
     }
+
+
+def _per_scenario(diff: np.ndarray, codes: np.ndarray) -> np.ndarray:
+    return np.bincount(codes, diff) / np.maximum(np.bincount(codes), 1)
+
+
+def _decide(chosen_on: dict[str, dict[str, Any]]) -> str:
+    clean, damaged = chosen_on["clean"].get("ci95_min"), chosen_on["damaged"].get("ci95_min")
+    if not clean or not damaged or None in clean or None in damaged:
+        return "undecided (no selection rounds)"
+    if clean[1] >= 0 and damaged[0] > 0:
+        return "scenario"
+    return "plain"
 
 
 # ---- B. planner ------------------------------------------------------------------------------------------------
@@ -295,23 +363,21 @@ def _first_change(new: list[float], old: list[float]) -> int | None:
 
 
 def check_candidate(tw: Any, key: str, cand: dict[str, Any]) -> list[str]:
-    """Independent check of a ranked candidate: no conflict for the train or any train it re-times, from where
-    each one changes, and no closed or obstructed track ahead of the train."""
+    """Independent check of a ranked candidate (railguard/independent.py - brute force, no shared search code):
+    no conflict within the planning horizon for the train or any train it re-times, from where each one changes,
+    and no closed or obstructed track ahead of the train, including the rest of the section it is on."""
 
-    problems = []
+    from india_rail.railguard import independent
+
     plan, here = cand["plan"], tw.position(key)["index"]
-    overrides = {k: p for k, (p, _hold) in cand["yields"].items()}
-    joint = {**overrides, key: plan}
-    if any(c["is_conflict"] for c in tw.conflicts(key, plan, here, overrides=overrides)):
-        problems.append("conflict")
-    for k, p in overrides.items():
+    changed = {key: (plan, here)}
+    for k, (p, _hold) in cand["yields"].items():
         first = _first_change(p.enter, tw.plan_of(k).enter)
-        if first is not None and any(c["is_conflict"] for c in tw.conflicts(k, p, first, overrides=joint)):
-            problems.append(f"conflict for {k}")
-    for i in range(here, len(plan.sections)):
-        sec = tw.physical(plan.sections[i])
-        if plan.enter[i] >= tw.now and (not sec.available or sec.obstacle):
-            problems.append(f"blocked {plan.sections[i]}")
+        if first is not None:
+            changed[k] = (p, first)
+    found = independent.check(tw, changed)
+    problems = [f"conflict {c['run']}/{c['other']} on {c['piece']}" for c in found["conflicts"]]
+    problems += [f"blocked {piece}" for piece in independent.blocked_ahead(tw, key, plan)]
     return problems
 
 
@@ -348,6 +414,7 @@ def planner_scenario(index: int, seed: int, tw: Any = None, losses: np.ndarray |
         extra = "weather alert ahead"
         tw.update_section(rng.choice(ahead), "SCENARIO", weather_alert=rng.choice(("FOG", "HEAT", "FLOOD_WATCH")))
     elif roll < 0.40:
+        extra = "second train drawn, none near"  # kept apart from "none": the draw happened, no train was there
         nearby = sorted({
             k for sid in ahead[:6] for piece in tw.members.get(sid, (sid,))
             for k, *_ in tw.occupants(piece, tw.now, tw.now + 120) if k != key
@@ -382,17 +449,19 @@ def planner_scenario(index: int, seed: int, tw: Any = None, losses: np.ndarray |
         ]
     out["action"] = ranking["candidates"][0]["action"]
     if rec["approvable"]:
+        from india_rail.railguard import independent
+
         top = shown[0]
         before = {k: tw.plan_of(k) for k in top["yields"]}
         tw.approve(rec["snapshot_id"], "N1", "scenario-bank")
-        starts = {key: tw.position(key)["index"]}
+        # The plans now in force, checked again by the independent checker (approval applied what was checked)
+        changed = {key: (tw.plan_of(key), tw.position(key)["index"])}
         for k, old in before.items():
             ch = _first_change(tw.plan_of(k).enter, old.enter)
-            starts[k] = len(old.enter) if ch is None else ch
-        pending = frozenset(tw.pending)
-        for k, s in starts.items():
-            if any(c["is_conflict"] for c in tw.conflicts(k, tw.plan_of(k), s, ignore=pending)):
-                out["violations"].append(f"approved plan conflicts for {k}")
+            if ch is not None:
+                changed[k] = (tw.plan_of(k), ch)
+        for c in independent.check(tw, changed)["conflicts"]:
+            out["violations"].append(f"approved plan: conflict {c['run']}/{c['other']} on {c['piece']}")
         out["approved"] = True
     return out
 
@@ -425,13 +494,23 @@ def summarise_planner(results: list[dict[str, Any]], losses: np.ndarray, wall: f
     seconds = np.array([r["seconds"] for r in done])
     by_extra: dict[str, dict[str, Any]] = {}
     for r in done:
-        e = by_extra.setdefault(r["extra"], {"scenarios": 0, "ranked": 0, "states": Counter()})
+        e = by_extra.setdefault(r["extra"], {"scenarios": 0, "ranked": 0, "states": Counter(), "saved": []})
         e["scenarios"] += 1
         e["ranked"] += "top_delay" in r
         e["states"][r["state"]] += 1
-    for e in by_extra.values():
+        if "top_delay" in r and "wait_your_turn_delay" in r:
+            e["saved"].append(r["wait_your_turn_delay"] - r["top_delay"])
+    for name, e in by_extra.items():
         e["ranked_pct"] = round(100 * e["ranked"] / max(e["scenarios"], 1), 1)
         e["states"] = dict(e["states"])
+        saved_here = np.array(e.pop("saved"))
+        e["compared_with_wait_your_turn"] = len(saved_here)
+        e["first_ranked_saves_weighted_min_median"] = (
+            round(float(np.median(saved_here)), 1) if len(saved_here) else None
+        )
+        if name in ("closure ahead", "obstacle ahead") and not len(saved_here):
+            e["note"] = ("no wait-your-turn baseline: waiting one's turn would run through the blocked track; the "
+                         "ranked plans go round it (independently checked)")  # fmt: skip
     return {
         "scenarios": len(results),
         "run": len(done),
@@ -451,6 +530,8 @@ def summarise_planner(results: list[dict[str, Any]], losses: np.ndarray, wall: f
         "by_condition": by_extra,
         "delay_vs_wait_your_turn": {
             "scenarios_compared": len(compared),
+            "not_compared": "closure and obstacle scenarios (see by_condition): the baseline would cross the "
+            "blocked track",
             "first_ranked_saves_weighted_min": {
                 "median": round(float(np.median(saved)), 1) if len(saved) else None,
                 "mean": round(float(saved.mean()), 1) if len(saved) else None,
