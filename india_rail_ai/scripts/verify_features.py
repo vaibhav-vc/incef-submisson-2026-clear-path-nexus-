@@ -282,6 +282,16 @@ def api_checks(feed_secret: bytes) -> dict[str, Any]:
         params={"events": 1},
         what="cab live push",
     )
+    c(
+        "POST",
+        "/railguard/national/cab/{run}/revoke",
+        "session",
+        fill={"run": run["run"]},
+        json_body={"token_id": issued["token_id"], "revoked_by": "sharma.feature"},
+        what="revoke the cab link",
+    )
+    c("GET", "/railguard/national/cab/{run}/live", None, fill={"run": run["run"]}, headers=cab, expect=(403,),
+      what="a revoked cab link is refused")  # fmt: skip
     # ---- feed: a signed batch and a position
     now = datetime.now(IST)
     env = {
@@ -328,7 +338,7 @@ def api_checks(feed_secret: bytes) -> dict[str, Any]:
         "session",
         json_body={"csv": csv_text, "controller": "sharma.feature"},
     )
-    c("GET", "/railguard/national/shadow/report")
+    c("GET", "/railguard/national/shadow/report", "controller")
     # ---- delay advisor and freight
     c("GET", "/railguard/national/advisor", expect=(200, 503))
     c("GET", "/railguard/national/advisor/{kind}", fill={"kind": "sections"}, expect=(200, 503))

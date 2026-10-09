@@ -66,10 +66,13 @@ function renderNational(a) {
 }
 
 function unavailable(why) {
-  // Losing the link must never leave stale guidance on screen.
+  // Losing the link must never leave stale guidance on screen: everything the last advisory said is cleared.
   status("DATA UNAVAILABLE");
   set("headline", why || "Link to Nexus lost - follow signals and authorised instructions");
   set("speed", "--"); set("band", "--");
+  set("fresh", "no current data"); set("schedule", ""); set("nextwp", "");
+  document.getElementById("route").replaceChildren(chip("No current data"));
+  for (const id of ["events", "nearby", "threats"]) list(id, [], "No current data");
 }
 
 async function refresh() {
@@ -91,6 +94,7 @@ function handleEvent(block) {
     else if (line.startsWith("data: ")) data += line.slice(6);
   }
   if (kind === "advisory" && data) renderNational(JSON.parse(data));
+  else if (kind === "revoked") throw new Error("revoked");
   else if (kind === "refused") throw new Error("refused");
 }
 async function cabLive() {
@@ -119,8 +123,11 @@ async function cabLive() {
         while ((cut = buffer.indexOf("\n\n")) >= 0) { handleEvent(buffer.slice(0, cut)); buffer = buffer.slice(cut + 2); }
       }
       if (wait !== 30000) unavailable();
-    } catch (_) {
-      if (wait !== 30000) unavailable();
+    } catch (e) {
+      if (e.message === "revoked") {
+        unavailable("This cab link is not valid for this train (expired or revoked) - ask the controller for a new link");
+        wait = 30000;
+      } else if (wait !== 30000) unavailable();
     } finally {
       clearTimeout(watchdog);
       abort.abort();

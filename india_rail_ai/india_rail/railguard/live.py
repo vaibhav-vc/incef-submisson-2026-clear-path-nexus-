@@ -8,6 +8,8 @@
   other train or the network, and a stolen token is worth one train for a few hours. Tokens are HMAC-signed
   with a key derived from RAILGUARD_CAB_KEY (or, if unset, from the controller token, so rotating that
   revokes every cab token).
+* A controller can revoke one cab link (by its token id, recorded when it was issued) or every link of a run;
+  revocations are audit events, re-read from the persisted audit log (RAILGUARD_AUDIT_DIR) after a restart.
 * Every stream sends a heartbeat comment every HEARTBEAT_S (proxies keep the connection open) and stops when
   the client goes away. At most MAX_STREAMS streams per process; beyond that a client is refused, not queued.
 
@@ -46,26 +48,78 @@ def _cab_key() -> bytes:
     return _PROCESS_KEY
 
 
+MAX_CAB_TOKEN_TTL_S = 24 * 3600
+_revoked_ids: dict[str, float] = {}  # token id -> when the revocation can be forgotten (every such token expired)
+_revoked_runs: dict[str, int] = {}  # run -> links issued at or before this time (ms) are revoked
+_revoked_lock = threading.Lock()
+
+
 def issue_cab_token(run: str, ttl_s: int = CAB_TOKEN_TTL_S, clock: Callable[[], float] = time.time) -> dict[str, Any]:
-    expires = int(clock()) + int(ttl_s)
-    payload = f"{run}|{expires}|{secrets.token_hex(8)}".encode()
+    now = clock()
+    expires, issued_ms = int(now) + int(ttl_s), int(now * 1000)
+    token_id = secrets.token_hex(8)  # names the link in the audit log (and for revocation); it is not the secret
+    payload = f"{run}|{expires}|{token_id}|{issued_ms}".encode()
     mac = hmac.new(_cab_key(), payload, hashlib.sha256).hexdigest()
     token = base64.urlsafe_b64encode(payload).decode().rstrip("=") + "." + mac
-    return {"run": run, "token": token, "expires_at": expires}
+    return {"run": run, "token": token, "token_id": token_id, "expires_at": expires}
+
+
+def revoke(run: str, token_id: str | None = None, clock: Callable[[], float] = time.time) -> None:
+    """Revoke one cab link (its token id) or, with no id, every link of `run` issued until now."""
+
+    now = clock()
+    with _revoked_lock:
+        if token_id:
+            _revoked_ids[token_id] = now + MAX_CAB_TOKEN_TTL_S
+        else:
+            _revoked_runs[run] = int(now * 1000)
+        for k in [k for k, until in _revoked_ids.items() if until < now]:
+            del _revoked_ids[k]
+
+
+def load_revocations(events_path: Any, clock: Callable[[], float] = time.time) -> int:
+    """Re-apply the revocations of the last day from a persisted audit log (after a restart)."""
+
+    from datetime import datetime
+
+    count, horizon = 0, clock() - MAX_CAB_TOKEN_TTL_S
+    try:
+        handle = open(events_path, encoding="utf-8")
+    except OSError:
+        return 0
+    with handle:
+        for line in handle:
+            if '"CAB_LINK_REVOKED"' not in line:
+                continue
+            try:
+                event = json.loads(line)
+                at = datetime.fromisoformat(event["at"]).timestamp()
+                details = event["details"]
+            except (ValueError, KeyError, TypeError):
+                continue
+            if event.get("type") == "CAB_LINK_REVOKED" and at >= horizon:
+                revoke(details["run"], details.get("token_id"), clock=lambda at=at: at)
+                count += 1
+    return count
 
 
 def cab_token_valid(token: str | None, run: str, clock: Callable[[], float] = time.time) -> bool:
-    if not token or len(token) > 300 or token.count(".") != 1:
+    if not token or len(token) > 300 or token.count(".") != 1 or not token.isascii():
         return False
     body, mac = token.split(".")
     try:
         payload = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
     except ValueError:
         return False
-    if not hmac.compare_digest(mac, hmac.new(_cab_key(), payload, hashlib.sha256).hexdigest()):
+    if not hmac.compare_digest(mac.encode(), hmac.new(_cab_key(), payload, hashlib.sha256).hexdigest().encode()):
         return False
     parts = payload.decode("utf-8", "replace").split("|")
-    return len(parts) == 3 and hmac.compare_digest(parts[0], run) and parts[1].isdigit() and int(parts[1]) > clock()
+    if len(parts) != 4 or not hmac.compare_digest(parts[0].encode(), run.encode()):
+        return False
+    if not (parts[1].isdigit() and parts[3].isdigit()) or int(parts[1]) <= clock():
+        return False
+    with _revoked_lock:
+        return parts[2] not in _revoked_ids and int(parts[3]) > _revoked_runs.get(run, -1)
 
 
 class Hub:
@@ -176,9 +230,17 @@ def broadcaster(twin: Any) -> Broadcaster:
 
 
 async def stream(
-    twin: Any, key: str, is_disconnected: Callable[[], Any], max_events: int | None = None, kind: str = "state"
+    twin: Any,
+    key: str,
+    is_disconnected: Callable[[], Any],
+    max_events: int | None = None,
+    kind: str = "state",
+    allowed: Callable[[], bool] | None = None,
 ) -> AsyncIterator[bytes]:
-    """Push the latest picture for `key` (NETWORK or a run) whenever it changes, with heartbeats."""
+    """Push the latest picture for `key` (NETWORK or a run) whenever it changes, with heartbeats.
+
+    `allowed` is re-checked before every event and heartbeat: a cab link revoked, or expiring, while its stream
+    is open ends that stream (a `revoked` event) instead of serving the train's advisory any longer."""
 
     from india_rail.railguard import ops
 
@@ -201,6 +263,9 @@ async def stream(
                 except TimeoutError:
                     pass
             if await is_disconnected():
+                return
+            if allowed is not None and not allowed():
+                yield b'event: revoked\ndata: {"detail": "this cab link is no longer valid"}\n\n'
                 return
             if body is not None and body != last:
                 sent += 1

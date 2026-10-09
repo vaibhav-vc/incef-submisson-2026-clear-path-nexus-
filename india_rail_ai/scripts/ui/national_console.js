@@ -1,6 +1,6 @@
 // National console and cab, end to end in Chromium: live push, every train with PIN codes and its route, the
 // advisor, freight pathing, a delay recorded and ranked, a cab link issued and opened, a decision pushed to the
-// cab, a forged link refused. Fails on any console error or CSP violation.
+// cab, a forged link refused, the link revoked and the open cab cleared. Fails on any console error or CSP violation.
 //   node scripts/ui/national_console.js <base url> <screenshot path>
 //   env: RAILGUARD_CONTROLLER_TOKEN; FEATURE_TRAIN (a train in the twin) and FEATURE_QUERY (a word of a train name),
 //   both discovered from the data by scripts/verify_features.py
@@ -68,11 +68,18 @@ const executablePath = process.env.CHROMIUM || "/opt/pw-browsers/chromium-1194/c
   await forged.goto(base + `/cab?run=${encodeURIComponent(run)}#cab=` + link.split("#cab=")[1].replace(/.$/, (c) => (c === "0" ? "1" : "0")));
   await forged.waitForFunction(() => document.getElementById("statusText").textContent === "DATA UNAVAILABLE", null, { timeout: 20000 });
   out.forged_link_refused = (await forged.textContent("#headline")).includes("not valid for this train");
+  // Revoking the link ends the open cab stream: the cab clears its guidance and says the link is no longer valid.
+  await con.click("#revokeCab");
+  await cab.waitForFunction(() => document.getElementById("headline").textContent.includes("not valid for this train"),
+    null, { timeout: 30000 });
+  out.revoked_link_clears_cab = (await cab.textContent("#statusText")).trim() === "DATA UNAVAILABLE" &&
+    (await cab.textContent("#threats")).includes("No current data");
   await con.screenshot({ path: shot, fullPage: false });
   out.problems = problems.filter((p) => !p.includes("403"));  // the forged link's refused stream is expected
   console.log(JSON.stringify(out));
   await browser.close();
   const ok = !out.problems.length && out.cab_link_carries_capability_in_fragment && !out.cab_address_bar_keeps_token &&
-    out.forged_link_refused && out.trains_found > 0 && out.pin_codes > 0 && out.advisor_rows > 0;
+    out.forged_link_refused && out.revoked_link_clears_cab && out.trains_found > 0 && out.pin_codes > 0 &&
+    out.advisor_rows > 0;
   process.exit(ok ? 0 : 1);
 })().catch((e) => { console.error(e); process.exit(2); });

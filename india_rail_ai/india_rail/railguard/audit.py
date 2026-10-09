@@ -7,8 +7,10 @@ not prove the inputs were true.
 
 Persistence: with RAILGUARD_AUDIT_DIR set, every event and snapshot is appended
 to JSON-lines files. With RAILGUARD_AUDIT_KEY set, each event also carries an
-HMAC-SHA256 of its chain hash, so a log cannot be rewritten without the key.
-Memory is bounded: older events and snapshots stay on disk only.
+HMAC-SHA256 of its chain hash, and each snapshot an HMAC of its checksum and
+wall-clock time, so a log cannot be rewritten without the key. A line torn by a
+power cut is closed off at the next start and the chain continues from the last
+complete record. Memory is bounded: older events and snapshots stay on disk only.
 
     python -m india_rail.railguard.audit verify <events.jsonl>     # checks chain (and MACs if key set)
 """
@@ -67,6 +69,8 @@ class AuditLog:
             self.events_path = Path(folder) / f"{name}_events.jsonl"
             self.snapshots_path = Path(folder) / f"{name}_snapshots.jsonl"
             # A restart continues the persisted chain instead of starting a second GENESIS in the same file.
+            for path in (self.events_path, self.snapshots_path):
+                _close_torn_line(path)
             last = _last_record(self.events_path)
             if last:
                 self.base_hash, self.count = last["hash"], last["seq"]
@@ -109,6 +113,8 @@ class AuditLog:
         }
         snapshot["checksum"] = checksum({k: snapshot[k] for k in ("snapshot_id", "t", "inputs", "outputs")})
         snapshot["at"] = _now_utc()  # wall clock, for matching across days and restarts (outside the replay checksum)
+        if self.key:
+            snapshot["mac"] = _mac(self.key, f"{snapshot['checksum']}|{snapshot['at']}")
         self.snapshots[snapshot_id] = snapshot
         self._append(self.snapshots_path, snapshot)
         while len(self.snapshots) > MAX_SNAPSHOTS_IN_MEMORY:
@@ -126,8 +132,18 @@ def _now_utc() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds")
 
 
+def _close_torn_line(path: Path) -> None:
+    """End a line left half-written by a crash or power cut, so the next record starts on a line of its own."""
+
+    if path.exists() and path.stat().st_size:
+        with path.open("rb+") as handle:
+            handle.seek(-1, os.SEEK_END)
+            if handle.read(1) != b"\n":
+                handle.write(b"\n")
+
+
 def _last_record(path: Path) -> dict[str, Any] | None:
-    """Last JSON line of an append-only file, read from the end so large logs stay cheap."""
+    """Last complete JSON line of an append-only file, read from the end so large logs stay cheap."""
 
     if not path.exists() or path.stat().st_size == 0:
         return None
@@ -135,12 +151,19 @@ def _last_record(path: Path) -> dict[str, Any] | None:
         handle.seek(0, os.SEEK_END)
         end = handle.tell()
         block = b""
-        while end > 0 and block.count(b"\n") < 2:
-            step = min(4096, end)
+        while True:
+            lines = block.strip().splitlines()
+            for line in reversed(lines[1:] if end > 0 else lines):  # the first may be cut by the block edge
+                try:
+                    return json.loads(line)
+                except ValueError:
+                    continue  # a torn line: the record before it is the last complete one
+            if end == 0:
+                return None
+            step = min(65536, end)
             end -= step
             handle.seek(end)
             block = handle.read(step) + block
-    return json.loads(block.strip().splitlines()[-1])
 
 
 def verify_events(events: list[dict[str, Any]], base_hash: str = "GENESIS", key: bytes | None = None) -> bool:

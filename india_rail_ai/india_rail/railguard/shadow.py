@@ -13,16 +13,25 @@ A trial outlives the in-memory audit window: `report_from_audit_dir` rebuilds th
 hash-chained audit files (RAILGUARD_AUDIT_DIR), and so does
 
     python -m india_rail shadow-report --audit-dir <dir> [--out report.json]
+
+Only verified records are used: an event whose hash (and, with RAILGUARD_AUDIT_KEY, MAC) does not check out, a
+snapshot whose checksum (and MAC, which covers its wall-clock time) does not, and a line that cannot be read are
+counted in the report's `verification` and left out. A TrialReader reads the files incrementally, so a report
+over months of trial costs only the records added since the last one.
 """
 
 from __future__ import annotations
 
 import csv
+import hashlib
+import hmac
 import io
 import json
+import os
 import re
 import statistics
-from collections import Counter
+import threading
+from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta, timezone
@@ -86,10 +95,13 @@ def _match(decision: dict[str, Any], snapshots: Iterable[dict[str, Any]]) -> dic
     return best
 
 
-def build_report(decisions: list[dict[str, Any]], snapshots: list[dict[str, Any]]) -> dict[str, Any]:
+def build_report(decisions: list[dict[str, Any]], snapshots: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    by_run: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for snap in snapshots:
+        by_run[snap["inputs"].get("run")].append(snap)
     rows = []
     for d in decisions:
-        snap = _match(d, snapshots)
+        snap = _match(d, by_run.get(d["run"], ()))
         if snap is None:
             rows.append({"run": d["run"], "actual": d["action"], "matched": False})
             continue
@@ -139,46 +151,85 @@ def build_report(decisions: list[dict[str, Any]], snapshots: list[dict[str, Any]
     }
 
 
+def _identity(d: dict[str, Any]) -> tuple:
+    """A decision is logged once: the same run, action, station and time again is a duplicate (a re-import)."""
+
+    at = _utc(d.get("at"))
+    return d["run"], d["action"], d.get("station"), at.isoformat(timespec="seconds") if at else d.get("at_min")
+
+
 class ShadowTrial:
-    def __init__(self, twin: Any):
+    def __init__(self, twin: Any, reader: TrialReader | None = None):
         self.twin = twin
         self.decisions: list[ActualDecision] = []
+        self.reader = reader  # the persisted trial, so a re-import after a restart is still recognised
+        self.seen: set[tuple] | None = None
 
-    def record(self, decision: ActualDecision) -> dict[str, Any]:
+    def _seen(self) -> set[tuple]:
+        if self.seen is None:
+            self.seen = {_identity(d) for d in (self.reader.read()[0] if self.reader else [])}
+        return self.seen
+
+    def _check(self, decision: ActualDecision) -> None:
         if decision.action not in ACTIONS:
             raise ValueError(f"action must be one of {ACTIONS}")
         if decision.run not in self.twin.runs:
             raise KeyError(decision.run)
         decision.at = decision.at or datetime.now(UTC).isoformat(timespec="milliseconds")
         _utc(decision.at)  # refuses a malformed time before anything is written
+
+    def record(self, decision: ActualDecision) -> dict[str, Any]:
+        self._check(decision)
         with self.twin.lock:
-            self.decisions.append(decision)
+            identity = _identity(asdict(decision))
+            if identity in self._seen():
+                raise ValueError("already logged (same run, action, station and time)")
+            # The audit record first: a decision is counted only once it is in the hash-chained log.
             self.twin.audit.record(
                 int(self.twin.now * 60), "SHADOW_ACTUAL_DECISION", decision.by, asdict(decision)
             )  # changes nothing in the twin: shadow mode only observes
+            self.decisions.append(decision)
+            self._seen().add(identity)
         return {"recorded": True, "decisions": len(self.decisions)}
 
     def import_csv(self, text: str, by: str, service_date: date) -> dict[str, Any]:
         """Decisions exported from the control office, one per row (CSV_COLUMNS, header required).
 
-        `decided_at` is ISO 8601 with a time zone; `start_date` is the train's journey start. Each row is
-        checked on its own: a bad row is reported and skipped, never guessed at."""
+        `decided_at` is ISO 8601 with a time zone; `start_date` is the train's journey start. Every row is
+        checked before any is recorded: a file that cannot be read or is too long records nothing; a bad row is
+        reported and skipped, never guessed at; a row already logged (a re-import) is reported, not counted twice."""
 
-        reader = csv.DictReader(io.StringIO(text))
-        if reader.fieldnames is None or set(reader.fieldnames) != set(CSV_COLUMNS):
-            raise ValueError(f"header must be exactly: {','.join(CSV_COLUMNS)}")
-        results, recorded = [], 0
-        for n, row in enumerate(reader, start=2):
-            if n - 1 > MAX_IMPORT_ROWS:
-                raise ValueError(f"at most {MAX_IMPORT_ROWS} rows per import")
+        try:
+            reader = csv.DictReader(io.StringIO(text, newline=""))
+            if reader.fieldnames is None or set(reader.fieldnames) != set(CSV_COLUMNS):
+                raise ValueError(f"header must be exactly: {','.join(CSV_COLUMNS)}")
+            rows = []
+            for n, row in enumerate(reader, start=2):
+                if n - 1 > MAX_IMPORT_ROWS:
+                    raise ValueError(f"at most {MAX_IMPORT_ROWS} rows per import: nothing recorded")
+                rows.append((n, row))
+        except csv.Error as exc:
+            raise ValueError(f"unreadable CSV ({exc}): nothing recorded") from exc
+        checked = []
+        for n, row in rows:
             try:
                 decision = self._row(row, by, service_date)
-                self.record(decision)
-                recorded += 1
-                results.append({"line": n, "recorded": True, "run": decision.run})
-            except (ValueError, KeyError, TypeError) as exc:
-                results.append({"line": n, "recorded": False, "reason": str(exc)[:160]})
-        return {"recorded": recorded, "refused": len(results) - recorded, "rows": results[:MAX_IMPORT_ROWS]}
+                self._check(decision)
+                checked.append((n, decision, None))
+            except (ValueError, KeyError, TypeError, OverflowError) as exc:
+                checked.append((n, None, str(exc)[:160]))
+        results, recorded = [], 0
+        for n, decision, reason in checked:
+            if decision is not None:
+                try:
+                    self.record(decision)
+                    recorded += 1
+                    results.append({"line": n, "recorded": True, "run": decision.run})
+                    continue
+                except ValueError as exc:
+                    reason = str(exc)[:160]
+            results.append({"line": n, "recorded": False, "reason": reason})
+        return {"recorded": recorded, "refused": len(results) - recorded, "rows": results}
 
     def _row(self, row: dict[str, str], by: str, service_date: date) -> ActualDecision:
         number, start = (row["train_number"] or "").strip().upper(), (row["start_date"] or "").strip()
@@ -207,40 +258,129 @@ class ShadowTrial:
                               decided.astimezone(UTC).isoformat(timespec="seconds"))  # fmt: skip
 
     def report(self) -> dict[str, Any]:
+        if self.reader is not None:
+            return self.reader.report()
         return build_report([asdict(d) for d in self.decisions], list(self.twin.audit.snapshots.values()))
+
+
+class TrialReader:
+    """The persisted trial (RAILGUARD_AUDIT_DIR), read incrementally and verified record by record.
+
+    Each call reads only the complete lines appended since the last one (a line still being written is read
+    next time). Events are checked against their hash and, with the audit key, their MAC, and the chain links
+    between them are followed; snapshots against their checksum and, with the key, their MAC (which covers the
+    wall-clock time used for matching). Records that fail are counted and not used."""
+
+    def __init__(self, folder: Path, name: str = "railguard", key: bytes | None = None):
+        self.events = folder / f"{name}_events.jsonl"
+        self.snapshots = folder / f"{name}_snapshots.jsonl"
+        self.key = key
+        self.lock = threading.Lock()
+        self._reset()
+
+    def _reset(self) -> None:
+        self.offsets = {"events": 0, "snapshots": 0}
+        self.previous: str | None = None
+        self.decisions: list[dict[str, Any]] = []
+        self.by_run: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        self.counts: Counter = Counter()
+
+    def _lines(self, path: Path, which: str) -> Iterable[bytes]:
+        if not path.exists():
+            return
+        if path.stat().st_size < self.offsets[which]:
+            raise _Rewritten
+        with path.open("rb") as handle:
+            handle.seek(self.offsets[which])
+            for line in handle:
+                if not line.endswith(b"\n"):
+                    break
+                self.offsets[which] += len(line)
+                yield line
+
+    def _mac_ok(self, record: dict[str, Any], value: str) -> bool:
+        if self.key is None:
+            return True
+        expected = hmac.new(self.key, value.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(str(record.get("mac", "")).encode(), expected.encode())
+
+    def _read(self) -> None:
+        from india_rail.railguard.evidence import checksum
+
+        for line in self._lines(self.events, "events"):
+            try:
+                event = json.loads(line)
+                body = {k: v for k, v in event.items() if k not in ("hash", "mac")}
+                ok = checksum(body) == event["hash"] and self._mac_ok(event, event["hash"])
+            except (ValueError, KeyError, TypeError, AttributeError):
+                self.counts["unreadable_lines"] += 1
+                continue
+            if not ok:
+                self.counts["events_failing_verification"] += 1
+                continue
+            if self.previous is not None and event.get("prev_hash") != self.previous:
+                self.counts["chain_breaks"] += 1
+            self.previous = event["hash"]
+            if event.get("type") == "SHADOW_ACTUAL_DECISION" and isinstance(event.get("details"), dict):
+                self.decisions.append(event["details"])
+        for line in self._lines(self.snapshots, "snapshots"):
+            try:
+                snap = json.loads(line)
+                body = {k: snap[k] for k in ("snapshot_id", "t", "inputs", "outputs")}
+                ok = checksum(body) == snap["checksum"] and self._mac_ok(snap, f"{snap['checksum']}|{snap.get('at')}")
+                run = snap["inputs"].get("run")
+                ranking = snap["outputs"]["ranking"]
+                kept = {
+                    "snapshot_id": snap["snapshot_id"],
+                    "at": snap.get("at"),
+                    "inputs": {"run": run, "now": snap["inputs"].get("now")},
+                    "outputs": {"state": snap["outputs"]["state"],
+                                "ranking": {"candidates": [{"action": c["action"]}
+                                                           for c in ranking.get("candidates", [])]}},
+                }  # fmt: skip
+            except (ValueError, KeyError, TypeError, AttributeError):
+                self.counts["unreadable_lines"] += 1
+                continue
+            if not ok:
+                self.counts["snapshots_failing_verification"] += 1
+                continue
+            self.counts["recommendations_read"] += 1
+            self.by_run[run].append(kept)  # only what matching and agreement need
+
+    def read(self) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+        with self.lock:
+            try:
+                self._read()
+            except _Rewritten:  # a file shorter than what was read: start again from the beginning
+                self._reset()
+                self._read()
+            return list(self.decisions), self.by_run
+
+    def report(self) -> dict[str, Any]:
+        decisions, by_run = self.read()
+        report = build_report(decisions, (s for snaps in list(by_run.values()) for s in snaps))
+        report["source"] = {"events": str(self.events), "snapshots": str(self.snapshots)}
+        report["verification"] = {
+            "macs_checked": self.key is not None,
+            **{k: self.counts.get(k, 0) for k in ("recommendations_read", "unreadable_lines", "chain_breaks",
+                                                  "events_failing_verification", "snapshots_failing_verification")},
+        }  # fmt: skip
+        return report
+
+
+class _Rewritten(Exception):
+    pass
+
+
+def audit_key() -> bytes | None:
+    key = os.environ.get("RAILGUARD_AUDIT_KEY", "")
+    return key.encode() if key else None
 
 
 def report_from_audit_dir(folder: Path, name: str = "railguard") -> dict[str, Any]:
     """The report over the whole persisted trial (every restart and service day), read from the audit files."""
 
-    events, snaps = folder / f"{name}_events.jsonl", folder / f"{name}_snapshots.jsonl"
-    decisions = []
-    if events.exists():
-        with events.open(encoding="utf-8") as handle:
-            for line in handle:
-                if '"SHADOW_ACTUAL_DECISION"' in line:
-                    event = json.loads(line)
-                    if event["type"] == "SHADOW_ACTUAL_DECISION":
-                        decisions.append(event["details"])
-    runs = {d["run"] for d in decisions}
-    snapshots = []
-    if snaps.exists():
-        with snaps.open(encoding="utf-8") as handle:
-            for line in handle:
-                snap = json.loads(line)
-                if snap["inputs"].get("run") in runs:  # keep only what matching and agreement need
-                    ranking = snap["outputs"]["ranking"]
-                    snapshots.append({
-                        "snapshot_id": snap["snapshot_id"],
-                        "at": snap.get("at"),
-                        "inputs": {"run": snap["inputs"]["run"], "now": snap["inputs"].get("now")},
-                        "outputs": {"state": snap["outputs"]["state"],
-                                    "ranking": {"candidates": [{"action": c["action"]}
-                                                               for c in ranking.get("candidates", [])]}},
-                    })  # fmt: skip
-    report = build_report(decisions, snapshots)
-    report["source"] = {"events": str(events), "snapshots": str(snaps), "recommendations_read": len(snapshots)}
-    return report
+    return TrialReader(folder, name, audit_key()).report()
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import hmac
 import json
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -87,67 +88,88 @@ def _int(value: str, lo: int, hi: int, what: str, problems: list[str]) -> int | 
     return n
 
 
+def _station(row: dict[str, str]) -> tuple[dict[str, Any] | None, list[str]]:
+    """One stations.csv row checked on its own: (the values to use, or None if it says nothing; problems)."""
+
+    p: list[str] = []
+    loops = _int(row["loops"], 0, 30, "loops", p)
+    platforms = _int(row["platform_lines"], 0, 40, "platform_lines", p)
+    crossing = row["crossing_allowed"].upper() or None
+    if crossing not in (None, "Y", "N"):
+        p.append("crossing_allowed must be Y or N")
+    if crossing == "Y" and loops == 0:
+        p.append("crossing_allowed=Y with no loop: two trains cannot cross where neither can stand clear")
+    if len(row["interlocking"]) > 40:
+        p.append("interlocking must be at most 40 characters")
+    filled = any(v is not None for v in (loops, platforms, crossing)) or bool(row["interlocking"])
+    p += _provenance(row, filled)
+    values = {"loops": loops, "crossing_allowed": crossing, "platform_lines": platforms,
+              "interlocking": row["interlocking"] or None, "source": row["source"],
+              "effective_from": row["effective_from"]}  # fmt: skip
+    return (values if filled else None), p
+
+
+def _section(row: dict[str, str]) -> tuple[dict[str, Any] | None, list[str]]:
+    """One sections.csv row checked on its own."""
+
+    p: list[str] = []
+    sid = row["section_id"]
+    a, b = sid.split("-", 1) if "-" in sid else (sid, "")
+    if f"{min(a, b)}-{max(a, b)}" != sid:
+        p.append("section_id must be the two station codes sorted, joined by '-'")
+    tracks = _int(row["tracks"], 1, 8, "tracks", p)
+    block = row["block_system"].upper() or None
+    if block not in (None, *BLOCK_SYSTEMS):
+        p.append(f"block_system must be one of {BLOCK_SYSTEMS}")
+    headway = None
+    if row["headway_min"]:
+        try:
+            headway = float(row["headway_min"])
+            if not 1.0 <= headway <= 30.0:  # also refuses NaN and infinity
+                p.append("headway_min must be 1-30")
+        except ValueError:
+            p.append("headway_min must be a number")
+    if block == "TOKEN" and tracks not in (None, 1):
+        p.append("TOKEN working is single-line working")
+    filled = any(v is not None for v in (tracks, block, headway))
+    p += _provenance(row, filled)
+    values = {"tracks": tracks, "block_system": block, "headway_min": headway, "source": row["source"],
+              "effective_from": row["effective_from"]}  # fmt: skip
+    return (values if filled else None), p
+
+
+def _provenance(row: dict[str, str], filled: bool) -> list[str]:
+    if not filled:
+        return []
+    p = []
+    if row["source"] not in IR_SOURCES:
+        p.append(f"source must be one of {IR_SOURCES} (an Indian Railways document) for a value to be used")
+    try:
+        date.fromisoformat(row["effective_from"])
+    except ValueError:
+        p.append("effective_from must be YYYY-MM-DD")
+    return p
+
+
 def check(folder: Path, network: dict[str, set[str]] | None = None) -> dict[str, Any]:
     """Every row checked on its own and for consistency, and (given the twin's network) that it names a station or
     physical section the twin runs on. Returns the usable rows, every problem, and the rows left out."""
 
     stations, sections, problems, left_out = {}, {}, [], []
     for row in _rows(folder / "stations.csv", STATION_COLUMNS):
-        p: list[str] = []
         code = row["station_code"]
-        loops = _int(row["loops"], 0, 30, "loops", p)
-        platforms = _int(row["platform_lines"], 0, 40, "platform_lines", p)
-        crossing = row["crossing_allowed"].upper() or None
-        if crossing not in (None, "Y", "N"):
-            p.append("crossing_allowed must be Y or N")
-        if crossing == "Y" and loops == 0:
-            p.append("crossing_allowed=Y with no loop: two trains cannot cross where neither can stand clear")
-        filled = any(v is not None for v in (loops, platforms, crossing)) or row["interlocking"]
-        if filled and row["source"] not in IR_SOURCES:
-            p.append(f"source must be one of {IR_SOURCES} (an Indian Railways document) for a value to be used")
-        if filled:
-            try:
-                date.fromisoformat(row["effective_from"])
-            except ValueError:
-                p.append("effective_from must be YYYY-MM-DD")
+        values, p = _station(row)
         if code in stations:
             p.append("station listed twice")
         problems += [f"stations.csv {code}: {x}" for x in p]
         if not p and network is not None and code not in network["stations"]:
             left_out.append(f"stations.csv {code}: not a station of the network the twin runs on")
             continue
-        if filled and not p:
-            stations[code] = {"loops": loops, "crossing_allowed": crossing, "platform_lines": platforms,
-                              "interlocking": row["interlocking"] or None, "source": row["source"],
-                              "effective_from": row["effective_from"]}  # fmt: skip
+        if values is not None and not p:
+            stations[code] = values
     for row in _rows(folder / "sections.csv", SECTION_COLUMNS):
-        p = []
         sid = row["section_id"]
-        a, b = sid.split("-", 1) if "-" in sid else (sid, "")
-        if f"{min(a, b)}-{max(a, b)}" != sid:
-            p.append("section_id must be the two station codes sorted, joined by '-'")
-        tracks = _int(row["tracks"], 1, 8, "tracks", p)
-        block = row["block_system"].upper() or None
-        if block not in (None, *BLOCK_SYSTEMS):
-            p.append(f"block_system must be one of {BLOCK_SYSTEMS}")
-        headway = None
-        if row["headway_min"]:
-            try:
-                headway = float(row["headway_min"])
-                if not 1.0 <= headway <= 30.0:
-                    p.append("headway_min must be 1-30")
-            except ValueError:
-                p.append("headway_min must be a number")
-        if block == "TOKEN" and tracks not in (None, 1):
-            p.append("TOKEN working is single-line working")
-        filled = any(v is not None for v in (tracks, block, headway))
-        if filled and row["source"] not in IR_SOURCES:
-            p.append(f"source must be one of {IR_SOURCES} (an Indian Railways document) for a value to be used")
-        if filled:
-            try:
-                date.fromisoformat(row["effective_from"])
-            except ValueError:
-                p.append("effective_from must be YYYY-MM-DD")
+        values, p = _section(row)
         if sid in sections:
             p.append("section listed twice")
         problems += [f"sections.csv {sid}: {x}" for x in p]
@@ -156,9 +178,8 @@ def check(folder: Path, network: dict[str, set[str]] | None = None) -> dict[str,
                    else "not a section of the network the twin runs on")  # fmt: skip
             left_out.append(f"sections.csv {sid}: {why}")
             continue
-        if filled and not p:
-            sections[sid] = {"tracks": tracks, "block_system": block, "headway_min": headway,
-                             "source": row["source"], "effective_from": row["effective_from"]}  # fmt: skip
+        if values is not None and not p:
+            sections[sid] = values
     return {"stations": stations, "sections": sections, "problems": problems, "left_out": left_out}
 
 
@@ -179,14 +200,63 @@ def build(folder: Path, out: Path, network: dict[str, set[str]] | None = None) -
             "left_out": result["left_out"], "out": str(out)}  # fmt: skip
 
 
-def load(path: Path) -> dict[str, Any]:
-    register = json.loads(path.read_text(encoding="utf-8"))
-    if register.get("kind") != "Clear Path Nexus loop and block-section register":
+def _as_text(value: Any, kind: type | tuple[type, ...]) -> str:
+    """A built value back to its CSV text, refusing any value of the wrong type (a string "2" for 2, a bool...)."""
+
+    if value is None:
+        return ""
+    if isinstance(value, bool) or not isinstance(value, kind):
+        raise ValueError(f"{value!r} has the wrong type")
+    return str(value)
+
+
+def _refuse_constant(name: str) -> None:
+    raise ValueError(f"{name} is not a number")
+
+
+def load(path: Path, expected_sha256: str | None = None) -> dict[str, Any]:
+    """A built register, re-checked row by row with the same rules as `validate`: a file edited after it was
+    built cannot carry a value the checks would refuse. `expected_sha256` (RAILGUARD_REGISTER_SHA256) pins the
+    exact file that was reviewed and signed off."""
+
+    raw = path.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    if expected_sha256 and not hmac.compare_digest(digest, expected_sha256.strip().lower()):
+        raise ValueError(f"{path} is not the register that was signed off (SHA-256 differs)")
+    register = json.loads(raw, parse_constant=_refuse_constant)
+    if not isinstance(register, dict) or register.get("kind") != "Clear Path Nexus loop and block-section register":
         raise ValueError(f"{path} is not a register built by `python -m india_rail register build`")
-    for row in (*register["stations"].values(), *register["sections"].values()):
-        if row.get("source") not in IR_SOURCES:
-            raise ValueError("register rows must come from Indian Railways sources")
-    register["checksum"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    if not all(isinstance(register.get(k, {}), dict) for k in ("stations", "sections")):
+        raise ValueError(f"{path}: stations and sections must be objects")
+    problems = []
+    for code, row in register.get("stations", {}).items():
+        try:
+            text = {"station_code": code, "loops": _as_text(row.get("loops"), int),
+                    "crossing_allowed": _as_text(row.get("crossing_allowed"), str),
+                    "platform_lines": _as_text(row.get("platform_lines"), int),
+                    "interlocking": _as_text(row.get("interlocking"), str),
+                    "source": _as_text(row.get("source"), str),
+                    "effective_from": _as_text(row.get("effective_from"), str)}  # fmt: skip
+            values, p = _station(text)
+            p += [] if values is not None else ["row says nothing"]
+        except (ValueError, AttributeError) as exc:
+            p = [str(exc)]
+        problems += [f"station {code}: {x}" for x in p]
+    for sid, row in register.get("sections", {}).items():
+        try:
+            text = {"section_id": sid, "tracks": _as_text(row.get("tracks"), int),
+                    "block_system": _as_text(row.get("block_system"), str),
+                    "headway_min": _as_text(row.get("headway_min"), (int, float)),
+                    "source": _as_text(row.get("source"), str),
+                    "effective_from": _as_text(row.get("effective_from"), str)}  # fmt: skip
+            values, p = _section(text)
+            p += [] if values is not None else ["row says nothing"]
+        except (ValueError, AttributeError) as exc:
+            p = [str(exc)]
+        problems += [f"section {sid}: {x}" for x in p]
+    if problems:
+        raise ValueError(f"register rows fail the register checks ({len(problems)}); first: {problems[0]}")
+    register["checksum"] = digest
     return register
 
 

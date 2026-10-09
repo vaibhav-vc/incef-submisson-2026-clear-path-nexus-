@@ -142,3 +142,39 @@ def test_a_register_with_foreign_rows_is_not_loaded(tmp_path):
     (tmp_path / "x.json").write_text(json.dumps({"stations": {}, "sections": {}}))
     with pytest.raises(ValueError, match="not a register"):
         register.load(tmp_path / "x.json")
+
+
+@pytest.mark.parametrize(
+    "station, section",
+    [
+        ({}, {"headway_min": float("nan")}),
+        ({}, {"headway_min": -50.0}),
+        ({}, {"tracks": 99}),
+        ({}, {"tracks": "2"}),
+        ({"loops": -3}, {}),
+        ({"loops": True}, {}),
+    ],
+)
+def test_a_built_register_edited_afterwards_is_refused(tmp_path, station, section):
+    good_station = {"loops": 1, "crossing_allowed": "Y", "platform_lines": None, "interlocking": None,
+                    "source": "IR_SWR", "effective_from": "2026-01-01"}  # fmt: skip
+    good_section = {"tracks": 1, "block_system": "ABSOLUTE", "headway_min": 6.0, "source": "IR_WTT",
+                    "effective_from": "2026-01-01"}  # fmt: skip
+    doc = {"kind": "Clear Path Nexus loop and block-section register", "stations": {"B": good_station},
+           "sections": {"B-C": good_section}}  # fmt: skip
+    (tmp_path / "ok.json").write_text(json.dumps(doc))
+    assert register.load(tmp_path / "ok.json")["sections"]["B-C"]["headway_min"] == 6.0
+    doc["stations"]["B"] = {**good_station, **station}
+    doc["sections"]["B-C"] = {**good_section, **section}
+    (tmp_path / "bad.json").write_text(json.dumps(doc))  # NaN is written as the bare word NaN
+    with pytest.raises(ValueError):
+        register.load(tmp_path / "bad.json")
+
+
+def test_a_pinned_register_must_be_the_file_signed_off(tmp_path):
+    doc = {"kind": "Clear Path Nexus loop and block-section register", "stations": {}, "sections": {}}
+    (tmp_path / "r.json").write_text(json.dumps(doc))
+    digest = register.load(tmp_path / "r.json")["checksum"]
+    assert register.load(tmp_path / "r.json", digest)["checksum"] == digest
+    with pytest.raises(ValueError, match="signed off"):
+        register.load(tmp_path / "r.json", "0" * 64)

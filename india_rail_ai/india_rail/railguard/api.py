@@ -413,18 +413,54 @@ def national_cab_token(request: CabTokenRequest, http: Request, run: str = PathP
             int(twin.now * 60),
             "CAB_TOKEN_ISSUED",
             _actor(http, request.issued_by),
-            {"run": run, "expires_at": issued["expires_at"]},
-        )  # fmt: skip (never the token)
+            {"run": run, "token_id": issued["token_id"], "expires_at": issued["expires_at"]},
+        )  # fmt: skip (the token id names the link; never the token)
     return issued
 
 
-def _cab_capability(request: Request, run: str) -> None:
+class CabRevokeRequest(StrictRequest):
+    token_id: str | None = Field(None, pattern="^[0-9a-f]{16}$")
+    revoked_by: str = Field(pattern=NAME)
+
+
+@router.post("/national/cab/{run}/revoke", dependencies=CONTROL)
+def national_cab_revoke(request: CabRevokeRequest, http: Request, run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
+    """Revoke one cab link (its token id, from the issue record) or, without one, every link issued for the run."""
+
     from india_rail.railguard import live
 
+    twin = national()
+    if run not in twin.runs:
+        raise HTTPException(status_code=404, detail="Unknown run")
+    _revocations_loaded()
+    live.revoke(run, request.token_id)
+    with twin.lock:
+        twin.audit.record(int(twin.now * 60), "CAB_LINK_REVOKED", _actor(http, request.revoked_by),
+                          {"run": run, "token_id": request.token_id})  # fmt: skip
+    return {"run": run, "revoked": request.token_id or "every link issued so far"}
+
+
+@lru_cache(maxsize=1)
+def _revocations_loaded() -> int:
+    """Revocations of the last day, re-read from the persisted audit log once per process (after a restart)."""
+
+    import os
+
+    from india_rail.railguard import live
+
+    folder = os.environ.get("RAILGUARD_AUDIT_DIR")
+    return live.load_revocations(Path(folder) / "railguard_events.jsonl") if folder else 0
+
+
+def _cab_capability(request: Request, run: str) -> str:
+    from india_rail.railguard import live
+
+    _revocations_loaded()
     auth = request.headers.get("authorization", "")
-    token = auth[7:].strip() if auth.lower().startswith("bearer ") else request.query_params.get("token")
+    token = auth[7:].strip() if auth.lower().startswith("bearer ") else None  # never in a URL: URLs get logged
     if not live.cab_token_valid(token, run):
         raise HTTPException(status_code=403, detail="Not authorised for this train")
+    return token
 
 
 @router.get("/national/cab/{run}/live", dependencies=[Depends(limit("read"))])
@@ -443,12 +479,14 @@ def national_cab_stream(
 
     from india_rail.railguard import live
 
-    _cab_capability(request, run)
+    token = _cab_capability(request, run)
     twin = national()
     if run not in twin.runs:
         raise HTTPException(status_code=404, detail="Unknown run")
 
-    return StreamingResponse(live.stream(twin, run, request.is_disconnected, events, kind="advisory"),
+    still_valid = lambda: live.cab_token_valid(token, run)  # noqa: E731 - revoked or expired: the stream ends
+    return StreamingResponse(live.stream(twin, run, request.is_disconnected, events, kind="advisory",
+                                         allowed=still_valid),
                              media_type="text/event-stream", headers=SSE_HEADERS)  # fmt: skip
 
 
@@ -713,9 +751,12 @@ class NationalFeed(StrictRequest):
 
 @lru_cache(maxsize=1)
 def _shadow():
-    from india_rail.railguard.shadow import ShadowTrial
+    import os
 
-    return ShadowTrial(national())
+    from india_rail.railguard.shadow import ShadowTrial, TrialReader, audit_key
+
+    folder = os.environ.get("RAILGUARD_AUDIT_DIR")
+    return ShadowTrial(national(), TrialReader(Path(folder), key=audit_key()) if folder else None)
 
 
 class ShadowDecision(StrictRequest):
@@ -765,16 +806,12 @@ def national_shadow_import(request: ShadowImport, http: Request) -> dict[str, An
         raise HTTPException(status_code=422, detail=str(exc)[:200]) from exc
 
 
-@router.get("/national/shadow/report", dependencies=VIEW)
+@router.get("/national/shadow/report", dependencies=CONTROL_HEAVY)
 def national_shadow_report() -> dict[str, Any]:
-    """Agreement so far; over the whole persisted trial when the audit is kept on disk (RAILGUARD_AUDIT_DIR)."""
+    """Agreement so far; over the whole persisted trial when the audit is kept on disk (RAILGUARD_AUDIT_DIR),
+    read incrementally and verified record by record."""
 
-    import os
-
-    from india_rail.railguard.shadow import report_from_audit_dir
-
-    folder = os.environ.get("RAILGUARD_AUDIT_DIR")
-    return report_from_audit_dir(Path(folder)) if folder else _shadow().report()
+    return _shadow().report()
 
 
 @lru_cache(maxsize=1)

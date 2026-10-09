@@ -706,7 +706,8 @@ def national_data() -> NationalData:
 
     name, path = timetable_source()
     spec = os.environ.get("RAILGUARD_REGISTER")
-    data = build_national(path, register=ir_register.load(Path(spec)) if spec else None)
+    pinned = os.environ.get("RAILGUARD_REGISTER_SHA256")
+    data = build_national(path, register=ir_register.load(Path(spec), pinned) if spec else None)
     data.stats["timetable"] = name
     return data
 

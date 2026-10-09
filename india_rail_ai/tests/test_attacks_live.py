@@ -65,7 +65,17 @@ def test_forged_expired_or_other_train_cab_tokens_fail(http):
         r = http.get("/railguard/national/cab/12001@0/live", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 403
     expired = live.issue_cab_token("12001@0", -1)["token"]
-    assert http.get(f"/railguard/national/cab/12001@0/live?token={expired}").status_code == 403
+    assert (
+        http.get("/railguard/national/cab/12001@0/live", headers={"Authorization": f"Bearer {expired}"}).status_code
+        == 403
+    )
+    # A capability is never taken from the URL (URLs reach access logs and proxies); non-ASCII is refused, not a 500.
+    valid = live.issue_cab_token("12001@0", 600)["token"]
+    assert http.get(f"/railguard/national/cab/12001@0/live?token={valid}").status_code == 403
+    assert (
+        http.get("/railguard/national/cab/12001@0/live", headers={"Authorization": "Bearer é.é".encode()}).status_code
+        == 403
+    )
     # A role token is not a cab capability: a viewer screen cannot read a cab feed it was not issued.
     assert (
         http.get("/railguard/national/cab/12001@0/live", headers={"Authorization": "Bearer " + "v" * 40}).status_code
@@ -77,7 +87,7 @@ def test_cab_tokens_never_reach_logs_or_the_audit_chain(http, caplog):
     caplog.set_level(logging.INFO, logger="railguard.access")
     issued = http.post("/railguard/national/cab/12001@0/token", json={"issued_by": "SCR"},
                        headers={"Authorization": "Bearer " + "c" * 40}).json()  # fmt: skip
-    http.get(f"/railguard/national/cab/12001@0/live?token={issued['token']}")
+    http.get("/railguard/national/cab/12001@0/live", headers={"Authorization": f"Bearer {issued['token']}"})
     assert issued["token"] not in caplog.text
     from india_rail.railguard import api as rg
 

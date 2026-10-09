@@ -157,8 +157,9 @@ def test_json_access_log_has_route_template_and_no_query(caplog):
 
 
 # ---- clock (CERT-In: synchronised with NIC/NPL NTP) --------------------------------------------------------------
-def _fake_ntp(offset_s: float, echo: bool = True, stratum: int = 2, leap: int = 0):
-    """A one-shot SNTP server on localhost whose clock is `offset_s` ahead of ours."""
+def _fake_ntp(offset_s: float, echo: bool = True, stratum: int = 2, leap: int = 0, reply_from: str | None = None):
+    """A one-shot SNTP server on localhost whose clock is `offset_s` ahead of ours (`reply_from`: answer from
+    another address, as a spoofer would)."""
 
     import socket as _socket
     import threading as _threading
@@ -174,7 +175,12 @@ def _fake_ntp(offset_s: float, echo: bool = True, stratum: int = 2, leap: int = 
         reply[0], reply[1] = (leap << 6) | (4 << 3) | 4, stratum
         reply[24:32] = request[40:48] if echo else b"\x00" * 8
         reply[32:40] = reply[40:48] = stamp
-        sock.sendto(bytes(reply), addr)
+        if reply_from:
+            with _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM) as other:
+                other.bind((reply_from, 0))
+                other.sendto(bytes(reply), addr)
+        else:
+            sock.sendto(bytes(reply), addr)
         sock.close()
 
     _threading.Thread(target=serve, daemon=True).start()
@@ -189,6 +195,24 @@ def test_sntp_measures_the_offset_and_refuses_forged_or_unsynchronised_replies()
         ops.sntp_offset("127.0.0.1", _fake_ntp(0.0, leap=3))
     with pytest.raises(OSError, match="not synchronised"):
         ops.sntp_offset("127.0.0.1", _fake_ntp(0.0, stratum=0))
+    with pytest.raises(OSError):  # an echoing reply from another address never reaches the client
+        ops.sntp_offset("127.0.0.1", _fake_ntp(3599.0, reply_from="127.0.0.5"), timeout_s=0.5)
+
+
+def test_one_forged_ntp_reply_cannot_fail_readiness(monkeypatch):
+    monkeypatch.setenv("RAILGUARD_NTP", "samay1.nic.in")
+    sup = ops.reset()
+    sup.check_clock(measure=lambda host: 0.02)
+    sup.check_clock(measure=lambda host: 3599.0)  # one reply, one server: not believed yet
+    ready = sup.readiness()
+    assert ready["checks"]["clock"] is True and any("confirming at the next check" in n for n in ready["notes"])
+    sup.check_clock(measure=lambda host: 3599.2)  # measured again: the clock really is off
+    assert sup.readiness()["checks"]["clock"] is False
+    monkeypatch.setenv("RAILGUARD_NTP", "samay1.nic.in,time.nplindia.org")
+    sup = ops.reset()
+    sup.check_clock(measure=lambda host: 3599.0 if host == "samay1.nic.in" else 0.01)  # servers disagree
+    ready = sup.readiness()
+    assert ready["checks"]["clock"] is True and any("disagree" in n for n in ready["notes"])
 
 
 def test_a_drifting_clock_warns_every_console_and_fails_readiness(monkeypatch, data):  # noqa: F811
@@ -211,4 +235,4 @@ def test_a_drifting_clock_warns_every_console_and_fails_readiness(monkeypatch, d
 
     sup.check_clock(measure=unreachable)  # reported, but a last good reading keeps the service in
     ready = sup.readiness()
-    assert ready["checks"]["clock"] is True and any("NTP unreachable" in n for n in ready["notes"])
+    assert ready["checks"]["clock"] is True and any("timed out" in n for n in ready["notes"])

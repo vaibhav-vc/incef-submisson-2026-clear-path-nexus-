@@ -5,12 +5,15 @@
 
     # Test environment: does the deployed receiver accept the good and refuse the bad?
     python -m india_rail feed-conformance endpoint --url https://nexus-test.example --source RTIS --key-id k1 \\
-        --key-file rtis_k1.hex --token-file feed_token.txt --train <a train running today> --station <a stop of it>
+        --key-file rtis_k1.hex --token-file feed_token.txt --train <a train running today> --station <a stop of it> \\
+        --test-environment
 
 Both write a certificate (JSON) listing every rule checked and its result. The rules are the receiver's own
 (constants and parser imported from livefeed.py), so the kit cannot drift from what production enforces. Keys and
 tokens are read from files, never from the command line (shell history), and never printed. The endpoint mode
-refuses plain HTTP except to this machine: a feed key or token never crosses a network in clear text.
+refuses plain HTTP except to this machine (and then bypasses any proxy), and never follows a redirect: a feed key
+or token never crosses a network in clear text or reaches a host it was not given for. It sends validly signed
+reports for a real train, so it is run only against a test receiver (--test-environment says so).
 """
 
 from __future__ import annotations
@@ -154,13 +157,21 @@ def check_producer(envelopes: list[Any], secret: bytes, source: str) -> dict[str
 
     checks, nonces, last_seq, events_seen, events_bad = [], set(), -1, 0, 0
     for n, env in enumerate(envelopes, start=1):
-        problems = envelope_problems(env, secret)
-        if isinstance(env, dict):
+        checked = True
+        try:
+            problems = envelope_problems(env, secret)
+        except Exception as exc:  # a malformed envelope fails its check; it never stops the run
+            problems, checked = [f"could not be checked: {type(exc).__name__}"], False
+        if isinstance(env, dict) and checked:
             if env.get("source") != source:
                 problems.append(f"source {env.get('source')!r} is not the one being certified ({source})")
-            if env.get("nonce") in nonces:
+            nonce = env.get("nonce")
+            if not isinstance(nonce, str):
+                problems.append("nonce must be a string")
+            elif nonce in nonces:
                 problems.append("nonce reused (the receiver refuses replays)")
-            nonces.add(env.get("nonce"))
+            else:
+                nonces.add(nonce)
             seq = env.get("sequence")
             if type(seq) is int:
                 if seq <= last_seq:
@@ -170,9 +181,17 @@ def check_producer(envelopes: list[Any], secret: bytes, source: str) -> dict[str
                 sent = _when(env.get("sent_at"))
             except ValueError:
                 sent = None
-            for k, event in enumerate(env.get("events") or [], start=1):
+            events = env.get("events") or []
+            if not isinstance(events, list):
+                problems.append("events must be a list")
+                events = []
+            for k, event in enumerate(events, start=1):
                 events_seen += 1
-                if bad := event_problems(event, sent):
+                try:
+                    bad = event_problems(event, sent) if isinstance(event, dict) else ["an event must be an object"]
+                except Exception as exc:
+                    bad = [f"could not be checked: {type(exc).__name__}"]
+                if bad:
                     events_bad += 1
                     problems += [f"event {k}: {p}" for p in bad]
         checks.append({"envelope": n, "passed": not problems, "problems": problems[:20]})
@@ -249,9 +268,18 @@ def http_post(url: str) -> Post:
     import urllib.request
 
     parts = urlparse(url)
-    if parts.scheme != "https" and not (parts.scheme == "http" and parts.hostname in ("127.0.0.1", "localhost", "::1")):
+    loopback = parts.scheme == "http" and parts.hostname in ("127.0.0.1", "localhost", "::1")
+    if parts.scheme != "https" and not loopback:
         raise ValueError("use https:// (plain http only to this machine): keys and tokens must not travel in clear")
     target = url.rstrip("/") + "/railguard/national/feed/batch"
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+            return None  # a redirect is answered as it stands (a failed check): the token never follows it
+
+    # Plain http to this machine never goes through a proxy (it would carry the token in clear)
+    handlers: list[Any] = [_NoRedirect()] + ([urllib.request.ProxyHandler({})] if loopback else [])
+    opener = urllib.request.build_opener(*handlers)
 
     def post(body: dict[str, Any] | str, token: str | None) -> tuple[int, Any]:
         data = (body if isinstance(body, str) else json.dumps(body)).encode()
@@ -260,7 +288,7 @@ def http_post(url: str) -> Post:
             headers["Authorization"] = f"Bearer {token}"
         request = urllib.request.Request(target, data=data, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(request, timeout=30) as reply:  # nosec B310 - scheme checked above
+            with opener.open(request, timeout=30) as reply:  # nosec B310 - scheme checked above
                 return reply.status, json.loads(reply.read() or b"{}")
         except urllib.error.HTTPError as exc:
             try:
@@ -295,6 +323,9 @@ def main(argv: list[str] | None = None) -> int:
     end.add_argument("--token-file", type=Path, required=True, help="file holding the feed role token")
     end.add_argument("--train", required=True, help="a train running today on the receiver's timetable")
     end.add_argument("--station", required=True, help="a station that train calls at")
+    end.add_argument("--test-environment", action="store_true",
+                     help="confirm the URL is a receiver in a test environment: the battery sends validly signed "
+                          "reports for a real train, which a production receiver would act on")  # fmt: skip
     for p in (prod, end):
         p.add_argument("--out", type=Path, help="where to write the certificate (JSON)")
     args = parser.parse_args(argv)
@@ -307,6 +338,9 @@ def main(argv: list[str] | None = None) -> int:
         cert = check_producer(envelopes, secret, args.source)
         cert["sample_sha256"] = hashlib.sha256(text.encode()).hexdigest()
     else:
+        if not args.test_environment:
+            parser.error("endpoint mode sends real-looking reports: run it only against a test receiver, and say so "
+                         "with --test-environment")  # fmt: skip
         token = args.token_file.read_text(encoding="utf-8").strip()
         cert = check_endpoint(http_post(args.url), args.source, args.key_id, secret, token, args.train, args.station)
         cert["receiver"] = urlparse(args.url).hostname

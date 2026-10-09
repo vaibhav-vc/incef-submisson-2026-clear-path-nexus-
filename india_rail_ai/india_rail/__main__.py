@@ -100,7 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "serve":
         import uvicorn
 
-        uvicorn.run("india_rail.api:app", host=args.host, port=args.port)
+        # No access log: request lines can carry identifiers, and the app logs each request itself (railguard.access)
+        uvicorn.run("india_rail.api:app", host=args.host, port=args.port, access_log=False)
         return 0
 
     from india_rail.services import Services

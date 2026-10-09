@@ -88,3 +88,77 @@ def test_a_decision_matches_only_a_recommendation_made_before_it_the_same_day():
     report = build_report([before, next_day, in_time], [snap])
     assert [r["matched"] for r in report["rows"]] == [False, False, True]
     assert report["decisions_without_a_recommendation"]["count"] == 2
+
+
+def _export(day: str, rows: list[str]) -> str:
+    return "\n".join(["train_number,start_date,action,decided_at,station,hold_min,desk,note", *rows])
+
+
+def test_an_import_records_nothing_unless_the_whole_file_can_be_read(data):  # noqa: F811
+    from india_rail.railguard import shadow
+    from india_rail.railguard.eta import twin_service_date
+
+    twin = NationalTwin(data, start_min=600.0)
+    trial, today = ShadowTrial(twin), twin_service_date(twin)
+    day = today.isoformat()
+    good = f"12001,{day},HOLD,{day}T10:05:00+05:30,C,6,,"
+    rows = [
+        f"12001,{day},HOLD,{day}T10:{m % 60:02d}:{m // 60:02d}+05:30,C,,," for m in range(shadow.MAX_IMPORT_ROWS + 1)
+    ]
+    with pytest.raises(ValueError, match="nothing recorded"):
+        trial.import_csv(_export(day, rows), "c1", today)
+    assert trial.decisions == [] and not any(e["type"] == "SHADOW_ACTUAL_DECISION" for e in twin.audit.events)
+    ancient = f"12001,{day},HOLD,0001-01-01T00:10:00+05:30,C,,,"
+    torn = f"12001,{day},PATH,{day}T10:06:00+05:30,C,,,a\rb"  # a bare carriage return splits the row
+    result = trial.import_csv(_export(day, [good, ancient, torn]), "c1", today)
+    assert result["recorded"] == 2 and result["refused"] == 2  # refused rows, not a server error
+    again = trial.import_csv(_export(day, [good]), "c1", today)  # the same export imported twice
+    assert again["recorded"] == 0 and "already logged" in again["rows"][0]["reason"]
+    assert len(trial.decisions) == 2
+
+
+def test_the_persisted_trial_is_read_incrementally_and_verified(data, tmp_path, monkeypatch):  # noqa: F811
+    import json
+
+    from india_rail.railguard.shadow import TrialReader
+
+    monkeypatch.setenv("RAILGUARD_AUDIT_DIR", str(tmp_path))
+    monkeypatch.setenv("RAILGUARD_AUDIT_KEY", "k" * 32)
+    twin = NationalTwin(data, start_min=600.0)
+    reader = TrialReader(tmp_path, key=b"k" * 32)
+    trial = ShadowTrial(twin, reader)
+    twin.disrupt("12001@0", "C", 6)
+    top = twin.recommend("12001@0")["ranking"]["candidates"][0]["action"].split("+")[0]
+    trial.record(ActualDecision("12001@0", top, twin.now, "controller-1"))
+    first = trial.report()
+    assert first["decisions_with_a_prior_recommendation"] == 1
+    assert first["verification"] == {"macs_checked": True, "recommendations_read": 1, "unreadable_lines": 0,
+                                     "chain_breaks": 0, "events_failing_verification": 0,
+                                     "snapshots_failing_verification": 0}  # fmt: skip
+    read_up_to = dict(reader.offsets)
+    trial.record(ActualDecision("12001@0", "HOLD" if top != "HOLD" else "CONTINUE", twin.now, "controller-1"))
+    assert trial.report()["decisions_logged"] == 2 and reader.offsets["events"] > read_up_to["events"]
+
+    # Tampering: a decision rewritten, and a recommendation's wall-clock time moved, are found and not used.
+    events = (tmp_path / "railguard_events.jsonl").read_text().splitlines()
+    k = next(i for i, line in enumerate(events) if '"SHADOW_ACTUAL_DECISION"' in line)
+    edited = json.loads(events[k])
+    edited["details"]["action"] = "REROUTE"
+    events[k] = json.dumps(edited, sort_keys=True)
+    (tmp_path / "railguard_events.jsonl").write_text("\n".join(events) + "\n")
+    snaps = (tmp_path / "railguard_snapshots.jsonl").read_text().splitlines()
+    moved = json.loads(snaps[0])
+    moved["at"] = "2020-01-01T00:00:00.000+00:00"
+    (tmp_path / "railguard_snapshots.jsonl").write_text(json.dumps(moved, sort_keys=True) + "\n")
+    checked = TrialReader(tmp_path, key=b"k" * 32).report()
+    assert checked["verification"]["events_failing_verification"] == 1
+    assert checked["verification"]["snapshots_failing_verification"] == 1
+    assert checked["decisions_logged"] == 1 and checked["decisions_with_a_prior_recommendation"] == 0
+
+    # A line torn by a power cut: closed off at the next start, reported, and the chain continues after it.
+    with (tmp_path / "railguard_events.jsonl").open("a") as handle:
+        handle.write('{"seq": 99, "trunc')
+    NationalTwin(data, start_min=600.0).audit.record(0, "SHADOW_ACTUAL_DECISION", "c", {"run": "12001@0",
+                                                     "action": "HOLD", "at_min": 600.0})  # fmt: skip
+    after = TrialReader(tmp_path, key=b"k" * 32).report()
+    assert after["verification"]["unreadable_lines"] == 1 and after["decisions_logged"] == 2

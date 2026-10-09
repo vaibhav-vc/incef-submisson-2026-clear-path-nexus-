@@ -80,16 +80,28 @@ async function liveLoop() {
 }
 
 // ---- cab link: a capability for one train's advisory, handed to that train's cab unit ---------------------
+let lastCab = null;  // {run, token_id} of the link shown, so it can be revoked
 async function issueCab() {
   if (!selected) throw new Error("Select a train run first");
   const r = await api(`/cab/${encodeURIComponent(selected)}/token`, {issued_by: who(), hours: 12});
   const box = document.getElementById("cabUrl");
   // The capability travels in the fragment: browsers never send it to a server, and the cab page removes it.
   box.value = `${location.origin}/cab?run=${encodeURIComponent(r.run)}#cab=${r.token}`;
+  lastCab = {run: r.run, token_id: r.token_id};
   document.getElementById("cabExpiry").textContent =
-    `valid until ${new Date(r.expires_at * 1000).toLocaleString()} · for ${r.run}'s cab unit only`;
+    `link ${r.token_id} · valid until ${new Date(r.expires_at * 1000).toLocaleString()} · for ${r.run}'s cab unit only`;
   document.getElementById("cabIssued").hidden = false;
   box.select();
+}
+async function revokeCab(all) {
+  const run = all ? selected : lastCab && lastCab.run;
+  if (!run) throw new Error("Select a train run first");
+  const body = all ? {revoked_by: who()} : {revoked_by: who(), token_id: lastCab.token_id};
+  const r = await api(`/cab/${encodeURIComponent(run)}/revoke`, body);
+  document.getElementById("cabUrl").value = "";
+  document.getElementById("cabExpiry").textContent = `revoked: ${r.revoked} (${r.run})`;
+  document.getElementById("cabIssued").hidden = false;
+  lastCab = null;
 }
 
 // ---- power and readiness ------------------------------------------------------------------------------
@@ -239,6 +251,8 @@ async function startPlus() {
   document.getElementById("akind").onchange = () => act(loadAdvice);
   document.getElementById("fplan").onclick = () => act(planFreight);
   document.getElementById("issueCab").onclick = () => act(issueCab);
+  document.getElementById("revokeCab").onclick = () => act(() => revokeCab(false));
+  document.getElementById("revokeAllCab").onclick = () => act(() => revokeCab(true));
   document.getElementById("showDfc").onchange = () => draw();
   await restoreSession();
   document.getElementById("token").addEventListener("change", () => loadPanels());

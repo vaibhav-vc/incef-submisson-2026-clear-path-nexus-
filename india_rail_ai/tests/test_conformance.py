@@ -108,3 +108,47 @@ def test_keys_never_travel_in_clear_text():
 
 def test_day_constant_is_the_feed_tests_day():
     assert DAY.isoformat() == "2026-10-07"
+
+
+def test_malformed_producer_envelopes_fail_their_check_without_stopping_the_run():
+    cert = conformance.check_producer(
+        [{"nonce": ["x"], "events": "x"}, {"events": {"a": 1}}, {"events": [{"lat": 10**400, "lon": 1}]}, "x"],
+        bytes(32),
+        "RTIS",
+    )
+    assert cert["result"] == "FAIL" and cert["checks"] == 4 and cert["failed"] == 4
+
+
+def test_the_token_never_follows_a_redirect_or_goes_through_a_proxy(monkeypatch):
+    import http.server
+    import threading
+
+    seen = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            seen.append((self.server.server_address[0], self.headers.get("Authorization")))
+            if self.server.server_address[0] == "127.0.0.1":
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.2:{other.server_address[1]}/stolen")
+            else:
+                self.send_response(200)
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *args):
+            pass
+
+    first = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    other = http.server.HTTPServer(("127.0.0.2", 0), Handler)
+    proxy = http.server.HTTPServer(("127.0.0.3", 0), Handler)  # would record the token if used as a proxy
+    for server in (first, other, proxy):
+        threading.Thread(target=server.handle_request, daemon=True).start()
+    monkeypatch.setenv("http_proxy", f"http://127.0.0.3:{proxy.server_address[1]}")
+    monkeypatch.delenv("no_proxy", raising=False)
+    status, _reply = conformance.http_post(f"http://127.0.0.1:{first.server_address[1]}")({"x": 1}, "secret-token")
+    assert status == 302  # answered as it stands: a failed check
+    assert seen == [("127.0.0.1", "Bearer secret-token")]  # neither the redirect target nor a proxy saw it
+    for server in (first, other, proxy):
+        server.server_close()

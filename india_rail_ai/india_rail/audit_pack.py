@@ -107,20 +107,32 @@ def sbom(requirements: Path = PACKAGE_ROOT / "requirements.txt") -> dict[str, An
     }
 
 
-def _git_commit() -> str | None:
+def _git(*args: str) -> str | None:
     try:
-        done = subprocess.run(["git", "rev-parse", "HEAD"], cwd=PACKAGE_ROOT, capture_output=True, text=True,
+        done = subprocess.run(["git", *args], cwd=PACKAGE_ROOT, capture_output=True, text=True,
                               check=False, timeout=10)  # nosec B603 B607 - fixed arguments  # fmt: skip
-        return done.stdout.strip() or None
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return None
+    return done.stdout if done.returncode == 0 else None
 
 
-def evidence_index(root: Path = PACKAGE_ROOT) -> dict[str, Any]:
-    files = sorted({p for g in EVIDENCE_GLOBS for p in root.glob(g) if p.is_file() and "__pycache__" not in p.parts})
+def _git_commit() -> str | None:
+    return (_git("rev-parse", "HEAD") or "").strip() or None
+
+
+def evidence_index(root: Path = PACKAGE_ROOT, out: Path | None = OUT) -> dict[str, Any]:
+    """SHA-256 of every evidence, code and documentation file, with the commit they belong to. `uncommitted`
+    lists files that differ from that commit (the index then describes a working tree, not the commit). The
+    pack's own output folder is left out, so a rebuilt index never hashes the previous one."""
+
+    files = sorted({p for g in EVIDENCE_GLOBS for p in root.glob(g) if p.is_file() and "__pycache__" not in p.parts
+                    and not (out is not None and p.resolve().is_relative_to(out.resolve()))})  # fmt: skip
     index = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
-    return {"git_commit": _git_commit(), "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
-            "files": len(index), "sha256": index}  # fmt: skip
+    status = _git("status", "--porcelain", "--untracked-files=no", "--", ".")
+    changed = sorted(line[3:] for line in (status or "").splitlines() if line.strip())
+    return {"git_commit": _git_commit(), "uncommitted": changed if status is not None else "unknown (no git)",
+            "generated_at": datetime.now(UTC).isoformat(timespec="seconds"), "files": len(index),
+            "sha256": index}  # fmt: skip
 
 
 CONTROLS = [
@@ -169,7 +181,7 @@ def build(out: Path = OUT) -> dict[str, Any]:
     out.mkdir(parents=True, exist_ok=True)
     bom = sbom()
     (out / "sbom.cdx.json").write_text(json.dumps(bom, indent=1) + "\n", encoding="utf-8")
-    index = evidence_index()
+    index = evidence_index(out=out)
     (out / "evidence_index.json").write_text(json.dumps(index, indent=1) + "\n", encoding="utf-8")
     controls = [{"framework": f, "control": c, "implementation": i, "verification": v, "left_to_deployment": d}
                 for f, c, i, v, d in CONTROLS]  # fmt: skip
@@ -180,6 +192,9 @@ def build(out: Path = OUT) -> dict[str, Any]:
         "sbom_notes": [p["value"] for p in bom["metadata"]["properties"]],
         "evidence_files_hashed": index["files"],
         "git_commit": index["git_commit"],
+        "uncommitted_files": index["uncommitted"]
+        if isinstance(index["uncommitted"], str)
+        else len(index["uncommitted"]),
         "controls": len(controls),
         "controls_left_to_deployment": sum(1 for c in controls if c["left_to_deployment"]),
     }

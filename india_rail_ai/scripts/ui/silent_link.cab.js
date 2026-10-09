@@ -12,8 +12,12 @@ const executablePath = process.env.CHROMIUM || "/opt/pw-browsers/chromium-1194/c
   const shown = { status: await page.textContent("#statusText"), band: await page.textContent("#band"), hash: await page.evaluate(() => location.hash) };
   const t0 = Date.now();
   await page.waitForFunction(() => document.getElementById("statusText").textContent === "DATA UNAVAILABLE", null, { timeout: 40000 });
-  const out = { shown, blanked_after_s: (Date.now() - t0) / 1000, band_after: await page.textContent("#band"), problems };
+  const after = await page.evaluate(() => ["fresh", "route", "nextwp", "schedule", "nearby", "threats"]
+    .map((id) => document.getElementById(id).textContent));
+  const stale = after.filter((t) => t && !/^(no current data|No current data)*$/i.test(t.trim()));
+  const out = { shown, blanked_after_s: (Date.now() - t0) / 1000, band_after: await page.textContent("#band"),
+    stale_guidance_left: stale, problems };
   console.log(JSON.stringify(out));
   await browser.close();
-  process.exit(out.band_after === "--" && shown.hash === "" && !problems.length ? 0 : 1);
+  process.exit(out.band_after === "--" && !stale.length && shown.hash === "" && !problems.length ? 0 : 1);
 })().catch((e) => { console.error(e); process.exit(2); });

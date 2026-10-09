@@ -65,10 +65,32 @@ def test_cab_unit_sees_its_own_train_only(client):
         == 403
     )
     assert http.get("/railguard/national/cab/12001@0/live").status_code == 403
-    streamed = http.get(f"/railguard/national/cab/12001@0/stream?events=1&token={token}")
+    streamed = http.get("/railguard/national/cab/12001@0/stream?events=1", headers={"Authorization": f"Bearer {token}"})
     (kind, advisory), *_ = _events(streamed.text)
     assert kind == "advisory" and advisory["run"] == "12001@0"
     assert http.post("/railguard/national/cab/99999@0/token", json={"issued_by": "x"}).status_code == 404
+
+
+def test_a_controller_revokes_one_cab_link_or_every_link_of_a_train(client):
+    http, twin = client
+    bearer = lambda t: {"Authorization": f"Bearer {t}"}  # noqa: E731
+    url = "/railguard/national/cab/12001@0/live"
+    one = http.post("/railguard/national/cab/12001@0/token", json={"issued_by": "SCR"}).json()
+    two = http.post("/railguard/national/cab/12001@0/token", json={"issued_by": "SCR"}).json()
+    assert any(
+        e["type"] == "CAB_TOKEN_ISSUED" and e["details"]["token_id"] == one["token_id"] for e in twin.audit.events
+    )
+    revoked = http.post(
+        "/railguard/national/cab/12001@0/revoke", json={"token_id": one["token_id"], "revoked_by": "SCR"}
+    )
+    assert revoked.status_code == 200
+    assert http.get(url, headers=bearer(one["token"])).status_code == 403
+    assert http.get(url, headers=bearer(two["token"])).status_code == 200  # only that link
+    http.post("/railguard/national/cab/12001@0/revoke", json={"revoked_by": "SCR"})
+    assert http.get(url, headers=bearer(two["token"])).status_code == 403
+    three = http.post("/railguard/national/cab/12001@0/token", json={"issued_by": "SCR"}).json()
+    assert http.get(url, headers=bearer(three["token"])).status_code == 200  # a link issued afterwards works
+    assert any(e["type"] == "CAB_LINK_REVOKED" for e in twin.audit.events)
 
 
 def test_stream_capacity_is_bounded(client, monkeypatch):
@@ -96,3 +118,25 @@ def test_a_quiet_stream_still_sends_heartbeats(data, monkeypatch):  # noqa: F811
 
     chunks = asyncio.run(run())
     assert chunks[1].startswith(b"id: 1\nevent: advisory") and chunks[2:] == [b": heartbeat\n\n"] * 2
+
+
+def test_an_open_cab_stream_ends_when_its_link_is_revoked(client):
+    import asyncio
+
+    _http, twin = client
+    valid = {"now": True}
+
+    async def collect():
+        async def connected():
+            return False
+
+        out = []
+        async for chunk in live.stream(twin, "12001@0", connected, None, "advisory", allowed=lambda: valid["now"]):
+            out.append(chunk)
+            if chunk.startswith(b"id: "):  # the first advisory reached the cab: now the controller revokes the link
+                valid["now"] = False
+        return b"".join(out).decode()
+
+    text = asyncio.run(collect())
+    assert "event: advisory" in text and text.rstrip().endswith('{"detail": "this cab link is no longer valid"}')
+    assert "event: revoked" in text

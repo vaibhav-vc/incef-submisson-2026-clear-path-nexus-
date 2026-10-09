@@ -42,7 +42,9 @@ import hmac
 import json
 import logging
 import os
+import secrets
 import socket
+import statistics
 import tempfile
 import threading
 import time
@@ -67,21 +69,22 @@ NTP_EPOCH_OFFSET = 2_208_988_800  # seconds from 1900-01-01 (NTP era 0) to 1970-
 
 
 def sntp_offset(host: str, port: int = 123, timeout_s: float = 2.0, clock=time.time) -> float:
-    """Server clock minus local clock, in seconds (SNTP v4 client, RFC 4330)."""
+    """Server clock minus local clock, in seconds (SNTP v4 client, RFC 4330).
 
-    def stamp(t: float) -> bytes:
-        secs = int(t) + NTP_EPOCH_OFFSET
-        return secs.to_bytes(4, "big") + int((t % 1) * 2**32).to_bytes(4, "big")
+    The request's transmit field is random (RFC 4330 allows any value; the send time is kept here) and the reply
+    must echo it, and the socket is connected to the server, so the kernel drops datagrams from any other address:
+    an off-path sender can neither guess the echo nor use another source address."""
 
     def read(b: bytes) -> float:
         return int.from_bytes(b[:4], "big") - NTP_EPOCH_OFFSET + int.from_bytes(b[4:8], "big") / 2**32
 
-    t1 = clock()
-    request = bytes([0x23]) + bytes(39) + stamp(t1)  # LI 0, version 4, mode 3 (client); transmit time = t1
+    request = bytes([0x23]) + bytes(39) + secrets.token_bytes(8)  # LI 0, version 4, mode 3 (client)
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.settimeout(timeout_s)
-        sock.sendto(request, (host, port))
-        reply, _addr = sock.recvfrom(512)
+        sock.connect((host, port))
+        t1 = clock()
+        sock.send(request)
+        reply = sock.recv(512)
     t4 = clock()
     if len(reply) < 48:
         raise OSError("NTP reply too short")
@@ -406,6 +409,7 @@ class Operations:
         self.clock_offset_s: float | None = None
         self.clock_checked_at: float | None = None
         self.clock_error: str | None = None
+        self._last_offset: float | None = None
 
     @property
     def read_only(self) -> bool:
@@ -444,21 +448,35 @@ class Operations:
             twin.refresh()
 
     def check_clock(self, measure=sntp_offset) -> None:
-        """Measure the clock against the first NTP server that answers; raise CLOCK_DRIFT if it is off."""
+        """Measure the clock against every configured NTP server; raise CLOCK_DRIFT if it is off.
+
+        The offset is the median of the servers that answer. A drift is believed only when two servers agree on
+        it within MAX_CLOCK_OFFSET_S, or the same offset is measured at two checks in a row: a single forged or
+        faulty reply cannot take the service out of readiness."""
 
         if not self.ntp:
             return
-        errors = []
+        errors, answers = [], []
         for host in self.ntp:
             try:
-                self.clock_offset_s, self.clock_checked_at, self.clock_error = measure(host), time.time(), None
-                break
+                answers.append(measure(host))
             except OSError as exc:
                 errors.append(f"{host}: {exc}"[:120])
-        else:
+        if not answers:
             self.clock_error = "; ".join(errors)
             self.metrics.inc("ntp_failures_total")
             log.warning("NTP unreachable", extra={"event": "NTP_UNREACHABLE"})
+        else:
+            offset = statistics.median(answers)
+            spread = max(answers) - min(answers)
+            repeated = self._last_offset is not None and abs(offset - self._last_offset) <= MAX_CLOCK_OFFSET_S
+            self._last_offset = offset
+            notes = [f"NTP servers disagree by {spread:.1f} s"] if spread > MAX_CLOCK_OFFSET_S else []
+            if abs(offset) <= MAX_CLOCK_OFFSET_S or (len(answers) >= 2 and spread <= MAX_CLOCK_OFFSET_S) or repeated:
+                self.clock_offset_s, self.clock_checked_at = offset, time.time()
+            else:
+                notes.append(f"one measurement puts the clock {offset:+.1f} s off: confirming at the next check")
+            self.clock_error = "; ".join(notes + errors) or None
         if self.twin is not None:
             drift = self.clock_offset_s is not None and abs(self.clock_offset_s) > MAX_CLOCK_OFFSET_S
             with self.twin.lock:
@@ -523,7 +541,7 @@ class Operations:
         if not self.ntp:
             notes.append("clock not checked against NTP (RAILGUARD_NTP unset; CERT-In: use NIC/NPL servers)")
         elif self.clock_error:
-            notes.append(f"NTP unreachable: {self.clock_error}")
+            notes.append(f"NTP: {self.clock_error}")
         if self.nut is None:
             notes.append("power not monitored (RAILGUARD_UPS unset)")
         if self.config_error:

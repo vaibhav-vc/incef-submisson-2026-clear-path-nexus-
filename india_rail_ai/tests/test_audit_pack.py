@@ -29,6 +29,8 @@ def test_the_evidence_index_hashes_what_was_tested():
     assert index["sha256"][rel] == hashlib.sha256((PACKAGE_ROOT / rel).read_bytes()).hexdigest()
     assert any(k.startswith("seva2026/evidence/") for k in index["sha256"])
     assert any(k.startswith("india_rail/railguard/") for k in index["sha256"])
+    assert isinstance(index["uncommitted"], list)  # files that differ from the commit are named
+    assert not any(k.startswith("seva2026/evidence/audit/audit_pack/") for k in index["sha256"])  # not itself
 
 
 def test_every_control_names_its_implementation_and_its_verification(tmp_path):
