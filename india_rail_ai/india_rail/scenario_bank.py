@@ -565,11 +565,19 @@ def run(out: Path = EVIDENCE, scenarios: int = SCENARIOS, planner: int = SCENARI
 
     started = time.time()
     report: dict[str, Any] = {"what": __doc__.split("\n\n")[1].strip(), "labels": []}
+    try:  # a part not asked for (0 scenarios) keeps its last result
+        previous = json.loads(out.read_text())
+    except (OSError, ValueError):
+        previous = {}
     if scenarios:
         report["forecasts"] = forecast_bank(scenarios)
+    elif "forecasts" in previous:
+        report["forecasts"] = previous["forecasts"]
     if planner:
         report["planner"] = planner_bank(planner, workers)
         report["planner"]["timetable"] = timetable_source()[0]
+    elif "planner" in previous:
+        report["planner"] = previous["planner"]
     report["labels"] = [
         "Forecast scenarios are real (September 2024 observed running); the six damaged inputs are applied to "
         "real scenarios, whose real outcome is the answer.",

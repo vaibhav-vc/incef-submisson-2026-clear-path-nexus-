@@ -15,8 +15,11 @@ The rule (the operating rule the twin is built on, stated here on its own):
 * the required separation is the piece's signalled headway (the Indian Railways register where loaded, else the
   twin's default), or the separation the two trains have in the published timetable if that is smaller.
 
-Conflicts more than HORIZON_MIN ahead are counted separately: the planner resolves them when they come into
-view, so they are information, not a fault of the plan.
+A conflict starts when the second of the two trains enters the piece. Conflicts starting more than HORIZON_MIN
+ahead are counted separately: the planner resolves them when they come into view, so they are information, not a
+fault of the plan. (An occupation can be very long - a tourist train timetabled 33 hours between two stations
+because it stands overnight - so a conflict can start far beyond the horizon although the first train entered
+inside it.)
 """
 
 from __future__ import annotations
@@ -96,7 +99,7 @@ def check(twin: Any, changed: dict[str, tuple[Plan, int]]) -> dict[str, Any]:
                 required = headway if planned is None else min(headway, planned)
                 if apart >= required - EPS:
                     continue
-                if min(a[3][0], b[3][0]) > limit:
+                if max(a[3][0], b[3][0]) > limit:  # starts beyond the planning horizon
                     beyond += 1
                     continue
                 conflicts.append({"piece": piece, "run": a[0], "index": a[1], "other": b[0], "other_index": b[1],

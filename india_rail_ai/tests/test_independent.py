@@ -26,7 +26,9 @@ def _agree(twin: NationalTwin) -> int:
         start = twin.position(key)["index"]
         theirs = {(c["other"], c["other_index"]) for c in twin.conflicts(key, plan, start) if c["is_conflict"]}
         ours = {(c["other"], c["other_index"]) for c in independent.check(twin, {key: (plan, start)})["conflicts"]}
-        assert ours == theirs, key
+        # Every conflict starting inside the horizon is found by both (the planner may also look a little beyond)
+        assert ours <= theirs, (key, ours - theirs)
+        assert len(theirs - ours) <= independent.check(twin, {key: (plan, start)})["beyond_horizon"]
         seen += len(ours)
     return seen
 
@@ -54,3 +56,12 @@ def test_a_closure_ahead_on_the_current_section_is_seen(shared):  # noqa: F811
     twin.update_section("C-D", available=True)
     twin.update_section("A-B", obstacle=True)  # the piece it is on: still ahead of it until it leaves
     assert independent.blocked_ahead(twin, "12951@0", twin.plan_of("12951@0")) == ["A-B"]
+
+
+def test_a_conflict_is_inside_the_horizon_when_it_starts_there(shared):  # noqa: F811
+    twin = NationalTwin(shared, start_min=300.0)  # 05:00: the horizon ends at 09:00
+    twin.disrupt("12951@0", "A", 30)  # meets the local at about 10:30, beyond the horizon
+    found = independent.check(twin, {"12951@0": (twin.plan_of("12951@0"), 0)})
+    assert not found["conflicts"] and found["beyond_horizon"] > 0
+    twin.tick(240)  # 09:00: now it is inside, and found
+    assert independent.check(twin, {"12951@0": (twin.plan_of("12951@0"), 0)})["conflicts"]
