@@ -952,6 +952,108 @@ def scenarios_section(rv: dict[str, Any], nat_stats: dict[str, Any]) -> list[Any
     return out
 
 
+def live_section(rv: dict[str, Any]) -> list[Any]:
+    """Section 5: what passengers, customers and controllers see live, how fast, and how the forecaster was trained
+    (every figure read from evidence files)."""
+
+    lt = load(EVIDENCE / "live" / "loadtest.json")
+    cond = load(EVIDENCE / "real_data" / "forecaster_conditions.json")
+    freight = load(EVIDENCE / "freight" / "freight_verification.json")
+    hygiene = rv.get("alert_hygiene", {})
+    out: list[Any] = [p("6. Live information without irritation, on-time deliveries, and the training conditions",
+                        "h1")]  # fmt: skip
+    out += [
+        p("Expected times for passengers, freight customers and station staff", "h2"),
+        p("The twin's projection (live reports, the learned forecast, approved plans) is published as expected times "
+          "at every stop and as station boards (<i>/board</i>), under rules that avoid needless changes:"),
+        *bullets([
+            "later times at once; earlier ones only once they have held for 3 minutes; no change under 2 minutes;",
+            "never leaving before the timetable or before the published arrival; the likely range always contains "
+            "the shown time;",
+            "SCHEDULED (not \"on time\") without a live report; \"last reported N min ago: times not confirmed\" for "
+            "a quiet train; DUE when the time has come with no arrival; NOT CALLING HERE for a diverted train;",
+            "the board keeps the last times with a banner when its link drops, then points to NTES (139); NTES "
+            "stays the official source.",
+        ]),
+    ]  # fmt: skip
+    if hygiene:
+        w, wo = hygiene["with_rules"], hygiene["without_rules"]
+        out += [
+            p("Alerts that do not flicker", "h2"),
+            p(f"On a real morning's feed the controllers would have received {wo['raised']:,} alerts without the alert "
+              f"rules and {w['raised']:,} with them: {hygiene['alerts_avoided']:,} repeats of an alert already shown "
+              f"avoided ({w['came_back_as_the_same_alert']:,} threats came back as the same alert, with its "
+              "acknowledgement). Critical alerts clear at once and come back open; an acknowledged alert that "
+              "escalates must be acknowledged again (it did not have to be before this pass)."),
+        ]  # fmt: skip
+    if lt:
+        boards = lt.get("station_boards", {})
+        push, first, feed = lt.get("push_latency_ms", {}), lt.get("first_event_ms", {}), lt.get("feed_batch_ms", {})
+        rows = [
+            [f"Measured at once on one {lt.get('cpus')}-CPU machine", "p50", "p95"],
+            ["Decision to the affected cab (push)", f"{push.get('p50')} ms", f"{push.get('p95')} ms"],
+            ["Stream opened to first picture", f"{first.get('p50')} ms", f"{first.get('p95')} ms"],
+            ["Feed batch of 250 fixes", f"{feed.get('p50')} ms", f"{feed.get('p95')} ms"],
+        ]
+        if boards:
+            rows += [
+                ["Station board", f"{boards['board_ms'].get('p50')} ms", f"{boards['board_ms'].get('p95')} ms"],
+                [
+                    "Passenger's train view",
+                    f"{boards['train_view_ms'].get('p50')} ms",
+                    f"{boards['train_view_ms'].get('p95')} ms",
+                ],
+            ]
+        out += [
+            p("Latency under load", "h2"),
+            p(f"{lt.get('consoles')} control screens, {lt.get('cab_streams')} cab streams"
+              + (f", {boards.get('screens')} station screens polling every {boards.get('poll_s'):g} s" if boards else "")
+              + f" and a feed of 250 fixes a second, for {lt.get('seconds'):g} s on the real network "
+              f"({lt.get('running_trains'):,} trains running); streams dropped: {lt.get('streams_dropped')}, "
+              f"failed requests: {sum(lt.get('failed_requests', {}).values())}."),
+            table(rows, [90, 30, 30]),
+        ]  # fmt: skip
+    deliveries = {k: v.get("deliveries") for k, v in freight.items() if isinstance(v, dict) and v.get("deliveries")}
+    if deliveries:
+        out += [
+            p("Freight deliveries on time", "h2"),
+            p("A freight train may carry its customer's promised delivery time; within a priority class the train with "
+              "the least time in hand is pathed first. On the same test demand at the published daily volume "
+              "(train-level FOIS promises are not public, so promises are free running time plus 0-3 hours):"),
+            table([["Corridor", "Days", "On time: least slack first", "On time: by ready time", "Rule violations"]]
+                  + [[k, v["days"], f"{v['on_time_pct_least_slack_first']}%", f"{v['on_time_pct_by_ready_time']}%",
+                      v["violations"]] for k, v in deliveries.items()], [30, 16, 44, 44, 30]),
+        ]  # fmt: skip
+    if cond:
+        info = cond["deployed_model"]["trained_on"]
+        states = info["by_input_state"]
+        test = cond["deployed_model"]["test"]["compared_with_the_recipe_sample"]
+        sel = cond["selection"]["compared"]
+        cov = cond["deployed_model"]["test"]["p10_p90_coverage_pct"]
+        out += [
+            p(f"The forecaster trained under {info['conditions']:,} conditions", "h2"),
+            p(f"A training condition is one real (now, target) pair of observed running under one input state. There "
+              f"are {info['real_pairs_available']:,} real pairs from {info['runs']:,} runs, so every pair is used and "
+              "pairs are drawn again under input states they do not yet have: no condition is repeated "
+              f"({'checked' if info['distinct'] else 'NOT distinct'}). History withheld in {states['history_withheld']:,}; "
+              f"noisy report {states['feed_noise_pm3_min']:,}; missed report {states['missed_report']:,}; garbled "
+              f"report {states['garbled_report_pm30_min']:,}; class unknown {states['unknown_train_class']:,}; route "
+              f"facts unknown {states['unknown_route_facts']:,}. Weights restore the selected recipe's mix of input "
+              "states. The decision was taken on the last training days, before the test days were looked at: "
+              f"<b>{cond['decision']}</b>."),
+            table([["Mean absolute error, minutes", "Recipe sample", "Conditions", "Gain [95% interval, runs]"]]
+                  + [[name, v["mae_sample_min"], v["mae_conditions_min"],
+                      f"{v['gain'].get('mean_gain_min')} [{v['gain'].get('ci95_min', ['', ''])[0]}, "
+                      f"{v['gain'].get('ci95_min', ['', ''])[1]}]"]
+                     for name, v in test.items() if "mae_sample_min" in v], [62, 30, 30, 48]),
+            p(f"Test days (after 20 September, not used for the decision). Selection days: clean gain "
+              f"{sel['clean']['gain'].get('mean_gain_min')} min, damaged inputs "
+              f"{sel['damaged_pooled']['gain'].get('mean_gain_min')} min. P10-P90 band holds the real outcome "
+              f"{cov.get('clean')}% of the time on clean inputs.", "small"),
+        ]  # fmt: skip
+    return out
+
+
 def build(out: Path) -> Path:
     sim = load(EVIDENCE / "simulation" / "simulation_results.json")
     reg = load(EVIDENCE / "simulation" / "regression_results.json")
@@ -1070,10 +1172,11 @@ def build(out: Path) -> Path:
     story += [PageBreak(), *real_data_section(rv)]
     story += [PageBreak(), *production_section(audit)]
     story += [PageBreak(), *scenarios_section(rv, nat_stats)]
+    story += [PageBreak(), *live_section(rv)]
 
     # ---- 3. what was built ---------------------------------------------------------------------------------
     story += [
-        p("5. What was built", "h1"),
+        p("6. What was built", "h1"),
         table(
             [
                 ["Component", "What it does"],
@@ -1233,7 +1336,7 @@ def build(out: Path) -> Path:
 
     # ---- 3. data -------------------------------------------------------------------------------------------
     story += [
-        p("6. Data: the whole network", "h1"),
+        p("7. Data: the whole network", "h1"),
         p(
             "The twin is built from <b>real data</b>: by default the current all-India timetable (10,594 trains with "
             "running days and validity dates, section 3), with station positions, line counts and track geometry from "
@@ -1377,7 +1480,7 @@ def build(out: Path) -> Path:
     med = scores.get("baseline_section_median", {})
     iv = model.get("interval_p10_p90", {})
     story += [
-        p("7. Machine learning: section run-time model", "h1"),
+        p("8. Machine learning: section run-time model", "h1"),
         p(
             "The model predicts the scheduled run time between two stops: the planning quantity a re-planner needs. "
             "It learns the correction to a section prior. Section priors are recomputed inside every cross-validation "
@@ -1486,7 +1589,7 @@ def build(out: Path) -> Path:
     every = (sim, reg, final, real_final, real_national, prod_found, prod_final)
     total_ops = sum(r.get("operations_checked", 0) for r in every if r)
     story += [
-        p(f"8. Simulation: {total_ops / 1e6:.1f} million checked operations", "h1"),
+        p(f"9. Simulation: {total_ops / 1e6:.1f} million checked operations", "h1"),
         p(
             "An <b>episode</b> starts a fresh twin with random conditions, then runs a random sequence of operations. "
             "The operations are clock ticks, recommendations, approvals (including stale and wrong ones), section and "
@@ -1589,7 +1692,7 @@ def build(out: Path) -> Path:
 
     # ---- 6. security -----------------------------------------------------------------------------------------
     story += [
-        p("9. Security", "h1"),
+        p("10. Security", "h1"),
         table(
             [
                 ["Check", "Result"],
@@ -1629,14 +1732,14 @@ def build(out: Path) -> Path:
     ]
 
     # ---- 7. audits ------------------------------------------------------------------------------------------
-    story += [p("10. Nine audit passes", "h1"),
+    story += [p(f"11. {len(AUDITS)} audit passes", "h1"),
               p("Each pass looked at the whole system through one lens, fixed what it found, and re-ran the full "
                 "test suite and lint before the next pass. Details are in <i>seva2026/AUDIT_LOG.md</i>.")]  # fmt: skip
     story.append(table([["Pass", "Lens", "Main findings and fixes", "Evidence"], *AUDITS], [12, 30, 92, 36]))
 
     # ---- 8. live data, compliance, remaining ------------------------------------------------------------------
     story += [
-        p("11. Ready for live data", "h1"),
+        p("12. Ready for live data", "h1"),
         p("When the Ministry of Railways / CRIS authorises a feed, it plugs in without code changes to the twin."),
         *bullets(
             [
@@ -1660,7 +1763,7 @@ def build(out: Path) -> Path:
                 "and a shadow-mode trial.",
             ]
         ),
-        p("12. Legal, safety and data compliance", "h1"),
+        p("13. Legal, safety and data compliance", "h1"),
         table(
             [
                 ["Instrument", "How the design addresses it", "Status"],
@@ -1699,7 +1802,7 @@ def build(out: Path) -> Path:
             "Full register: <i>seva2026/COMPLIANCE_REGISTER.md</i>. This is an engineering register, not legal advice.",
             "small",
         ),
-        p("13. What is left", "h1"),
+        p("14. What is left", "h1"),
         *bullets(
             [
                 "Indian Railways / CRIS: authorise live feeds (NTES/RTIS/COA) and share the interface specification.",
@@ -1713,7 +1816,7 @@ def build(out: Path) -> Path:
                 "Shadow-mode trial on one division: compare recommendations with controllers' actual decisions.",
             ]
         ),
-        p("14. How to run", "h1"),
+        p("15. How to run", "h1"),
         table(
             [
                 ["Task", "Command (in india_rail_ai/)"],
@@ -1871,6 +1974,25 @@ AUDITS = [
         "without history (72% of current trains), image build behind a TLS-inspecting proxy, scanner findings "
         "in the load-test harness, a fix between two possible places on shared track accepted (GNSS_GATE)",
         "gnss_verification.json, loadtest.json, scenario_ml.json, GNSS_GATE",
+    ],
+    [
+        "8",
+        "Whole-system re-audit",
+        "25 findings fixed: express and local trains on shared track never compared, chains that double back, a "
+        "closure ahead on the current section ignored, the no-loop rule for yielding trains, piece reports cleared "
+        "by a section report, feed-kit token redirects, shadow-import and audit signing gaps, register reload checks, "
+        "NTP forgery, cab-link revocation, report-time leakage in ML, recipe chosen on test days, a planner check "
+        "reusing the planner's own search (new independent checker), CI gaps, 35 stale statements in documents",
+        "test_shared_track.py, test_independent.py, scenario_bank.json",
+    ],
+    [
+        "9",
+        "Second re-audit",
+        "18 findings fixed: a train already on a blocked piece not warned, timetabled crossings inside a piece "
+        "exempt after a delay, live positions not moving the twin, the stale gate ignoring nearby trains, detours "
+        "reversing, two-chain sections, stream capacity, revocation persistence, journey-bound cab links, trial "
+        "inflation, recipe chosen on the balanced sample, and pre-existing conflicts counted against a plan",
+        "AUDIT_LOG.md, scenario_bank.json",
     ],
 ]
 
