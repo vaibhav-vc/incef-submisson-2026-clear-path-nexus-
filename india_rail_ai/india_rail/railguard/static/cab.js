@@ -97,6 +97,15 @@ function handleEvent(block) {
   else if (kind === "revoked") throw new Error("revoked");
   else if (kind === "refused") throw new Error("refused");
 }
+async function pollOnce() {
+  try {
+    const res = await fetch(`/railguard/national/cab/${encodeURIComponent(run)}/live`,
+      {headers: {Authorization: "Bearer " + cabToken}, cache: "no-store"});
+    if (!res.ok) return false;
+    renderNational(await res.json());
+    return true;
+  } catch (_) { return false; }
+}
 async function cabLive() {
   for (;;) {
     let watchdog = null, wait = 3000;
@@ -127,6 +136,10 @@ async function cabLive() {
       if (e.message === "revoked") {
         unavailable("This cab link is not valid for this train (expired or revoked) - ask the controller for a new link");
         wait = 30000;
+      } else if (e.message === "refused") {
+        // The server has no stream to spare: keep the advisory current by asking for it, then try the stream again.
+        wait = 10000;
+        if (!(await pollOnce())) unavailable();
       } else if (wait !== 30000) unavailable();
     } finally {
       clearTimeout(watchdog);

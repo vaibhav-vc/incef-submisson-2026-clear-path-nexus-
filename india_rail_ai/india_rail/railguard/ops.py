@@ -97,6 +97,18 @@ def sntp_offset(host: str, port: int = 123, timeout_s: float = 2.0, clock=time.t
     return ((t2 - t1) + (t3 - t4)) / 2
 
 
+def _agreeing(answers: list[float]) -> list[float]:
+    """The largest group of offsets that all lie within MAX_CLOCK_OFFSET_S of each other."""
+
+    values = sorted(answers)
+    best: list[float] = []
+    for i in range(len(values)):
+        group = [v for v in values[i:] if v - values[i] <= MAX_CLOCK_OFFSET_S]
+        if len(group) > len(best):
+            best = group
+    return best
+
+
 # ---- power -----------------------------------------------------------------------------------------
 class NutError(OSError):
     pass
@@ -190,6 +202,12 @@ POWER_ALERTS = {
 
 
 # ---- checkpoints -------------------------------------------------------------------------------------
+def _revocations() -> dict[str, Any]:
+    from india_rail.railguard import live
+
+    return live.revocations()
+
+
 class Checkpointer:
     def __init__(self, folder: Path, key: bytes, clock=time.time):
         if len(key) < 32:
@@ -213,6 +231,7 @@ class Checkpointer:
                 "now": twin.now,
                 "dynamic": twin.dynamic_state(),
                 "feed": {"last_sequence": dict(gateway.last_sequence)} if gateway is not None else None,
+                "cab_revocations": _revocations(),
             }
         body = json.dumps(state, sort_keys=True, separators=(",", ":"), default=str).encode()
         record = json.dumps({"mac": self._mac(body), "state": body.decode()}).encode()
@@ -262,6 +281,10 @@ class Checkpointer:
 def restore(twin: Any, gateway: Any | None, state: dict[str, Any]) -> None:
     with twin.lock:
         twin.restore(state["dynamic"])
+        if state.get("cab_revocations"):
+            from india_rail.railguard import live
+
+            live.apply_revocations(state["cab_revocations"])
         if gateway is not None and state.get("feed"):
             for source, seq in state["feed"]["last_sequence"].items():
                 gateway.last_sequence[source] = max(gateway.last_sequence.get(source, -1), int(seq))
@@ -450,33 +473,41 @@ class Operations:
     def check_clock(self, measure=sntp_offset) -> None:
         """Measure the clock against every configured NTP server; raise CLOCK_DRIFT if it is off.
 
-        The offset is the median of the servers that answer. A drift is believed only when two servers agree on
-        it within MAX_CLOCK_OFFSET_S, or the same offset is measured at two checks in a row: a single forged or
-        faulty reply cannot take the service out of readiness."""
+        With two or more servers, the offset is the median of the largest group that agrees within
+        MAX_CLOCK_OFFSET_S, and is used only if that group is a majority of the servers that answered: two servers
+        that disagree prove nothing, and one faulty or forged server is outvoted by two good ones. With a single
+        configured server, a drift is believed only when it is measured at two checks in a row. A server named
+        twice counts once."""
 
-        if not self.ntp:
+        hosts = list(dict.fromkeys(self.ntp))
+        if not hosts:
             return
         errors, answers = [], []
-        for host in self.ntp:
+        for host in hosts:
             try:
                 answers.append(measure(host))
             except OSError as exc:
                 errors.append(f"{host}: {exc}"[:120])
+        notes: list[str] = []
         if not answers:
-            self.clock_error = "; ".join(errors)
             self.metrics.inc("ntp_failures_total")
             log.warning("NTP unreachable", extra={"event": "NTP_UNREACHABLE"})
-        else:
-            offset = statistics.median(answers)
-            spread = max(answers) - min(answers)
+        elif len(hosts) == 1:
+            offset = answers[0]
             repeated = self._last_offset is not None and abs(offset - self._last_offset) <= MAX_CLOCK_OFFSET_S
             self._last_offset = offset
-            notes = [f"NTP servers disagree by {spread:.1f} s"] if spread > MAX_CLOCK_OFFSET_S else []
-            if abs(offset) <= MAX_CLOCK_OFFSET_S or (len(answers) >= 2 and spread <= MAX_CLOCK_OFFSET_S) or repeated:
+            if abs(offset) <= MAX_CLOCK_OFFSET_S or repeated:
                 self.clock_offset_s, self.clock_checked_at = offset, time.time()
             else:
                 notes.append(f"one measurement puts the clock {offset:+.1f} s off: confirming at the next check")
-            self.clock_error = "; ".join(notes + errors) or None
+        else:
+            group = _agreeing(answers)
+            if 2 * len(group) > len(answers):
+                self.clock_offset_s, self.clock_checked_at = statistics.median(group), time.time()
+            else:
+                notes.append(f"NTP servers disagree ({', '.join(f'{a:+.1f} s' for a in sorted(answers))}): "
+                             "no majority, the last agreed reading is kept")  # fmt: skip
+        self.clock_error = "; ".join(notes + errors) or None
         if self.twin is not None:
             drift = self.clock_offset_s is not None and abs(self.clock_offset_s) > MAX_CLOCK_OFFSET_S
             with self.twin.lock:

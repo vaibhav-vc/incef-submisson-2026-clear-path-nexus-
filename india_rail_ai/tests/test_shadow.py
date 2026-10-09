@@ -134,7 +134,8 @@ def test_the_persisted_trial_is_read_incrementally_and_verified(data, tmp_path, 
     assert first["decisions_with_a_prior_recommendation"] == 1
     assert first["verification"] == {"macs_checked": True, "recommendations_read": 1, "unreadable_lines": 0,
                                      "chain_breaks": 0, "events_failing_verification": 0,
-                                     "snapshots_failing_verification": 0}  # fmt: skip
+                                     "snapshots_failing_verification": 0, "duplicate_or_out_of_order_events": 0,
+                                     "duplicate_decisions": 0, "unusable_decisions": 0}  # fmt: skip
     read_up_to = dict(reader.offsets)
     trial.record(ActualDecision("12001@0", "HOLD" if top != "HOLD" else "CONTINUE", twin.now, "controller-1"))
     assert trial.report()["decisions_logged"] == 2 and reader.offsets["events"] > read_up_to["events"]
@@ -162,3 +163,26 @@ def test_the_persisted_trial_is_read_incrementally_and_verified(data, tmp_path, 
                                                      "action": "HOLD", "at_min": 600.0})  # fmt: skip
     after = TrialReader(tmp_path, key=b"k" * 32).report()
     assert after["verification"]["unreadable_lines"] == 1 and after["decisions_logged"] == 2
+
+
+def test_copied_decision_lines_and_a_replaced_log_do_not_inflate_the_trial(data, tmp_path, monkeypatch):  # noqa: F811
+    from india_rail.railguard.shadow import TrialReader
+
+    monkeypatch.setenv("RAILGUARD_AUDIT_DIR", str(tmp_path))
+    twin = NationalTwin(data, start_min=600.0)
+    reader = TrialReader(tmp_path)
+    ShadowTrial(twin, reader).record(ActualDecision("12001@0", "HOLD", twin.now, "controller-1"))
+    assert reader.report()["decisions_logged"] == 1
+    log = tmp_path / "railguard_events.jsonl"
+    line = next(x for x in log.read_text().splitlines() if '"SHADOW_ACTUAL_DECISION"' in x)
+    with log.open("a") as handle:
+        handle.write((line + "\n") * 3)  # the same signed record copied in three more times
+    again = reader.report()
+    assert again["decisions_logged"] == 1 and again["verification"]["duplicate_or_out_of_order_events"] == 3
+    # Another log put in its place (rotated or restored): read from its start, nothing kept from the old one
+    other = tmp_path / "other"
+    other.mkdir()
+    monkeypatch.setenv("RAILGUARD_AUDIT_DIR", str(other))
+    NationalTwin(data, start_min=600.0).audit.record(0, "NOTHING", "x", {})
+    log.write_bytes((other / "railguard_events.jsonl").read_bytes() * 1 + b"\n" * 4000)
+    assert reader.report()["decisions_logged"] == 0

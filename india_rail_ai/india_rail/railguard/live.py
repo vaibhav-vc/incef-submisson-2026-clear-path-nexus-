@@ -11,7 +11,8 @@
 * A controller can revoke one cab link (by its token id, recorded when it was issued) or every link of a run;
   revocations are audit events, re-read from the persisted audit log (RAILGUARD_AUDIT_DIR) after a restart.
 * Every stream sends a heartbeat comment every HEARTBEAT_S (proxies keep the connection open) and stops when
-  the client goes away. At most MAX_STREAMS streams per process; beyond that a client is refused, not queued.
+  the client goes away. At most MAX_STREAMS streams per process, of which control screens may hold at most
+  MAX_CONSOLE_STREAMS (the rest is kept for cab units); beyond that a client is refused, not queued.
 
 Streams carry advice and observations only, never movement authority.
 """
@@ -34,6 +35,10 @@ TICK_S = 1.0
 WAKE_S = 0.05
 HEARTBEAT_S = 15.0
 MAX_STREAMS = 1000
+MAX_CONSOLE_STREAMS = 200  # control screens; the rest is kept for cab units, so viewers can never starve them
+MAX_STREAMS_PER_CLIENT = 64  # console streams per credential and address
+MAX_STREAMS_PER_CAB_LINK = 4  # a cab unit reconnecting may briefly hold two or three
+MAX_STREAM_S = 12 * 3600  # a console stream is re-opened (and re-authorised) at least this often
 CAB_TOKEN_TTL_S = 12 * 3600
 _PROCESS_KEY = secrets.token_bytes(32)  # demo mode without any configured secret: tokens die with the process
 
@@ -55,6 +60,9 @@ _revoked_lock = threading.Lock()
 
 
 def issue_cab_token(run: str, ttl_s: int = CAB_TOKEN_TTL_S, clock: Callable[[], float] = time.time) -> dict[str, Any]:
+    """`run` names the journey absolutely (train number and start date, e.g. 12951@2026-10-09), so a link stays
+    with its train however the twin numbers its runs from day to day."""
+
     now = clock()
     expires, issued_ms = int(now) + int(ttl_s), int(now * 1000)
     token_id = secrets.token_hex(8)  # names the link in the audit log (and for revocation); it is not the secret
@@ -64,23 +72,44 @@ def issue_cab_token(run: str, ttl_s: int = CAB_TOKEN_TTL_S, clock: Callable[[], 
     return {"run": run, "token": token, "token_id": token_id, "expires_at": expires}
 
 
-def revoke(run: str, token_id: str | None = None, clock: Callable[[], float] = time.time) -> None:
-    """Revoke one cab link (its token id) or, with no id, every link of `run` issued until now."""
+def revoke(journey: str, token_id: str | None = None, clock: Callable[[], float] = time.time) -> None:
+    """Revoke one cab link (its token id) or, with no id, every link of the journey issued until now. A
+    revocation only ever widens: a later "revoke all" with an earlier clock never re-validates a link."""
 
     now = clock()
     with _revoked_lock:
         if token_id:
-            _revoked_ids[token_id] = now + MAX_CAB_TOKEN_TTL_S
+            _revoked_ids[token_id] = max(_revoked_ids.get(token_id, 0.0), now + MAX_CAB_TOKEN_TTL_S)
         else:
-            _revoked_runs[run] = int(now * 1000)
+            _revoked_runs[journey] = max(_revoked_runs.get(journey, -1), int(now * 1000))
         for k in [k for k, until in _revoked_ids.items() if until < now]:
             del _revoked_ids[k]
 
 
-def load_revocations(events_path: Any, clock: Callable[[], float] = time.time) -> int:
-    """Re-apply the revocations of the last day from a persisted audit log (after a restart)."""
+def revocations() -> dict[str, Any]:
+    """The revocations in force (for checkpoints, so a restored or standby server keeps them)."""
+
+    with _revoked_lock:
+        return {"ids": dict(_revoked_ids), "journeys": dict(_revoked_runs)}
+
+
+def apply_revocations(saved: dict[str, Any]) -> None:
+    with _revoked_lock:
+        for k, until in (saved.get("ids") or {}).items():
+            if isinstance(k, str) and isinstance(until, int | float):
+                _revoked_ids[k] = max(_revoked_ids.get(k, 0.0), float(until))
+        for k, when in (saved.get("journeys") or {}).items():
+            if isinstance(k, str) and isinstance(when, int):
+                _revoked_runs[k] = max(_revoked_runs.get(k, -1), when)
+
+
+def load_revocations(events_path: Any, key: bytes | None = None, clock: Callable[[], float] = time.time) -> int:
+    """Re-apply the revocations of the last day from a persisted audit log (after a restart). Only records whose
+    hash (and, with the audit key, MAC) verify are used; anything else in the file is skipped."""
 
     from datetime import datetime
+
+    from india_rail.railguard.evidence import checksum
 
     count, horizon = 0, clock() - MAX_CAB_TOKEN_TTL_S
     try:
@@ -93,12 +122,22 @@ def load_revocations(events_path: Any, clock: Callable[[], float] = time.time) -
                 continue
             try:
                 event = json.loads(line)
+                body = {k: v for k, v in event.items() if k not in ("hash", "mac")}
+                if event.get("type") != "CAB_LINK_REVOKED" or checksum(body) != event["hash"]:
+                    continue
+                if key is not None:
+                    mac = hmac.new(key, event["hash"].encode(), hashlib.sha256).hexdigest()
+                    if not hmac.compare_digest(str(event.get("mac", "")).encode(), mac.encode()):
+                        continue
                 at = datetime.fromisoformat(event["at"]).timestamp()
                 details = event["details"]
-            except (ValueError, KeyError, TypeError):
+                journey, token_id = details["journey"], details.get("token_id")
+                if not isinstance(journey, str) or not (token_id is None or isinstance(token_id, str)):
+                    continue
+            except (ValueError, KeyError, TypeError, AttributeError):
                 continue
-            if event.get("type") == "CAB_LINK_REVOKED" and at >= horizon:
-                revoke(details["run"], details.get("token_id"), clock=lambda at=at: at)
+            if at >= horizon:
+                revoke(journey, token_id, clock=lambda at=at: at)
                 count += 1
     return count
 
@@ -129,6 +168,8 @@ class Hub:
         self.lock = threading.Lock()
         self.cached: tuple[float, int, str] | None = None  # (computed at, twin version, JSON)
         self.streams = 0
+        self.pools: dict[str, int] = {}
+        self.by_client: dict[tuple[str, str], int] = {}
 
     def network(self, twin: Any) -> str:
         now = time.monotonic()
@@ -145,16 +186,28 @@ class Hub:
             self.cached = (now, version, body)
         return body
 
-    def open(self) -> bool:
+    def open(self, pool: str = "console", client: str = "") -> bool:
+        """A stream slot, or False: at most MAX_STREAMS in all, at most MAX_CONSOLE_STREAMS for control screens
+        (the rest are kept for cab units), and a cap per client (console) or per cab link."""
+
+        cap = MAX_STREAMS_PER_CAB_LINK if pool == "cab" else MAX_STREAMS_PER_CLIENT
         with self.lock:
-            if self.streams >= MAX_STREAMS:
+            if self.streams >= MAX_STREAMS or self.by_client.get((pool, client), 0) >= cap:
+                return False
+            if pool != "cab" and self.pools.get(pool, 0) >= MAX_CONSOLE_STREAMS:
                 return False
             self.streams += 1
+            self.pools[pool] = self.pools.get(pool, 0) + 1
+            self.by_client[(pool, client)] = self.by_client.get((pool, client), 0) + 1
             return True
 
-    def close(self) -> None:
+    def close(self, pool: str = "console", client: str = "") -> None:
         with self.lock:
             self.streams -= 1
+            self.pools[pool] -= 1
+            self.by_client[(pool, client)] -= 1
+            if not self.by_client[(pool, client)]:
+                del self.by_client[(pool, client)]
 
 
 HUB = Hub()
@@ -236,6 +289,8 @@ async def stream(
     max_events: int | None = None,
     kind: str = "state",
     allowed: Callable[[], bool] | None = None,
+    pool: str = "console",
+    client: str = "",
 ) -> AsyncIterator[bytes]:
     """Push the latest picture for `key` (NETWORK or a run) whenever it changes, with heartbeats.
 
@@ -244,7 +299,7 @@ async def stream(
 
     from india_rail.railguard import ops
 
-    if not HUB.open():
+    if not HUB.open(pool, client):
         yield b'event: refused\ndata: {"detail": "too many live streams on this server"}\n\n'
         return
     hub = broadcaster(twin)
@@ -277,4 +332,4 @@ async def stream(
     finally:
         hub.unwatch(key)
         ops.OPS.subscribers -= 1
-        HUB.close()
+        HUB.close(pool, client)

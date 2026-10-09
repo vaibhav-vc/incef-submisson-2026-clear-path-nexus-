@@ -76,6 +76,9 @@ def configuration_problems() -> list[str]:
         problems.append("role tokens must all differ")
     if not os.environ.get("RAILGUARD_ALLOWED_HOSTS"):
         problems.append("RAILGUARD_ALLOWED_HOSTS must list the host names this service answers to")
+    if not os.environ.get("RAILGUARD_AUDIT_DIR"):
+        # the decision record, the shadow trial and cab-link revocations must survive a restart
+        problems.append("RAILGUARD_AUDIT_DIR must name the folder where the audit log is kept")
     return problems
 
 

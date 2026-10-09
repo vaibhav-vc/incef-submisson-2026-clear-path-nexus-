@@ -389,8 +389,41 @@ def national_stream(request: Request, events: Annotated[int | None, Query(ge=1, 
 
     from india_rail.railguard import live
 
-    body = live.stream(national(), live.NETWORK, request.is_disconnected, events)
+    body = live.stream(national(), live.NETWORK, request.is_disconnected, events, allowed=_still_authorised(request),
+                       pool="console", client=_client_key(request))  # fmt: skip
     return StreamingResponse(body, media_type="text/event-stream", headers=SSE_HEADERS)
+
+
+def _client_key(request: Request) -> str:
+    """Who holds a stream, for the per-client cap: the credential (hashed) and the address."""
+
+    import hashlib
+
+    auth = request.headers.get("authorization", "")
+    host = request.client.host if request.client else "unknown"
+    return f"{host}|{hashlib.sha256(auth.encode()).hexdigest()[:16]}"
+
+
+def _still_authorised(request: Request, every_s: float = 30.0):
+    """Re-checks a console stream's credential every `every_s` seconds and ends the stream after MAX_STREAM_S: a
+    logout, a disabled account or a rotated token stops the live picture too."""
+
+    import time
+
+    from india_rail.railguard import live
+    from india_rail.security import authorised
+
+    opened, checked = time.monotonic(), [time.monotonic(), True]
+
+    def allowed() -> bool:
+        now = time.monotonic()
+        if now - opened > live.MAX_STREAM_S:
+            return False
+        if now - checked[0] >= every_s:
+            checked[0], checked[1] = now, authorised(request, "viewer")
+        return checked[1]
+
+    return allowed
 
 
 class CabTokenRequest(StrictRequest):
@@ -407,15 +440,28 @@ def national_cab_token(request: CabTokenRequest, http: Request, run: str = PathP
     twin = national()
     if run not in twin.runs:
         raise HTTPException(status_code=404, detail="Unknown run")
-    issued = live.issue_cab_token(run, request.hours * 3600)
+    journey = _journey(twin, run)
+    issued = live.issue_cab_token(journey, request.hours * 3600)
     with twin.lock:
         twin.audit.record(
             int(twin.now * 60),
             "CAB_TOKEN_ISSUED",
             _actor(http, request.issued_by),
-            {"run": run, "token_id": issued["token_id"], "expires_at": issued["expires_at"]},
+            {"run": run, "journey": journey, "token_id": issued["token_id"], "expires_at": issued["expires_at"]},
         )  # fmt: skip (the token id names the link; never the token)
-    return issued
+    return {**issued, "run": run, "journey": journey}
+
+
+def _journey(twin, run: str) -> str:
+    """A run named absolutely - train number and start date - so a cab link stays with its train when the twin
+    numbers its runs from a new service day."""
+
+    from datetime import timedelta
+
+    from india_rail.railguard.eta import twin_service_date
+
+    number, offset = run.split("@", 1)
+    return f"{number}@{(twin_service_date(twin) + timedelta(days=int(offset))).isoformat()}"
 
 
 class CabRevokeRequest(StrictRequest):
@@ -423,7 +469,8 @@ class CabRevokeRequest(StrictRequest):
     revoked_by: str = Field(pattern=NAME)
 
 
-@router.post("/national/cab/{run}/revoke", dependencies=CONTROL)
+# Revoking is never paused for power: taking a link away must work exactly when things are going wrong.
+@router.post("/national/cab/{run}/revoke", dependencies=[Depends(require("controller")), Depends(limit("write"))])
 def national_cab_revoke(request: CabRevokeRequest, http: Request, run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
     """Revoke one cab link (its token id, from the issue record) or, without one, every link issued for the run."""
 
@@ -433,10 +480,14 @@ def national_cab_revoke(request: CabRevokeRequest, http: Request, run: str = Pat
     if run not in twin.runs:
         raise HTTPException(status_code=404, detail="Unknown run")
     _revocations_loaded()
-    live.revoke(run, request.token_id)
+    journey = _journey(twin, run)
+    live.revoke(journey, request.token_id)
     with twin.lock:
         twin.audit.record(int(twin.now * 60), "CAB_LINK_REVOKED", _actor(http, request.revoked_by),
-                          {"run": run, "token_id": request.token_id})  # fmt: skip
+                          {"run": run, "journey": journey, "token_id": request.token_id})  # fmt: skip
+    from india_rail.railguard import ops
+
+    ops.OPS.checkpoint("cab link revoked")  # so a restored or standby server keeps it (no-op if not configured)
     return {"run": run, "revoked": request.token_id or "every link issued so far"}
 
 
@@ -447,9 +498,10 @@ def _revocations_loaded() -> int:
     import os
 
     from india_rail.railguard import live
+    from india_rail.railguard.shadow import audit_key
 
     folder = os.environ.get("RAILGUARD_AUDIT_DIR")
-    return live.load_revocations(Path(folder) / "railguard_events.jsonl") if folder else 0
+    return live.load_revocations(Path(folder) / "railguard_events.jsonl", audit_key()) if folder else 0
 
 
 def _cab_capability(request: Request, run: str) -> str:
@@ -458,7 +510,8 @@ def _cab_capability(request: Request, run: str) -> str:
     _revocations_loaded()
     auth = request.headers.get("authorization", "")
     token = auth[7:].strip() if auth.lower().startswith("bearer ") else None  # never in a URL: URLs get logged
-    if not live.cab_token_valid(token, run):
+    twin = national()
+    if run not in twin.runs or not live.cab_token_valid(token, _journey(twin, run)):
         raise HTTPException(status_code=403, detail="Not authorised for this train")
     return token
 
@@ -484,9 +537,10 @@ def national_cab_stream(
     if run not in twin.runs:
         raise HTTPException(status_code=404, detail="Unknown run")
 
-    still_valid = lambda: live.cab_token_valid(token, run)  # noqa: E731 - revoked or expired: the stream ends
+    journey = _journey(twin, run)
+    still_valid = lambda: live.cab_token_valid(token, journey)  # noqa: E731 - revoked or expired: the stream ends
     return StreamingResponse(live.stream(twin, run, request.is_disconnected, events, kind="advisory",
-                                         allowed=still_valid),
+                                         allowed=still_valid, pool="cab", client=token[-16:]),
                              media_type="text/event-stream", headers=SSE_HEADERS)  # fmt: skip
 
 

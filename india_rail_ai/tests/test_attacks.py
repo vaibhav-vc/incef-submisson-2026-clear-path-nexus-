@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import tempfile
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -18,6 +20,7 @@ def client(monkeypatch):
     monkeypatch.setenv("RAILGUARD_MODE", "production")
     monkeypatch.setenv("RAILGUARD_RATE_LIMIT", "off")
     monkeypatch.setenv("RAILGUARD_ALLOWED_HOSTS", "testserver")
+    monkeypatch.setenv("RAILGUARD_AUDIT_DIR", tempfile.mkdtemp(prefix="rg-audit-"))
     for role, env in security.ROLE_ENV.items():
         monkeypatch.setenv(env, TOKENS[role])
     monkeypatch.setattr(railguard_api, "ENGINE", RailGuardEngine())

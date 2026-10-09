@@ -68,8 +68,9 @@ async def _run(base: str, twin: Any, consoles: int, cabs: int, seconds: float) -
             nonlocal dropped, refused
             opened = time.perf_counter()
             got_first = False
+            headers = {"Authorization": f"Bearer {tokens[run]}"} if run else {}  # a cab link, never in the URL
             try:
-                async with http.stream("GET", path) as response:
+                async with http.stream("GET", path, headers=headers) as response:
                     async for line in response.aiter_lines():
                         if line.startswith("event: refused"):
                             refused += 1
@@ -129,7 +130,7 @@ async def _run(base: str, twin: Any, consoles: int, cabs: int, seconds: float) -
                 pass  # the test is over; the stream itself was healthy
 
         tasks = [bounded("/railguard/national/stream", None) for _ in range(consoles)]
-        tasks += [bounded(f"/railguard/national/cab/{r}/stream?token={tokens[r]}", r) for r in running]
+        tasks += [bounded(f"/railguard/national/cab/{r}/stream", r) for r in running]
         await asyncio.gather(*tasks, feeder(), controller())
     return {
         "consoles": consoles,

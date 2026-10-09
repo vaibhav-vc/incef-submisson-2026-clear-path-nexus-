@@ -71,12 +71,12 @@ class AuditLog:
             # A restart continues the persisted chain instead of starting a second GENESIS in the same file.
             for path in (self.events_path, self.snapshots_path):
                 _close_torn_line(path)
-            last = _last_record(self.events_path)
+            last = _last_record(self.events_path, ("hash", "seq"))
             if last:
-                self.base_hash, self.count = last["hash"], last["seq"]
-            last = _last_record(self.snapshots_path)
+                self.base_hash, self.count = last["hash"], int(last["seq"])
+            last = _last_record(self.snapshots_path, ("snapshot_id",))
             if last:
-                self.snapshot_count = int(last["snapshot_id"].split("-")[1])
+                self.snapshot_count = int(str(last["snapshot_id"]).split("-")[1])
 
     def _append(self, path: Path | None, record: dict[str, Any]) -> None:
         if path is not None:
@@ -142,8 +142,9 @@ def _close_torn_line(path: Path) -> None:
                 handle.write(b"\n")
 
 
-def _last_record(path: Path) -> dict[str, Any] | None:
-    """Last complete JSON line of an append-only file, read from the end so large logs stay cheap."""
+def _last_record(path: Path, required: tuple[str, ...] = ()) -> dict[str, Any] | None:
+    """Last complete JSON record (an object with the `required` keys) of an append-only file, read from the end
+    so large logs stay cheap."""
 
     if not path.exists() or path.stat().st_size == 0:
         return None
@@ -155,9 +156,11 @@ def _last_record(path: Path) -> dict[str, Any] | None:
             lines = block.strip().splitlines()
             for line in reversed(lines[1:] if end > 0 else lines):  # the first may be cut by the block edge
                 try:
-                    return json.loads(line)
+                    record = json.loads(line)
                 except ValueError:
                     continue  # a torn line: the record before it is the last complete one
+                if isinstance(record, dict) and all(k in record for k in required):
+                    return record
             if end == 0:
                 return None
             step = min(65536, end)
@@ -182,11 +185,23 @@ def main(argv: list[str]) -> int:
     if len(argv) != 2 or argv[0] != "verify":
         print(__doc__)
         return 2
-    events = [json.loads(line) for line in Path(argv[1]).read_text(encoding="utf-8").splitlines() if line.strip()]
+    events, torn = [], 0
+    for line in Path(argv[1]).read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            torn += 1  # a line cut by a power failure and closed off at the next start: reported, not a crash
     key = os.environ.get("RAILGUARD_AUDIT_KEY", "")
-    ok = verify_events(events, key=key.encode() if key else None)
-    print(f"{len(events)} events: {'VALID' if ok else 'TAMPERED OR BROKEN'}" + (" (MACs checked)" if key else ""))
-    return 0 if ok else 1
+    try:
+        ok = verify_events(events, key=key.encode() if key else None)
+    except (KeyError, TypeError, AttributeError):
+        ok = False
+    note = f"; {torn} unreadable line(s) (torn by a power cut?)" if torn else ""
+    print(f"{len(events)} events: {'VALID' if ok else 'TAMPERED OR BROKEN'}" + (" (MACs checked)" if key else "")
+          + note)  # fmt: skip
+    return 0 if ok and not torn else 1
 
 
 if __name__ == "__main__":

@@ -151,6 +151,18 @@ def build_report(decisions: list[dict[str, Any]], snapshots: Iterable[dict[str, 
     }
 
 
+def _usable_decision(d: Any) -> bool:
+    """A logged decision of the right shape (anything else is counted, never used)."""
+
+    try:
+        return (isinstance(d, dict) and isinstance(d.get("run"), str) and d.get("action") in ACTIONS
+                and isinstance(d.get("at_min"), int | float) and not isinstance(d.get("at_min"), bool)
+                and (d.get("at") is None or _utc(d["at"]) is not None)
+                and (d.get("station") is None or isinstance(d["station"], str)))  # fmt: skip
+    except (ValueError, TypeError):
+        return False
+
+
 def _identity(d: dict[str, Any]) -> tuple:
     """A decision is logged once: the same run, action, station and time again is a duplicate (a re-import)."""
 
@@ -166,8 +178,13 @@ class ShadowTrial:
         self.seen: set[tuple] | None = None
 
     def _seen(self) -> set[tuple]:
+        """Identities of every decision already logged. Built once, from a quick scan of the persisted events
+        (only decision lines are parsed), and never while the twin is locked: a long trial's log must not hold up
+        feeds, approvals or streams."""
+
         if self.seen is None:
-            self.seen = {_identity(d) for d in (self.reader.read()[0] if self.reader else [])}
+            found = {_identity(d) for d in (self.reader.logged_decisions() if self.reader else [])}
+            self.seen = found if self.seen is None else self.seen | found
         return self.seen
 
     def _check(self, decision: ActualDecision) -> None:
@@ -180,6 +197,7 @@ class ShadowTrial:
 
     def record(self, decision: ActualDecision) -> dict[str, Any]:
         self._check(decision)
+        self._seen()  # outside the twin's lock (the first call reads the persisted log)
         with self.twin.lock:
             identity = _identity(asdict(decision))
             if identity in self._seen():
@@ -280,23 +298,63 @@ class TrialReader:
 
     def _reset(self) -> None:
         self.offsets = {"events": 0, "snapshots": 0}
+        self.identity: dict[str, tuple] = {}  # per file: (inode, hash of its first line) when first read
+        self.tail: dict[str, tuple[int, str]] = {}  # per file: (where the last line read starts, its hash)
         self.previous: str | None = None
+        self.last_seq = 0
         self.decisions: list[dict[str, Any]] = []
+        self.decision_ids: set[tuple] = set()
         self.by_run: dict[str, list[dict[str, Any]]] = defaultdict(list)
         self.counts: Counter = Counter()
+
+    @staticmethod
+    def _file_identity(path: Path) -> tuple:
+        with path.open("rb") as handle:
+            first = handle.readline()
+        return path.stat().st_ino, hashlib.sha256(first).hexdigest()
 
     def _lines(self, path: Path, which: str) -> Iterable[bytes]:
         if not path.exists():
             return
+        # A file shorter than what was read, or another file in its place (rotated, restored, replaced): reread.
         if path.stat().st_size < self.offsets[which]:
             raise _Rewritten
+        identity = self._file_identity(path)
+        if self.offsets[which] and self.identity.get(which) != identity:
+            raise _Rewritten
+        self.identity[which] = identity
         with path.open("rb") as handle:
+            if which in self.tail:  # the last line read must still be there, unchanged
+                start, digest = self.tail[which]
+                handle.seek(start)
+                if hashlib.sha256(handle.read(self.offsets[which] - start)).hexdigest() != digest:
+                    raise _Rewritten
             handle.seek(self.offsets[which])
             for line in handle:
                 if not line.endswith(b"\n"):
                     break
+                self.tail[which] = (self.offsets[which], hashlib.sha256(line).hexdigest())
                 self.offsets[which] += len(line)
                 yield line
+
+    def logged_decisions(self) -> list[dict[str, Any]]:
+        """Every decision line of the persisted events, parsed without verifying the chain (for refusing
+        duplicates only: a quick scan, never used for the report)."""
+
+        out: list[dict[str, Any]] = []
+        if not self.events.exists():
+            return out
+        with self.events.open("rb") as handle:
+            for line in handle:
+                if b'"SHADOW_ACTUAL_DECISION"' not in line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if event.get("type") == "SHADOW_ACTUAL_DECISION" and _usable_decision(event.get("details")):
+                    out.append(event["details"])
+        return out
 
     def _mac_ok(self, record: dict[str, Any], value: str) -> bool:
         if self.key is None:
@@ -318,11 +376,24 @@ class TrialReader:
             if not ok:
                 self.counts["events_failing_verification"] += 1
                 continue
+            seq = event.get("seq")
+            if type(seq) is not int or seq <= self.last_seq:
+                self.counts["duplicate_or_out_of_order_events"] += 1  # a copied or replayed record is not used
+                continue
             if self.previous is not None and event.get("prev_hash") != self.previous:
                 self.counts["chain_breaks"] += 1
-            self.previous = event["hash"]
-            if event.get("type") == "SHADOW_ACTUAL_DECISION" and isinstance(event.get("details"), dict):
-                self.decisions.append(event["details"])
+            self.previous, self.last_seq = event["hash"], seq
+            if event.get("type") == "SHADOW_ACTUAL_DECISION":
+                details = event.get("details")
+                if not _usable_decision(details):
+                    self.counts["unusable_decisions"] += 1
+                    continue
+                identity = _identity(details)
+                if identity in self.decision_ids:
+                    self.counts["duplicate_decisions"] += 1
+                    continue
+                self.decision_ids.add(identity)
+                self.decisions.append(details)
         for line in self._lines(self.snapshots, "snapshots"):
             try:
                 snap = json.loads(line)
@@ -330,6 +401,8 @@ class TrialReader:
                 ok = checksum(body) == snap["checksum"] and self._mac_ok(snap, f"{snap['checksum']}|{snap.get('at')}")
                 run = snap["inputs"].get("run")
                 ranking = snap["outputs"]["ranking"]
+                if not isinstance(run, str) or not isinstance(snap["outputs"]["state"], str):
+                    raise TypeError("snapshot of the wrong shape")
                 kept = {
                     "snapshot_id": snap["snapshot_id"],
                     "at": snap.get("at"),
@@ -363,7 +436,9 @@ class TrialReader:
         report["verification"] = {
             "macs_checked": self.key is not None,
             **{k: self.counts.get(k, 0) for k in ("recommendations_read", "unreadable_lines", "chain_breaks",
-                                                  "events_failing_verification", "snapshots_failing_verification")},
+                                                  "events_failing_verification", "snapshots_failing_verification",
+                                                  "duplicate_or_out_of_order_events", "duplicate_decisions",
+                                                  "unusable_decisions")},
         }  # fmt: skip
         return report
 

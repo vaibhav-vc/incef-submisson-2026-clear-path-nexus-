@@ -210,9 +210,18 @@ def test_one_forged_ntp_reply_cannot_fail_readiness(monkeypatch):
     assert sup.readiness()["checks"]["clock"] is False
     monkeypatch.setenv("RAILGUARD_NTP", "samay1.nic.in,time.nplindia.org")
     sup = ops.reset()
-    sup.check_clock(measure=lambda host: 3599.0 if host == "samay1.nic.in" else 0.01)  # servers disagree
+    for _ in range(3):  # two servers that disagree prove nothing, however often they are asked
+        sup.check_clock(measure=lambda host: 100.0 if host == "samay1.nic.in" else 0.01)
     ready = sup.readiness()
     assert ready["checks"]["clock"] is True and any("disagree" in n for n in ready["notes"])
+    monkeypatch.setenv("RAILGUARD_NTP", "samay1.nic.in,samay1.nic.in")  # one server named twice counts once
+    sup = ops.reset()
+    sup.check_clock(measure=lambda host: 3599.0)
+    assert sup.readiness()["checks"]["clock"] is True
+    monkeypatch.setenv("RAILGUARD_NTP", "samay1.nic.in,samay2.nic.in,time.nplindia.org")
+    sup = ops.reset()
+    sup.check_clock(measure=lambda host: 3599.0 if host == "samay2.nic.in" else 0.02)  # outvoted
+    assert sup.readiness()["checks"]["clock"] is True and sup.clock_offset_s == 0.02
 
 
 def test_a_drifting_clock_warns_every_console_and_fails_readiness(monkeypatch, data):  # noqa: F811

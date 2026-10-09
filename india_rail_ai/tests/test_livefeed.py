@@ -157,3 +157,13 @@ def test_a_feed_batch_re_evaluates_threats_once(data):  # noqa: F811
     before = twin.version
     gateway.receive(sim.envelope([sim.position_event("12001@0"), sim.position_event("54001@0")]))
     assert twin.version == before + 1
+
+
+def test_a_batch_is_recorded_even_when_an_event_is_absurd(data):  # noqa: F811
+    twin, gateway, sim = _gateway(data, 615.0)
+    good = sim.position_event("12001@0")
+    absurd = {**sim.position_event("54001@0"), "lat": 10**400}
+    result = gateway.receive(sim.envelope([good, absurd]))
+    assert [r["accepted"] for r in result["results"]] == [True, False]
+    batch = [e for e in twin.audit.events if e["type"] == "FEED_BATCH"][-1]
+    assert batch["details"]["processed"] == 2 and batch["details"]["accepted"] == 1

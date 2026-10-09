@@ -167,21 +167,26 @@ class FeedGateway:
                 wall = self._minutes(datetime.fromtimestamp(self.clock(), IST))
                 if wall > twin.now:
                     twin.tick(wall - twin.now, refresh=False)  # threats are re-evaluated once, below
-            results = [self._event(source, event) for event in events]
-            accepted = sum(1 for r in results if r["accepted"])
-            twin.refresh()  # threats re-evaluated once per batch, after every event is in
-            twin.audit.record(
-                int(twin.now * 60),
-                "FEED_BATCH",
-                f"feed:{source}",
-                {
-                    "key_id": key_id,
-                    "sequence": sequence,
-                    "events": len(events),
-                    "accepted": accepted,
-                    "body_sha256": hashlib.sha256(canonical(envelope)).hexdigest(),
-                },
-            )
+            results: list[dict[str, Any]] = []
+            try:
+                for event in events:
+                    results.append(self._event(source, event))
+            finally:  # whatever happens to an event, the batch is re-evaluated and recorded
+                accepted = sum(1 for r in results if r["accepted"])
+                twin.refresh()  # threats re-evaluated once per batch, after every event is in
+                twin.audit.record(
+                    int(twin.now * 60),
+                    "FEED_BATCH",
+                    f"feed:{source}",
+                    {
+                        "key_id": key_id,
+                        "sequence": sequence,
+                        "events": len(events),
+                        "processed": len(results),
+                        "accepted": accepted,
+                        "body_sha256": hashlib.sha256(canonical(envelope)).hexdigest(),
+                    },
+                )
         return {"source": source, "sequence": sequence, "accepted": accepted, "rejected": len(events) - accepted,
                 "results": results}  # fmt: skip
 
@@ -204,7 +209,7 @@ class FeedGateway:
             if kind == "STATION":
                 return self._station(source, key, event, minute)
             raise ValueError("type must be POSITION or STATION")
-        except (ValueError, TypeError, KeyError) as exc:
+        except (ValueError, TypeError, KeyError, OverflowError) as exc:  # one bad event never stops a batch
             if isinstance(event, dict) and event.get("type") == "POSITION":
                 self.fix_outcomes["refused_" + _fix_reason(str(exc))] += 1
             return {"accepted": False, "reason": str(exc)[:200]}

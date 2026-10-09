@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import tempfile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,6 +26,7 @@ def prod(monkeypatch):
     monkeypatch.setenv("RAILGUARD_MODE", "production")
     monkeypatch.setenv("RAILGUARD_RATE_LIMIT", "off")
     monkeypatch.setenv("RAILGUARD_ALLOWED_HOSTS", "testserver")
+    monkeypatch.setenv("RAILGUARD_AUDIT_DIR", tempfile.mkdtemp(prefix="rg-audit-"))
     for role, env in security.ROLE_ENV.items():
         monkeypatch.setenv(env, TOKENS[role])
     # These tests attack the HTTP layer through the small demo network, which production otherwise disables.
@@ -37,6 +39,7 @@ def test_production_serves_real_data_only(monkeypatch):
     monkeypatch.setenv("RAILGUARD_MODE", "production")
     monkeypatch.setenv("RAILGUARD_RATE_LIMIT", "off")
     monkeypatch.setenv("RAILGUARD_ALLOWED_HOSTS", "testserver")
+    monkeypatch.setenv("RAILGUARD_AUDIT_DIR", tempfile.mkdtemp(prefix="rg-audit-"))
     for role, env in security.ROLE_ENV.items():
         monkeypatch.setenv(env, TOKENS[role])
     client = TestClient(app)
@@ -59,6 +62,7 @@ def test_production_without_tokens_fails_closed(monkeypatch):
 def test_production_rejects_short_or_shared_tokens(monkeypatch):
     monkeypatch.setenv("RAILGUARD_MODE", "production")
     monkeypatch.setenv("RAILGUARD_ALLOWED_HOSTS", "testserver")
+    monkeypatch.setenv("RAILGUARD_AUDIT_DIR", tempfile.mkdtemp(prefix="rg-audit-"))
     for env in security.ROLE_ENV.values():
         monkeypatch.setenv(env, "s" * 40)
     assert "role tokens must all differ" in security.configuration_problems()

@@ -140,3 +140,56 @@ def test_an_open_cab_stream_ends_when_its_link_is_revoked(client):
     text = asyncio.run(collect())
     assert "event: advisory" in text and text.rstrip().endswith('{"detail": "this cab link is no longer valid"}')
     assert "event: revoked" in text
+
+
+def test_cab_streams_have_capacity_viewers_cannot_take(monkeypatch):
+    monkeypatch.setattr(live, "MAX_CONSOLE_STREAMS", 2)
+    hub = live.Hub()
+    assert hub.open("console", "a") and hub.open("console", "b")
+    assert not hub.open("console", "c")  # control screens are capped ...
+    assert hub.open("cab", "link-1")  # ... so a cab unit still gets its stream
+    for _ in range(live.MAX_STREAMS_PER_CAB_LINK - 1):
+        assert hub.open("cab", "link-2")
+    assert hub.open("cab", "link-2") and not hub.open("cab", "link-2")  # and one link cannot hoard streams
+    hub.close("console", "a")
+    assert hub.open("console", "c")
+
+
+def test_a_cab_link_belongs_to_one_journey_and_revocations_only_widen(client):
+    http, twin = client
+    from india_rail.railguard import api as rg
+
+    journey = rg._journey(twin, "12001@0")
+    assert journey.startswith("12001@20")  # the absolute start date, not the twin's day number
+    issued = http.post("/railguard/national/cab/12001@0/token", json={"issued_by": "SCR"}).json()
+    assert issued["journey"] == journey and live.cab_token_valid(issued["token"], journey)
+    assert not live.cab_token_valid(issued["token"], "12001@2099-01-01")  # the same train another day
+    live.revoke(journey, clock=lambda: 4_000_000_000.0)
+    live.revoke(journey, clock=lambda: 1.0)  # a later "revoke all" under a clock stepped back never re-validates
+    assert live.revocations()["journeys"][journey] == 4_000_000_000_000
+
+
+def test_revocations_are_replayed_only_from_verified_audit_records(tmp_path):
+    import json as _json
+
+    from india_rail.railguard.audit import AuditLog
+
+    folder = tmp_path / "audit"
+    import os
+
+    os.environ["RAILGUARD_AUDIT_DIR"] = str(folder)
+    try:
+        log = AuditLog()
+        log.record(0, "CAB_LINK_REVOKED", "SCR", {"run": "1@0", "journey": "1@2026-10-09", "token_id": "ab" * 8})
+    finally:
+        del os.environ["RAILGUARD_AUDIT_DIR"]
+    events = folder / "railguard_events.jsonl"
+    forged = {"seq": 9, "type": "CAB_LINK_REVOKED", "at": "2026-10-09T00:00:00+00:00", "hash": "x",
+              "details": {"journey": "2@2026-10-09"}}  # fmt: skip
+    bad_shape = dict(_json.loads(events.read_text().splitlines()[0]), details="not an object")
+    with events.open("a") as handle:
+        handle.write(_json.dumps(forged) + "\n" + _json.dumps(bad_shape) + "\n")
+    import time as _time
+
+    assert live.load_revocations(events, clock=_time.time) == 1  # the real record only; nothing crashes
+    assert "ab" * 8 in live.revocations()["ids"]

@@ -107,7 +107,13 @@ def db(db_path: Path) -> sqlite3.Connection:
 def _fresh_rate_limits():
     """Each test starts with full rate-limit buckets (they are per process and would leak between tests)."""
 
+    from india_rail.railguard import api as railguard_api
+    from india_rail.railguard import live
     from india_rail.security import LIMITER
 
     LIMITER.buckets.clear()
+    # Cab-link revocations are per process too: a test revoking a train's links must not affect the next one.
+    live._revoked_ids.clear()
+    live._revoked_runs.clear()
+    railguard_api._revocations_loaded.cache_clear()
     yield

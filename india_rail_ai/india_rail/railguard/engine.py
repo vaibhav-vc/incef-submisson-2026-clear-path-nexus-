@@ -105,7 +105,7 @@ class RailGuardEngine:
         self.version = 0  # bumped by every state change; an approval must match the version it was ranked on
         self.evidence = EvidenceStore()
         self.threats = ThreatRegistry()
-        self.audit = AuditLog()
+        self.audit = AuditLog("tabletop")  # its own chain and files: never mixed with the national twin's
         self.flags: dict[str, list[dict[str, Any]]] = defaultdict(list)
         self.approved: dict[str, dict[str, Any]] = {}
         self.controller_hold: dict[str, dict[str, Any]] = {}

@@ -128,8 +128,9 @@ def evidence_index(root: Path = PACKAGE_ROOT, out: Path | None = OUT) -> dict[st
     files = sorted({p for g in EVIDENCE_GLOBS for p in root.glob(g) if p.is_file() and "__pycache__" not in p.parts
                     and not (out is not None and p.resolve().is_relative_to(out.resolve()))})  # fmt: skip
     index = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
-    status = _git("status", "--porcelain", "--untracked-files=no", "--", ".")
-    changed = sorted(line[3:] for line in (status or "").splitlines() if line.strip())
+    status = _git("status", "--porcelain", "--untracked-files=all", "--", ".")
+    prefix = (_git("rev-parse", "--show-prefix") or "").strip()  # this package's folder within the repository
+    changed = sorted(line[3:].strip('"').removeprefix(prefix) for line in (status or "").splitlines() if line.strip())
     return {"git_commit": _git_commit(), "uncommitted": changed if status is not None else "unknown (no git)",
             "generated_at": datetime.now(UTC).isoformat(timespec="seconds"), "files": len(index),
             "sha256": index}  # fmt: skip
