@@ -508,6 +508,7 @@ def conflict_replay(
     horizon: float = 120.0,
     use_osm: bool = True,
     projection: str = "twin_rule",
+    shared_track: bool = True,
     model: Any = None,
     lookups: Lookups | None = None,
 ) -> dict[str, Any]:
@@ -528,7 +529,7 @@ def conflict_replay(
     rows, timings = [], []
     for day in dates:
         service = date.fromisoformat(day)
-        data = build_national(REAL_DB_PATH, service_date=service, use_osm=use_osm)
+        data = build_national(REAL_DB_PATH, service_date=service, use_osm=use_osm, shared_track=shared_track)
         twin = NationalTwin(data)
         observed_runs = {}
         for key, run in data.runs.items():
@@ -591,6 +592,7 @@ def conflict_replay(
     frame = pd.DataFrame(rows, columns=["late", "role", "loss", "single"])
     return {
         "use_real_track_data": use_osm,
+        "shared_track_checked": shared_track,
         "projection": projection,
         "dates": dates,
         "snapshots_min": list(snapshots),
@@ -772,6 +774,11 @@ def validate_all(out: Path | None = None, conflict_dates: int = 4) -> dict[str, 
             "twin_rule_without_real_track_data": conflict_replay(d, picked, use_osm=False),
             "twin_rule_with_real_track_data": conflict_replay(d, picked, use_osm=True),
             "learned_projection_with_real_track_data": conflict_replay(d, picked, use_osm=True, **learned),
+            # the same, with each train compared only with trains on its own stop-to-stop sections: what checking
+            # shared track changes, measured the same way on the same days
+            "learned_projection_without_shared_track": conflict_replay(
+                d, picked, use_osm=True, shared_track=False, **learned
+            ),  # fmt: skip
         },
         "live_feed_replay": {"twin_rule": feed_replay(d), "learned_projection": feed_replay(d, eta=eta)},
         "seconds": round(time.time() - started, 1),

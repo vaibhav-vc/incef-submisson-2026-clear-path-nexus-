@@ -316,6 +316,7 @@ def build_national(
     service_date: date | None = None,
     use_osm: bool = True,
     register: dict[str, Any] | None = None,
+    shared_track: bool = True,
 ) -> NationalData:
     """`service_date` is the calendar date of day 0 (default: today in India); it matters only for trains whose
     running days are known, which then run only on those weekdays. Others are treated as daily and flagged.
@@ -347,7 +348,9 @@ def build_national(
         neighbours[b].add(a)
     network = Network(nodes=_place_nodes(stations, nodes_used, neighbours), sections=sections)
     own = {n for n in nodes_used if stations.get(n, (None,))[0] is not None}
-    parts = _decompose(sections, network.nodes, own)
+    # shared_track=False compares each train only with trains on the same stop-to-stop section (for measuring
+    # what checking shared track changes; never for operation)
+    parts = _decompose(sections, network.nodes, own) if shared_track else {}
     # A register row for an express's stop-to-stop path is not applied: separation is checked on the physical
     # sections it runs over, so the row would change nothing. `register validate` asks for those sections.
     left_out = sorted(sid for sid in register.get("sections", {}) if sid in parts or sid not in sections)

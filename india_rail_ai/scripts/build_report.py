@@ -794,13 +794,16 @@ def scenarios_section(rv: dict[str, Any], nat_stats: dict[str, Any]) -> list[Any
     from evidence files)."""
 
     bank = load(EVIDENCE / "scenarios" / "scenario_bank.json")
-    before = load(EVIDENCE / "real_data" / "before_shared_track.json")
     features = load(EVIDENCE / "features" / "feature_check.json")
     n = bank.get("forecasts", {}).get("scenarios")
     out: list[Any] = [p(f"4. Shared track, {n:,} scenarios, and the railway's remaining steps" if n else
                         "4. Shared track and the railway's remaining steps", "h1")]  # fmt: skip
     key = "learned_projection_with_real_track_data"
-    conf, old = rv.get("conflicts", {}).get(key, {}), before.get("conflicts", {}).get(key, {})
+    # what checking shared track changes, measured in the same run, on the same days, the same way
+    conf, old = (
+        rv.get("conflicts", {}).get(key, {}),
+        rv.get("conflicts", {}).get("learned_projection_without_shared_track", {}),
+    )
     feed = rv.get("live_feed_replay", {}).get("twin_rule", {}).get("batch_latency_ms", {})
     composite, sections = nat_stats.get("sections_over_shorter_sections"), nat_stats.get("sections")
     share = nat_stats.get("run_km_share_over_shorter_sections")
@@ -811,19 +814,21 @@ def scenarios_section(rv: dict[str, Any], nat_stats: dict[str, Any]) -> list[Any
                 "Each train's sections run between its own stops, so an express's one section is a local's several. "
                 f"{composite:,} of {sections:,} sections ({share * 100:.1f}% of train-km) are such paths over shorter "
                 "sections; until this build an express and a local on the same track were never compared. Every "
-                "occupation is now registered on the pieces of track it runs over and checked there; closures of any "
-                "piece block every section over it; the index of changed trains is kept in time order, so a real "
-                f"morning's feed batch takes {feed.get('p50', 'n/a')} ms at the median."
+                "occupation is now registered on the pieces of track it runs over and checked there (on both chains "
+                "where two fit); closures of any piece block every section over it, including the rest of a section a "
+                "train has already entered; the index of changed trains is kept in time order, so a real morning's "
+                f"feed batch takes {feed.get('p50', 'n/a')} ms at the median. The comparison below is from one run: "
+                "the same real days, with and without shared track checked."
             ),
             table(
                 [
                     ["Measure (learned projection, real track data, unseen real days)", "Value"],
                     ["Real time losses of 15 min or more warned of in advance", f"{conf['losses_15_min_or_more_flagged_pct']}%"],
-                    ["...before shared track was checked (revision " + before["source_revision"][:7] + ")",
+                    ["...the same days with shared track not checked",
                      f"{old['losses_15_min_or_more_flagged_pct']}%"],
-                    ["Warned trains that really lost 5+ min vs comparable trains (now / before)",
+                    ["Warned trains that really lost 5+ min vs comparable trains (checked / not checked)",
                      f"{conf['lift']}x / {old['lift']}x"],
-                    ["Warnings (give-way traversals flagged; now / before)",
+                    ["Warnings (give-way traversals flagged; checked / not checked)",
                      f"{conf['flagged_gives_way']:,} / {old['flagged_gives_way']:,}"],
                 ],
                 [120, 50],
