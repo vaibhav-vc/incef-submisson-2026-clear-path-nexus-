@@ -391,20 +391,32 @@ def _first_change(new: list[float], old: list[float]) -> int | None:
     return next((i for i, (a, b) in enumerate(zip(new, old, strict=False)) if abs(a - b) > 1e-9), None)
 
 
+def _conflict_ids(found: dict[str, Any]) -> set[tuple]:
+    return {(c["run"], c["other"], c["piece"], c["index"]) for c in found["conflicts"]}
+
+
 def check_candidate(tw: Any, key: str, cand: dict[str, Any]) -> list[str]:
     """Independent check of a ranked candidate (railguard/independent.py - brute force, no shared search code):
-    no conflict within the planning horizon for the train or any train it re-times, from where each one changes,
-    and no closed or obstructed track ahead of the train, including the rest of the section it is on."""
+    the late train has no conflict anywhere ahead within the planning horizon; every train the plan re-times is
+    checked from where it is, and has no conflict the plan creates (one it already had - with another train
+    awaiting its own decision - is that decision's, not this plan's); no closed or obstructed track ahead of the
+    train, including the rest of the section it is on."""
 
     from india_rail.railguard import independent
 
     plan, here = cand["plan"], tw.position(key)["index"]
     changed = {key: (plan, here)}
+    already: set[tuple] = set()
     for k, (p, _hold) in cand["yields"].items():
         if _first_change(p.enter, tw.plan_of(k).enter) is not None:
-            changed[k] = (p, tw.position(k)["index"])  # from where the train is, not only from where it changes
-    found = independent.check(tw, changed)
-    problems = [f"conflict {c['run']}/{c['other']} on {c['piece']}" for c in found["conflicts"]]
+            start = tw.position(k)["index"]
+            changed[k] = (p, start)
+            already |= _conflict_ids(independent.check(tw, {k: (tw.plan_of(k), start)}))
+    problems = [
+        f"conflict {c['run']}/{c['other']} on {c['piece']}"
+        for c in independent.check(tw, changed)["conflicts"]
+        if key in (c["run"], c["other"]) or (c["run"], c["other"], c["piece"], c["index"]) not in already
+    ]
     problems += [f"blocked {piece}" for piece in independent.blocked_ahead(tw, key, plan)]
     return problems
 
@@ -481,6 +493,9 @@ def planner_scenario(index: int, seed: int, tw: Any = None, losses: np.ndarray |
 
         top = shown[0]
         before = {k: tw.plan_of(k) for k in top["yields"]}
+        already: set[tuple] = set()
+        for k, old in before.items():
+            already |= _conflict_ids(independent.check(tw, {k: (old, tw.position(k)["index"])}))
         tw.approve(rec["snapshot_id"], "N1", "scenario-bank")
         # The plans now in force, checked again by the independent checker (approval applied what was checked)
         changed = {key: (tw.plan_of(key), tw.position(key)["index"])}
@@ -488,7 +503,8 @@ def planner_scenario(index: int, seed: int, tw: Any = None, losses: np.ndarray |
             if _first_change(tw.plan_of(k).enter, old.enter) is not None:
                 changed[k] = (tw.plan_of(k), tw.position(k)["index"])
         for c in independent.check(tw, changed)["conflicts"]:
-            out["violations"].append(f"approved plan: conflict {c['run']}/{c['other']} on {c['piece']}")
+            if key in (c["run"], c["other"]) or (c["run"], c["other"], c["piece"], c["index"]) not in already:
+                out["violations"].append(f"approved plan: conflict {c['run']}/{c['other']} on {c['piece']}")
         out["approved"] = True
     return out
 
