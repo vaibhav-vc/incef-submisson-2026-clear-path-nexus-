@@ -280,3 +280,84 @@ def test_a_register_row_for_an_express_path_is_not_applied(tmp_path):
     data = _build(tmp_path, STATIONS, TRAINS, register)
     assert "A-D" not in data.headway and data.network.sections["A-D"].tracks == 1
     assert data.stats["register_rows_not_applied"] == ["A-D"]
+
+
+def test_an_express_that_could_take_either_of_two_chains_is_compared_with_trains_on_both(tmp_path):
+    stations = {"A": (77.0, 28.0), "B": (77.1, 28.004), "C": (77.1, 27.996), "D": (77.2, 28.0)}
+    trains = {
+        "12001": ("Raj", [("A", "None", "10:00"), ("D", "10:20", "None")]),
+        "59001": ("Pass", [("A", "None", "10:30"), ("B", "10:42", "10:43"), ("D", "10:55", "None")]),
+        "59003": ("Pass", [("A", "None", "11:30"), ("C", "11:42", "11:43"), ("D", "11:55", "None")]),
+    }
+    data = _build(tmp_path, stations, trains)
+    forward, _backward = data.parts["A-D"]
+    assert {p[0] for p in forward} == {"A-B", "B-D", "A-C", "C-D"}  # both chains
+    assert [p[0] for p in forward][:2] in (["A-B", "B-D"], ["A-C", "C-D"])  # the first chain first, in order
+    assert data.stats["sections_over_either_of_two_chains"] == 1
+    twin = NationalTwin(data, start_min=590.0)
+    twin.disrupt("12001@0", "A", 90)  # now 11:30-11:50: with the local via C, whichever way it goes
+    found = twin.conflicts("12001@0", twin.plan_of("12001@0"), 0)
+    assert any(c["other"] == "59003@0" and c["is_conflict"] for c in found)
+
+
+def test_a_train_already_on_a_blocked_piece_is_warned_and_its_cab_holds(tmp_path):
+    trains = dict(TRAINS)
+    trains["12951"] = ("Raj", [("A", "None", "10:00"), ("D", "13:00", "None")])
+    twin = NationalTwin(_build(tmp_path, STATIONS, trains), start_min=603.0)  # on the A-B piece of A-D
+    twin.update_section("A-B", obstacle=True)
+    on_it = [t for t in twin.threats.active() if t.type == "OBSTACLE" and RAJ in t.train_ids]
+    assert on_it and on_it[0].severity == "CRITICAL" and on_it[0].section_id == "A-B"
+    cab = twin.cab(RAJ)
+    assert cab["status"] == "HOLD-FOR-CONTROLLER" and cab["advisory_speed_band_kmph"] is None
+
+
+def test_a_crossing_the_timetable_puts_inside_a_piece_must_not_move_unnoticed():
+    from india_rail.railguard.national import required_separation
+
+    # The timetable has the two overlapping on the piece by 3.32 min (a crossing at a loop the twin cannot see)
+    timetabled = (600.0, 610.0, 606.68, 616.68)
+    as_timetabled = required_separation(1, False, 3.0, (600.0, 600.0), (606.68, 606.68), timetabled)
+    assert as_timetabled < 0  # unchanged: accepted as the timetable has it
+    moved = required_separation(1, False, 3.0, (603.0, 600.0), (606.68, 606.68), timetabled)
+    assert moved == 3.0  # one delayed against the other: full separation required on the piece
+
+
+def test_a_diversion_keeps_a_delay_recorded_at_a_station_it_bypasses(twin):
+    twin.disrupt(LOCAL, "C", 30)
+    twin.update_section("C-D", available=False)
+    for cand in twin.candidates(LOCAL, twin.first_open(LOCAL)):
+        if cand["feasible"] and cand["label"].startswith("REROUTE"):
+            plan = cand["plan"]
+            assert plan.exit[-1] - twin.runs[LOCAL].s_exit[-1] >= 30  # the 30 min do not vanish
+            assert plan.sections[:2] != ["B-C", "B-C"]  # and no reversal back over the section just run
+
+
+def test_off_route_reports_respect_batching_and_old_flags_are_dropped(twin):
+    before = twin.version
+    for _ in range(20):
+        twin.ingest_position(LOCAL, "X-Y", 1.0, refresh=False)
+    assert twin.version == before and len(twin.flags[LOCAL]) == 1  # one deviation flag, no refresh per report
+    twin.tick(10)
+    assert not twin.flags[LOCAL]  # expired flags are dropped
+
+
+def test_a_live_position_says_where_the_train_is_and_a_late_one_is_re_timed(twin):
+    twin.ingest_position(RAJ, "A-D", 14.0, source="FEED_TEST")  # 14 km along A-D, observed
+    pos = twin.position(RAJ)
+    assert pos["observed"] and pos["offset_km"] == 14.0 and twin.first_open(RAJ) == 1
+    twin.update_section("C-D", obstacle=True)
+    rec = twin.recommend(RAJ)
+    assert rec["state"] == "NO_FEASIBLE_PLAN" and rec["ranking"]["fallback"].startswith(f"Stop {RAJ} at C")
+
+
+def test_a_stale_position_of_a_train_a_plan_relies_on_holds_the_recommendation(tmp_path):
+    register = {"sections": {}, "stations": {c: {"loops": 0, "source": "IR_SWR"} for c in "BC"}, "checksum": "t"}
+    twin = NationalTwin(_build(tmp_path, STATIONS, TRAINS, register), start_min=627.0)
+    twin.ingest_position(LOCAL, "A-B", 0.0, source="FEED_TEST")
+    twin.tick(4)  # the local's report is now older than the 3-minute policy
+    twin.ingest_position(RAJ, "A-D", 0.0, source="FEED_TEST")
+    twin.ingest_position(OPPOSING, "C-D", 0.0, source="FEED_TEST")
+    twin.disrupt(RAJ, "A", 40)
+    rec = twin.recommend(RAJ)
+    assert twin.position_state(LOCAL) == "STALE" and rec["ranking"]["state"] == "RANKED"
+    assert rec["state"] == "HOLD" and not rec["approvable"]  # the plans pass close to the local

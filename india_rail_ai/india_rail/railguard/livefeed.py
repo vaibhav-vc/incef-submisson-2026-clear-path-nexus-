@@ -272,16 +272,36 @@ class FeedGateway:
                  "detail": f"Fix refused: {problem}. Possible spoofing, multipath or a wrong train number.",
                  "action": "Confirm the train's position through authorised means before relying on it."}]  # fmt: skip
             return {"accepted": False, "run": key, "reason": f"implausible: {problem}"}
-        result = twin.ingest_position(key, match.section_id, match.offset_km, source=f"FEED_{source}", refresh=False)
+        result = twin.ingest_position(key, match.section_id, match.offset_km, source=f"FEED_{source}", refresh=False,
+                                      index=match.index)  # fmt: skip
         if result.get("accepted"):
             self.last_index[key] = track.first_index
             self.tracks[key] = track
             self.off_route.pop(key, None)
+            recorded = self._late_from_fix(source, key, match.index, match.offset_km, self._minutes(when))
+            if recorded:
+                result = {**result, "disruption_recorded": recorded}
         out = {**result, "run": key, "section_id": match.section_id, "cross_track_m": match.cross_track_m,
                "matched_to": match.method}  # fmt: skip
         if track.places:
             out["possible_places"] = len(track.places)
         return out
+
+    def _late_from_fix(self, source: str, key: str, i: int, offset_km: float, minute: float) -> dict | None:
+        """A fix that places the train well behind its plan records the lateness for the controller, as a late
+        station report does: the delay at the next station, which re-times the rest of its plan."""
+
+        twin = self.twin
+        plan = twin.plan_of(key)
+        if key in twin.pending or i + 1 >= len(plan.sections):
+            return None
+        share = min(max(offset_km / max(twin.section(plan.sections[i]).length_km, 1e-6), 0.0), 1.0)
+        late = minute - (plan.enter[i] + share * (plan.exit[i] - plan.enter[i]))
+        if late < self.auto_disruption_min:
+            return None
+        twin.disrupt(key, plan.frm[i + 1], min(late, 720), actor=f"feed:{source}", at_index=i + 1,
+                     observed_arrival_delay=late, refresh=False)  # fmt: skip
+        return {"station": plan.frm[i + 1], "delay_min": round(late, 1)}
 
     @staticmethod
     def _gnss_accuracy(event: dict[str, Any]) -> float:

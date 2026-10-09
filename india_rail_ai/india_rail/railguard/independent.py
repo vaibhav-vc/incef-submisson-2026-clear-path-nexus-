@@ -13,7 +13,9 @@ The rule (the operating rule the twin is built on, stated here on its own):
   train may not overtake on plain line, and both its entry and its exit must be at least the required
   separation after the earlier train's;
 * the required separation is the piece's signalled headway (the Indian Railways register where loaded, else the
-  twin's default), or the separation the two trains have in the published timetable if that is smaller.
+  twin's default), or the separation the two trains have in the published timetable if that is smaller - except
+  that a pair the timetable has crossing or overtaking inside the piece keeps that allowance only while neither
+  train has moved against the other; once one has, they must be a full headway apart on the piece.
 
 A conflict starts when the second of the two trains enters the piece. Conflicts starting more than HORIZON_MIN
 ahead are counted separately: the planner resolves them when they come into view, so they are information, not a
@@ -96,7 +98,12 @@ def check(twin: Any, changed: dict[str, tuple[Plan, int]]) -> dict[str, Any]:
                 if apart is None:
                     continue
                 planned = separation(tracks, same, a[4], b[4]) if a[4] and b[4] else None
-                required = headway if planned is None else min(headway, planned)
+                if planned is None or planned >= headway:
+                    required = headway
+                elif planned < 0 and abs((a[3][0] - a[4][0]) - (b[3][0] - b[4][0])) > EPS:
+                    required = headway  # the timetabled crossing or overtake inside the piece has moved
+                else:
+                    required = planned
                 if apart >= required - EPS:
                     continue
                 if max(a[3][0], b[3][0]) > limit:  # starts beyond the planning horizon

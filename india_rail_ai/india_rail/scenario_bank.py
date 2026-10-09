@@ -372,9 +372,8 @@ def check_candidate(tw: Any, key: str, cand: dict[str, Any]) -> list[str]:
     plan, here = cand["plan"], tw.position(key)["index"]
     changed = {key: (plan, here)}
     for k, (p, _hold) in cand["yields"].items():
-        first = _first_change(p.enter, tw.plan_of(k).enter)
-        if first is not None:
-            changed[k] = (p, first)
+        if _first_change(p.enter, tw.plan_of(k).enter) is not None:
+            changed[k] = (p, tw.position(k)["index"])  # from where the train is, not only from where it changes
     found = independent.check(tw, changed)
     problems = [f"conflict {c['run']}/{c['other']} on {c['piece']}" for c in found["conflicts"]]
     problems += [f"blocked {piece}" for piece in independent.blocked_ahead(tw, key, plan)]
@@ -457,9 +456,8 @@ def planner_scenario(index: int, seed: int, tw: Any = None, losses: np.ndarray |
         # The plans now in force, checked again by the independent checker (approval applied what was checked)
         changed = {key: (tw.plan_of(key), tw.position(key)["index"])}
         for k, old in before.items():
-            ch = _first_change(tw.plan_of(k).enter, old.enter)
-            if ch is not None:
-                changed[k] = (tw.plan_of(k), ch)
+            if _first_change(tw.plan_of(k).enter, old.enter) is not None:
+                changed[k] = (tw.plan_of(k), tw.position(k)["index"])
         for c in independent.check(tw, changed)["conflicts"]:
             out["violations"].append(f"approved plan: conflict {c['run']}/{c['other']} on {c['piece']}")
         out["approved"] = True
