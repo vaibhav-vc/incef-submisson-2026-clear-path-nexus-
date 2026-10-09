@@ -232,15 +232,17 @@ class Broadcaster:
         self.tick = 0
         self.changed = asyncio.Condition()
         self.task: asyncio.Task | None = None
+        self.new_watcher = False  # a stream just opened: compute now, not at the next tick
 
     def _compute(self, keys: list[str]) -> dict[str, str]:
         out = {}
         if NETWORK in keys:
             out[NETWORK] = HUB.network(self.twin)
-        with self.twin.lock:
-            for key in keys:
-                if key != NETWORK:
-                    out[key] = json.dumps(self.twin.cab(key), separators=(",", ":"), default=str)
+        for key in keys:
+            if key != NETWORK:
+                with self.twin.lock:  # one run at a time: a feed batch or a decision never waits for every cab
+                    advisory = self.twin.cab(key)
+                out[key] = json.dumps(advisory, separators=(",", ":"), default=str)
         return out
 
     async def _loop(self) -> None:
@@ -250,8 +252,8 @@ class Broadcaster:
         version, computed = None, 0.0
         while self.watchers:
             now = time.monotonic()
-            if self.twin.version != version or now - computed >= TICK_S:
-                version, computed = self.twin.version, now
+            if self.twin.version != version or now - computed >= TICK_S or self.new_watcher:
+                version, computed, self.new_watcher = self.twin.version, now, False
                 latest = await asyncio.to_thread(self._compute, list(self.watchers))
                 async with self.changed:
                     self.latest, self.tick = latest, self.tick + 1
@@ -261,6 +263,8 @@ class Broadcaster:
 
     def watch(self, key: str) -> None:
         self.watchers[key] = self.watchers.get(key, 0) + 1
+        if key not in self.latest:
+            self.new_watcher = True
         if self.task is None:
             self.task = asyncio.get_running_loop().create_task(self._loop())
 

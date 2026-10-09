@@ -1,6 +1,6 @@
 """Load test of the live service on the real network: streams, feed and one-to-one push latency.
 
-    python -m india_rail loadtest [--consoles 50] [--cabs 500] [--seconds 60]
+    python -m india_rail loadtest [--consoles 50] [--cabs 500] [--boards 200] [--seconds 60]
 
 Starts the real service (uvicorn, one worker, the national twin on the current timetable) on a local port and,
 at the same time:
@@ -8,8 +8,11 @@ at the same time:
 * `cabs` cab units each hold their own train's stream with their own run-scoped token;
 * a feed posts signed position batches (250 fixes, the gateway's maximum) every second;
 * every 5 s a controller records a disruption on a train whose cab is listening, and the time until that cab's
-  stream shows the change is measured - the one-to-one push latency.
-Reported: time to first event, push latency p50/p95/p99, feed batch latency, refused or dropped streams.
+  stream shows the change is measured - the one-to-one push latency;
+* `boards` station screens each fetch their station's board every BOARD_POLL_S (six times as often as the
+  board page does, so 200 here stand for 1,200 real screens), and a passenger's train view now and then.
+Reported: time to first event, push latency p50/p95/p99, feed batch latency, board and train-view latency,
+refused or dropped streams, failed requests.
 On one machine the clients compete with the server for CPU, so the figures are conservative.
 """
 
@@ -27,6 +30,7 @@ from typing import Any
 
 EVIDENCE = Path(__file__).resolve().parents[2] / "seva2026" / "evidence" / "live" / "loadtest.json"
 FEED_SECRET = bytes(range(32))
+BOARD_POLL_S = 5.0
 
 
 def _free_port() -> int:
@@ -42,7 +46,17 @@ def _pct(values: list[float], q: float) -> float | None:
     return round(ordered[min(int(q * len(ordered)), len(ordered) - 1)], 1)
 
 
-async def _run(base: str, twin: Any, consoles: int, cabs: int, seconds: float) -> dict[str, Any]:
+def _busiest_stations(twin: Any, n: int) -> list[str]:
+    """The `n` stations with the most timetabled calls (the screens that matter most)."""
+
+    calls: dict[str, int] = {}
+    for r in twin.runs.values():
+        for code in (*r.frm, r.to[-1]):
+            calls[code] = calls.get(code, 0) + 1
+    return sorted(calls, key=lambda c: (-calls[c], c))[:n]
+
+
+async def _run(base: str, twin: Any, consoles: int, cabs: int, seconds: float, boards: int = 0) -> dict[str, Any]:
     import httpx
 
     from india_rail.railguard.livefeed import FeedSimulator
@@ -55,7 +69,12 @@ async def _run(base: str, twin: Any, consoles: int, cabs: int, seconds: float) -
     changes: dict[str, tuple[float, float]] = {}  # run -> (when the controller acted, deviation before it)
     started = time.perf_counter()
     stop = started + seconds
-    limits = httpx.Limits(max_connections=consoles + cabs + 20, max_keepalive_connections=consoles + cabs + 20)
+    board_ms: list[float] = []
+    train_ms: list[float] = []
+    failed: dict[str, int] = {}
+    stations = _busiest_stations(twin, boards)
+    limits = httpx.Limits(max_connections=consoles + cabs + boards + 20,
+                          max_keepalive_connections=consoles + cabs + boards + 20)  # fmt: skip
 
     actions: dict[str, int] = {}
     async with httpx.AsyncClient(base_url=base, timeout=httpx.Timeout(30.0, read=None), limits=limits) as http:
@@ -114,7 +133,8 @@ async def _run(base: str, twin: Any, consoles: int, cabs: int, seconds: float) -
                 k += 1
                 plan = twin.plan_of(run)
                 i = min(twin.position(run)["index"] + 1, len(plan.sections) - 1)
-                live_view = (await http.get(f"/railguard/national/cab/{run}/live?token={tokens[run]}")).json()
+                live_view = (await http.get(f"/railguard/national/cab/{run}/live",
+                                            headers={"Authorization": f"Bearer {tokens[run]}"})).json()  # fmt: skip
                 changes[run] = (time.perf_counter(), live_view["schedule_deviation_min"])
                 body = {"run": run, "station": plan.frm[i], "delay_min": 7}
                 answer = await http.post("/railguard/national/disrupt", json=body)
@@ -122,6 +142,23 @@ async def _run(base: str, twin: Any, consoles: int, cabs: int, seconds: float) -
                 if answer.status_code != 200:
                     changes.pop(run, None)
                 await asyncio.sleep(5.0)
+
+        async def board(n: int, code: str) -> None:
+            await asyncio.sleep((n % 50) * BOARD_POLL_S / 50)  # screens are not in step
+            while time.perf_counter() < stop:
+                t0 = time.perf_counter()
+                answer = await http.get(f"/railguard/national/board/{code}")
+                board_ms.append((time.perf_counter() - t0) * 1000)
+                if answer.status_code != 200:
+                    failed[f"board {answer.status_code}"] = failed.get(f"board {answer.status_code}", 0) + 1
+                elif n % 4 == 0 and answer.json()["trains"]:  # a passenger opens one train from the board
+                    run = answer.json()["trains"][0]["run"]
+                    t0 = time.perf_counter()
+                    view = await http.get(f"/railguard/national/expected/{run}")
+                    train_ms.append((time.perf_counter() - t0) * 1000)
+                    if view.status_code != 200:
+                        failed[f"train {view.status_code}"] = failed.get(f"train {view.status_code}", 0) + 1
+                await asyncio.sleep(BOARD_POLL_S)
 
         async def bounded(path: str, run: str | None) -> None:
             try:
@@ -131,6 +168,7 @@ async def _run(base: str, twin: Any, consoles: int, cabs: int, seconds: float) -
 
         tasks = [bounded("/railguard/national/stream", None) for _ in range(consoles)]
         tasks += [bounded(f"/railguard/national/cab/{r}/stream", r) for r in running]
+        tasks += [board(n, code) for n, code in enumerate(stations)]
         await asyncio.gather(*tasks, feeder(), controller())
     return {
         "consoles": consoles,
@@ -150,6 +188,18 @@ async def _run(base: str, twin: Any, consoles: int, cabs: int, seconds: float) -
             "batches": len(feed_ms),
             "fixes_per_batch": 250,
         },  # fmt: skip
+        "station_boards": {
+            "screens": len(stations),
+            "poll_s": BOARD_POLL_S,
+            "board_ms": {
+                "p50": _pct(board_ms, 0.5),
+                "p95": _pct(board_ms, 0.95),
+                "p99": _pct(board_ms, 0.99),
+                "n": len(board_ms),
+            },
+            "train_view_ms": {"p50": _pct(train_ms, 0.5), "p95": _pct(train_ms, 0.95), "n": len(train_ms)},
+        },  # fmt: skip
+        "failed_requests": failed,
         "controller_actions_by_status": actions,
         "streams_refused": refused,
         "streams_dropped": dropped,
@@ -164,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m india_rail loadtest", description=__doc__.split("\n\n")[0])
     parser.add_argument("--consoles", type=int, default=50)
     parser.add_argument("--cabs", type=int, default=500)
+    parser.add_argument("--boards", type=int, default=200)
     parser.add_argument("--seconds", type=float, default=60)
     parser.add_argument("--out", type=Path, default=EVIDENCE)
     args = parser.parse_args(argv)
@@ -192,7 +243,8 @@ def main(argv: list[str] | None = None) -> int:
                     break
             except OSError:
                 time.sleep(1)
-        result = asyncio.run(_run(f"http://127.0.0.1:{port}", twin, args.consoles, args.cabs, args.seconds))
+        result = asyncio.run(_run(f"http://127.0.0.1:{port}", twin, args.consoles, args.cabs, args.seconds,
+                                  args.boards))  # fmt: skip
     finally:
         server.terminate()
         server.wait(timeout=30)
@@ -202,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
-    return 0 if not result["streams_dropped"] else 1
+    return 0 if not result["streams_dropped"] and not result["failed_requests"] else 1
 
 
 if __name__ == "__main__":

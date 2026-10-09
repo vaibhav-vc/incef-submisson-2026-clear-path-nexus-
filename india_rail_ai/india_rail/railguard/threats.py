@@ -277,12 +277,15 @@ class ThreatRegistry:
         self.raised = 0  # new alerts (new ids)
         self.came_back = 0  # threats that cleared and came back as themselves (no new alert)
         self.held = 0  # evaluations in which a non-critical threat missing for a moment was kept
+        self._active: list[Threat] | None = None  # sorted active threats, until the next update/acknowledgement
+        self._by_train: dict[str, list[Threat]] | None = None
 
     def update(self, current: list[Threat], now: int, settled: bool = False) -> None:
         """`current`: what the rules report now. `settled`: this evaluation follows a deliberate change (a plan
         approved, a section reported reopened or cleared): what it no longer reports was resolved, not missed,
         and clears at once."""
 
+        self._active = self._by_train = None
         seen = set()
         for threat in current:
             seen.add(threat.key)
@@ -336,14 +339,23 @@ class ThreatRegistry:
                 threat.lifecycle = ACKNOWLEDGED
                 threat.acknowledged_by = by
                 threat.acknowledged_severity = threat.severity
+                self._active = self._by_train = None
                 return threat
         raise KeyError(threat_id)
 
     def active(self) -> list[Threat]:
-        return sorted(
-            (t for t in self.threats.values() if t.lifecycle != CLEARED),
-            key=lambda t: (-SEVERITY_ORDER[t.severity], t.id),
-        )
+        if self._active is None:
+            self._active = sorted(
+                (t for t in self.threats.values() if t.lifecycle != CLEARED),
+                key=lambda t: (-SEVERITY_ORDER[t.severity], t.id),
+            )
+        return list(self._active)
 
     def for_train(self, tid: str) -> list[Threat]:
-        return [t for t in self.active() if tid in t.train_ids]
+        if self._by_train is None:  # one pass for every train's cab, not one sort per cab
+            index: dict[str, list[Threat]] = {}
+            for t in self.active():
+                for train in dict.fromkeys(t.train_ids):
+                    index.setdefault(train, []).append(t)
+            self._by_train = index
+        return list(self._by_train.get(tid, ()))

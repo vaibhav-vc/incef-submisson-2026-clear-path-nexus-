@@ -249,8 +249,11 @@ class TrackMatcher:
             if key not in self._cache:
                 self._cache[key] = Polyline(geom.points[::-1])
             return self._cache[key], MAPPED_TRACK  # type: ignore[return-value]
-        nodes = self.twin.net.nodes
-        return Polyline([tuple(nodes[frm]), tuple(nodes[to])]), STRAIGHT_LINE
+        key = f"{frm}>{to}~straight"
+        if key not in self._cache:
+            nodes = self.twin.net.nodes
+            self._cache[key] = Polyline([tuple(nodes[frm]), tuple(nodes[to])])
+        return self._cache[key], STRAIGHT_LINE  # type: ignore[return-value]
 
     def candidates(
         self, key: str, lon: float, lat: float, accuracy_m: float, indices: range
