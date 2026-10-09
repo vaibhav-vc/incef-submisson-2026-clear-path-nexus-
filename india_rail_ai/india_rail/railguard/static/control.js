@@ -187,8 +187,9 @@ async function refresh() {
     ev.textContent = latest ? `evidence ${latest.assessment.state}` : "evidence: not assessed";
     ev.className = `badge s-${latest ? latest.assessment.state : "INFO"}`;
     drawMap(); drawThreats(); drawEvidence(); drawRecommendation(); drawControls(); await drawAudit();
-    document.getElementById("simError").textContent = "";
-  } catch (e) { document.getElementById("simError").textContent = e.message; }
+    const err = document.getElementById("simError");
+    if (err.textContent.startsWith("Live state unavailable")) err.textContent = "";
+  } catch (e) { document.getElementById("simError").textContent = `Live state unavailable: ${e.message}`; }
 }
 
 async function act(fn) {

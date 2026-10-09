@@ -19,10 +19,12 @@ let out0;
   out0 = { refused_before_token_shown: false };
   await page.waitForFunction(() => document.getElementById("simError").textContent.includes("unavailable"), null,
     { timeout: 15000 }).then(() => { out0.refused_before_token_shown = true; }, () => {});
-  signedIn = true;
   await page.fill("#token", controller);
   await page.dispatchEvent("#token", "change");
   await page.waitForFunction(() => document.querySelectorAll("#scenario option").length > 0, null, { timeout: 30000 });
+  // A refresh sent just before the token was entered may still come back refused; from here on, any is a fault.
+  await page.waitForTimeout(3500);
+  signedIn = true;
   const out = { ...out0, scenarios: await page.locator("#scenario option").count() };
   await page.click("#loadScenario");
   await page.waitForFunction(() => document.getElementById("clock").textContent.trim() !== "", null, { timeout: 30000 });
