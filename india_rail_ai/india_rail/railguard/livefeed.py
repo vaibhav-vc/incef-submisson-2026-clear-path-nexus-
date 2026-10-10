@@ -22,7 +22,9 @@ so that only credentials and the field mapping of the authorised interface remai
   STATION {train_number, start_date, station_code, event ARR|DEP|PASS, observed_at}
     - a station event (e.g. NTES/COA). Lateness of AUTO_DISRUPTION_MIN or more is
     recorded as a disruption for the controller to decide on; the feed never
-    approves anything.
+    approves anything. A station event older than the 3-minute position policy but
+    within STATION_TIMING_MIN still says how late the train was there: it is taken as
+    timing only (the delay is recorded and projected), never as where the train is now.
 * Every batch is written to the audit chain (counts and a SHA-256 of the body).
 
 Times are Indian Standard Time; `start_date` is the train's journey start date.
@@ -52,6 +54,8 @@ DEFAULT_ACCURACY_M = 30.0  # a feed that does not state HDOP: assume a modest re
 DEVIATION_NOW_M = 1000.0  # a fix this far from the route raises a route deviation at once; nearer, only the second
 # off-route fix in a row does (one multipath fix must not become a nuisance alarm)
 AUTO_DISRUPTION_MIN = 5.0
+POSITION_POLICY_MIN = 3.0  # a report older than this is not where the train is now
+STATION_TIMING_MIN = 30.0  # a station report up to this old still says how late the train was there
 MIN_SECRET_BYTES = 32
 NONCES_KEPT = 100_000
 TRAIN = re.compile(r"^[0-9A-Z][0-9A-Z-]{0,15}$")
@@ -119,6 +123,7 @@ class FeedGateway:
         # Each run's last accepted position along its route, for the plausibility of the next fix.
         self.tracks: dict[str, gps.Track] = {}
         self.off_route: dict[str, int] = {}  # consecutive off-route fixes per run
+        self.timing_index: dict[str, tuple[int, int]] = {}  # run -> (twin epoch, index) of its last timing report
         self.matcher = gps.TrackMatcher(twin)
         # What became of every position fix (exported as railguard_gnss_fixes{type=...}): a field trial of cab
         # units is measured on these - the share accepted, and why the others were refused.
@@ -200,14 +205,16 @@ class FeedGateway:
             minute = self._minutes(_when(event.get("observed_at")))
             if minute > self.twin.now + 2:
                 raise ValueError("observed in the future of the twin clock")
-            if minute < self.twin.now - 3:
-                raise ValueError("observation older than the 3-minute position policy")
+            current = minute >= self.twin.now - POSITION_POLICY_MIN
+            if not current and not (kind == "STATION" and minute >= self.twin.now - STATION_TIMING_MIN):
+                raise ValueError("observation older than the 3-minute position policy" if kind != "STATION"
+                                 else f"station report older than {STATION_TIMING_MIN:g} min")  # fmt: skip
             if kind == "POSITION":
                 result = self._position(source, key, event)
                 self.fix_outcomes[_fix_outcome(result)] += 1
                 return result
             if kind == "STATION":
-                return self._station(source, key, event, minute)
+                return self._station(source, key, event, minute, current)
             raise ValueError("type must be POSITION or STATION")
         except (ValueError, TypeError, KeyError, OverflowError) as exc:  # one bad event never stops a batch
             if isinstance(event, dict) and event.get("type") == "POSITION":
@@ -233,7 +240,8 @@ class FeedGateway:
             return self.last_index.get(key, default)
         self.last_index.pop(key, None)
         self.tracks.pop(key, None)
-        return default
+        epoch, i = self.timing_index.get(key, (None, default))
+        return i if epoch == self.twin.epoch else default  # a timing-only report, in this twin's life
 
     def _minutes(self, when: datetime) -> float:
         midnight = datetime.combine(self.service_date, datetime.min.time(), IST)
@@ -317,7 +325,7 @@ class FeedGateway:
             raise ValueError(f"GNSS: HDOP {hdop} outside 0-{gps.MAX_HDOP}")
         return hdop * gps.UERE_M
 
-    def _station(self, source: str, key: str, event: dict[str, Any], minute: float) -> dict[str, Any]:
+    def _station(self, source: str, key: str, event: dict[str, Any], minute: float, current: bool = True) -> dict:
         station, what = event.get("station_code"), event.get("event")
         if not isinstance(station, str) or not STATION.match(station) or what not in ("ARR", "DEP", "PASS"):
             raise ValueError("invalid station_code or event")
@@ -347,6 +355,10 @@ class FeedGateway:
                 twin.disrupt(key, plan.frm[j], min(delay, 720), actor=f"feed:{source}", at_index=j,
                              observed_arrival_delay=observed, refresh=False)  # fmt: skip
                 recorded = {"station": plan.frm[j], "delay_min": round(delay, 1)}
+        if not current:  # how late it was there, not where it is now: no position evidence
+            self.timing_index[key] = (twin.epoch, i)
+            out = {"accepted": True, "timing_only": True, "run": key, "late_min": round(late, 1)}
+            return {**out, "disruption_recorded": recorded} if recorded else out
         result = twin.ingest_position(
             key, twin.plan_of(key).sections[i], round(offset, 3), source=f"FEED_{source}", refresh=False
         )

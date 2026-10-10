@@ -84,3 +84,31 @@ earlier only once held for 3 minutes, no change under 2 minutes, never departing
 feed does not need to smooth anything: send every report as it is made, and corrections as new events.
 NTES remains the official passenger information; these endpoints can feed station displays or enquiry staff
 only with CRIS/NTES agreement on wording and hand-off.
+
+## Until CRIS authorises the feed: free third-party services, as an unofficial source
+Checked in October 2026 (`python -m india_rail live-sources list` prints the record):
+* **ixigo** ("Where is my train"): not used. Its terms forbid automated access and commercial use of its content
+  without written permission; a partnership with ixigo would be needed.
+* **NTES**: not scraped (project rule); the authorised feed above is the way to it.
+* **Railway Engine** (free, 60 requests/minute, key from a Google sign-in): station boards. A train shown
+  `departed` or `at-station` becomes a STATION event at its delay-adjusted time. Its terms forbid redistribution
+  and serving its responses through another service: internal decision support only, never a public board.
+* **RailRadar** (free sandbox, 1,000 requests/month, account key): one train's live status; the actual
+  arrival and departure times behind the train become STATION events. No API terms are published: trials only.
+
+To switch one on, the operator creates the free account and runs the poller with its own feed key (add the same
+`RAILENGINE:k1:<hex>` or `RAILRADAR:k1:<hex>` to the server's `RAILGUARD_FEED_KEYS`):
+
+```sh
+RAILGUARD_URL=https://<server>/railguard RAILGUARD_FEED_TOKEN=<feed token> \
+RAILGUARD_AGENT_KEY="RAILENGINE:k1:<64+ hex>" RAILGUARD_RAILENGINE_KEY=<account key> \
+python -m india_rail live-sources poll --provider railengine --stations NDLS,CNB,PRYJ,DDU,MGS --every 60
+python -m india_rail live-sources probe --provider railradar --train 12951   # one request: shape and events
+```
+
+How the twin treats them: the gateway checks these events as it checks every feed (signed, on the route, in
+order). A report under 3 minutes old places the train; one up to 30 minutes old (third-party data often lags)
+only records how late the train was there and projects it, never where it is now. A plan that relies on these
+sources stays PLANNING_ONLY: they are not authorised evidence, so it is never approvable as live operation.
+Published times say "unofficial source". A response without the documented fields, a train our timetable does
+not have at that time, or a report from the future is skipped with its reason, never guessed at.

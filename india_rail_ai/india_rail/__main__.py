@@ -16,6 +16,7 @@ PASS_THROUGH = {
     "advisor": ("india_rail.delay_advisor", "main"),
     "gnss-verify": ("india_rail.railguard.gnss_verify", "main"),
     "gnss": ("india_rail.railguard.gnss_agent", "main"),
+    "live-sources": ("india_rail.railguard.thirdparty", "main"),
     "current": ("india_rail.current", "main"),
     "real": ("india_rail.realdata", "main"),
     "schedules": ("india_rail.schedules", "main"),
@@ -66,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("real", help="real-life data: observed running, real track data, validation (--help)")
     sub.add_parser("current", help="every train running now: current timetable, registry, PIN codes (--help)")
     sub.add_parser("gnss", help="GNSS device agent for a loco/cab unit: NMEA in, signed position batches out (--help)")
+    sub.add_parser("live-sources", help="free third-party running-status services as an unofficial feed (--help)")
     sub.add_parser("accounts", help="named user accounts: add, list, disable, enable (--help)")
     sub.add_parser("loadtest", help="load-test the live service on the real network (streams, feed, push latency)")
     sub.add_parser("advisor", help="delay-minimisation advisor: where delay is made on the real network (--help)")

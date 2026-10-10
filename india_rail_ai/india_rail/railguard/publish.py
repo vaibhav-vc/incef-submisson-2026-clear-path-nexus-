@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from india_rail.network import clock
+from india_rail.railguard import thirdparty
 from india_rail.railguard.evidence import FRESH, STALE
 
 PUBLISH_STEP_MIN = 2.0
@@ -90,16 +91,23 @@ class Publisher:
         twin = self.twin
         record = twin.evidence.records.get(f"position:{run}")
         if record is None:
+            if run in twin.plans:  # re-planned (a reported or recorded delay, or a controller's decision)
+                return {"basis": "PLAN", "text": "no live position: times include the recorded delay"}
             return {"basis": "TIMETABLE", "text": "no live report: timetable time"}
         age_min = (twin.now * 60 - record.observed_t) / 60
         state = twin.evidence.state_of(f"position:{run}", int(twin.now * 60))
         observed = twin.observed.get(run)
         where = observed[1] if observed else None
+        source = record.source.removeprefix("FEED_")
+        unofficial = source in thirdparty.unofficial_sources()
+        label = f" (unofficial source: {source})" if unofficial else ""
         if age_min > STALE_REPORT_MIN or state == STALE:
-            return {"basis": "LAST_REPORT", "age_min": round(age_min), "section": where,
+            return {"basis": "LAST_REPORT", "age_min": round(age_min), "section": where, "source": source,
+                    "unofficial": unofficial,
                     "text": f"last reported {round(age_min)} min ago" + (f" on {where}" if where else "")
-                    + ": times not confirmed"}  # fmt: skip
-        return {"basis": "LIVE", "age_min": round(age_min, 1), "fresh": state == FRESH, "text": "live"}
+                    + label + ": times not confirmed"}  # fmt: skip
+        return {"basis": "LIVE", "age_min": round(age_min, 1), "fresh": state == FRESH, "source": source,
+                "unofficial": unofficial, "text": "live" + label}  # fmt: skip
 
     def _band(self, run: str) -> dict[int, tuple[float, float]]:
         """Likely range of the arrival delay at each later stop (stop index -> (P10, P90)), when the forecaster

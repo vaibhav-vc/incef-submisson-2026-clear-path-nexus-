@@ -34,7 +34,7 @@ from typing import Any
 
 from india_rail.ingest import DATA_DIR, DB_PATH
 from india_rail.network import DEFAULT_PRIORITY, UNKNOWN_PRIORITY, clock
-from india_rail.railguard import gps, scoring
+from india_rail.railguard import gps, scoring, thirdparty
 from india_rail.railguard.audit import AuditLog
 from india_rail.railguard.evidence import AGING, FRESH, STALE, EvidenceStore, checksum
 from india_rail.railguard.model import AUTHORITY, CAB_FOOTER, Network, Section
@@ -1076,6 +1076,12 @@ class NationalTwin:
                 out.append(key)
         return out
 
+    def position_source(self, key: str) -> str | None:
+        """The feed source of the run's live position (e.g. NTES, RAILENGINE), None if it has none."""
+
+        record = self.evidence.records.get(f"position:{key}")
+        return record.source.removeprefix("FEED_") if record is not None else None
+
     def position_state(self, key: str) -> str:
         if f"position:{key}" not in self.evidence.records:
             return "PROJECTED"
@@ -1615,6 +1621,7 @@ class NationalTwin:
             }
             states = {self.position_state(k) for k in involved}
             involved_state = STALE if STALE in states else ("PROJECTED" if "PROJECTED" in states else FRESH)
+            unofficial = sorted(k for k in involved if self.position_source(k) in thirdparty.unofficial_sources())
             if not feasible:
                 ranking: dict[str, Any] = {
                     "state": "NO_FEASIBLE_PLAN",
@@ -1673,6 +1680,13 @@ class NationalTwin:
                         "Positions are timetable projections (no authorised live feed): "
                         "approval rehearses the plan, it is not live operation"
                     ),
+                )
+            elif unofficial:
+                state, reason = (
+                    "PLANNING_ONLY",
+                    f"Live positions of {', '.join(unofficial[:3])}{' ...' if len(unofficial) > 3 else ''} come from "
+                    "an unofficial running-status service: plan with them, confirm through the section controller "
+                    "before acting; approval rehearses the plan, it is not live operation",
                 )
             else:
                 state, reason = "REVIEWABLE", "Live evidence fresh; alternatives ranked for controller review"

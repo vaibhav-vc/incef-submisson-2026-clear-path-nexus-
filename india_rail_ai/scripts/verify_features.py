@@ -560,6 +560,9 @@ def cli_checks(env: dict[str, str], work: Path, feed_secret: bytes, found: dict[
         (["audit-pack", "--out", str(work / "pack")], 0),
         (["accounts", "list"], 0),
         (["gnss-verify", "--rounds", "1", "--out", str(work / "gnss.json")], 0),
+        (["live-sources", "list"], 0),
+        # without a provider key it explains where to get one (no request is made)
+        (["live-sources", "poll", "--provider", "railradar", "--trains", found["open_train"], "--once"], 2),
     ]
     for args, want in working:
         started = time.perf_counter()
