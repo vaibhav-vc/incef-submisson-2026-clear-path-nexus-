@@ -1,0 +1,2282 @@
+{
+  "what": "python -m india_rail real scenarios [--out seva2026/evidence/real_data/scenario_ml.json]",
+  "data": {
+    "observed_running": "September 2024 actual arrivals (see realdata.py)",
+    "timetable_used_by_twin": "current"
+  },
+  "protocol": {
+    "origins": [
+      "2024-09-08",
+      "2024-09-12",
+      "2024-09-16",
+      "2024-09-20",
+      "2024-09-24"
+    ],
+    "test_days_per_round": 4,
+    "fit_rows_per_round": 600000,
+    "network_window_min": 120,
+    "augmentation": "15% rows without history, 15% without network state (learned_network only)"
+  },
+  "summary": {
+    "overall_mae_min": {
+      "persistence": {
+        "mean": 19.1,
+        "worst_round": 19.86
+      },
+      "twin_rule": {
+        "mean": 17.88,
+        "worst_round": 18.62
+      },
+      "learned": {
+        "mean": 14.28,
+        "worst_round": 15.29
+      },
+      "learned_network": {
+        "mean": 14.25,
+        "worst_round": 15.28
+      }
+    },
+    "situations_where_learned_network_beats_both_baselines": "44/44",
+    "by_situation": {
+      "time_of_day": {
+        "day 10-17": {
+          "rounds": 5,
+          "n": 762916,
+          "persistence": 21.74,
+          "twin_rule": 20.58,
+          "learned": 16.44,
+          "learned_network": 16.42,
+          "learned_network_gain_vs_best_baseline_min": 4.16
+        },
+        "evening 17-22": {
+          "rounds": 5,
+          "n": 690422,
+          "persistence": 19.06,
+          "twin_rule": 17.55,
+          "learned": 14.09,
+          "learned_network": 14.07,
+          "learned_network_gain_vs_best_baseline_min": 3.48
+        },
+        "morning 06-10": {
+          "rounds": 5,
+          "n": 536431,
+          "persistence": 17.23,
+          "twin_rule": 16.4,
+          "learned": 12.74,
+          "learned_network": 12.74,
+          "learned_network_gain_vs_best_baseline_min": 3.66
+        },
+        "night 22-06": {
+          "rounds": 5,
+          "n": 861054,
+          "persistence": 17.97,
+          "twin_rule": 16.69,
+          "learned": 13.47,
+          "learned_network": 13.42,
+          "learned_network_gain_vs_best_baseline_min": 3.27
+        }
+      },
+      "day_type": {
+        "weekday": {
+          "rounds": 5,
+          "n": 2140289,
+          "persistence": 19.16,
+          "twin_rule": 17.93,
+          "learned": 14.34,
+          "learned_network": 14.31,
+          "learned_network_gain_vs_best_baseline_min": 3.62
+        },
+        "weekend": {
+          "rounds": 3,
+          "n": 710534,
+          "persistence": 18.94,
+          "twin_rule": 17.75,
+          "learned": 14.09,
+          "learned_network": 14.08,
+          "learned_network_gain_vs_best_baseline_min": 3.67
+        }
+      },
+      "current_delay": {
+        "30-120": {
+          "rounds": 5,
+          "n": 531249,
+          "persistence": 31.24,
+          "twin_rule": 27.48,
+          "learned": 18.6,
+          "learned_network": 18.53,
+          "learned_network_gain_vs_best_baseline_min": 8.95
+        },
+        "5-30": {
+          "rounds": 5,
+          "n": 985769,
+          "persistence": 14.49,
+          "twin_rule": 13.18,
+          "learned": 9.97,
+          "learned_network": 9.94,
+          "learned_network_gain_vs_best_baseline_min": 3.24
+        },
+        "<5 min": {
+          "rounds": 5,
+          "n": 1159920,
+          "persistence": 10.31,
+          "twin_rule": 10.39,
+          "learned": 9.92,
+          "learned_network": 9.92,
+          "learned_network_gain_vs_best_baseline_min": 0.39
+        },
+        ">=120": {
+          "rounds": 5,
+          "n": 173885,
+          "persistence": 66.85,
+          "twin_rule": 65.28,
+          "learned": 54.55,
+          "learned_network": 54.55,
+          "learned_network_gain_vs_best_baseline_min": 10.73
+        }
+      },
+      "train_class": {
+        "mail/express": {
+          "rounds": 5,
+          "n": 1919002,
+          "persistence": 18.82,
+          "twin_rule": 17.42,
+          "learned": 13.51,
+          "learned_network": 13.5,
+          "learned_network_gain_vs_best_baseline_min": 3.92
+        },
+        "passenger/suburban": {
+          "rounds": 5,
+          "n": 82543,
+          "persistence": 17.17,
+          "twin_rule": 16.71,
+          "learned": 11.5,
+          "learned_network": 11.53,
+          "learned_network_gain_vs_best_baseline_min": 5.18
+        },
+        "premium": {
+          "rounds": 5,
+          "n": 54071,
+          "persistence": 13.96,
+          "twin_rule": 13.16,
+          "learned": 11.68,
+          "learned_network": 11.66,
+          "learned_network_gain_vs_best_baseline_min": 1.5
+        },
+        "superfast": {
+          "rounds": 5,
+          "n": 795207,
+          "persistence": 20.34,
+          "twin_rule": 19.46,
+          "learned": 16.6,
+          "learned_network": 16.54,
+          "learned_network_gain_vs_best_baseline_min": 2.92
+        }
+      },
+      "line": {
+        "mostly double/multiple": {
+          "rounds": 5,
+          "n": 2038684,
+          "persistence": 20.39,
+          "twin_rule": 19.12,
+          "learned": 15.72,
+          "learned_network": 15.68,
+          "learned_network_gain_vs_best_baseline_min": 3.44
+        },
+        "mostly single line": {
+          "rounds": 5,
+          "n": 812139,
+          "persistence": 15.88,
+          "twin_rule": 14.79,
+          "learned": 10.68,
+          "learned_network": 10.68,
+          "learned_network_gain_vs_best_baseline_min": 4.11
+        }
+      },
+      "horizon": {
+        "1-3h": {
+          "rounds": 5,
+          "n": 875015,
+          "persistence": 15.4,
+          "twin_rule": 15.3,
+          "learned": 11.24,
+          "learned_network": 11.23,
+          "learned_network_gain_vs_best_baseline_min": 4.07
+        },
+        "3-6h": {
+          "rounds": 5,
+          "n": 521890,
+          "persistence": 21.45,
+          "twin_rule": 20.38,
+          "learned": 15.95,
+          "learned_network": 15.93,
+          "learned_network_gain_vs_best_baseline_min": 4.45
+        },
+        "<=1h": {
+          "rounds": 5,
+          "n": 854579,
+          "persistence": 8.84,
+          "twin_rule": 9.2,
+          "learned": 6.55,
+          "learned_network": 6.55,
+          "learned_network_gain_vs_best_baseline_min": 2.29
+        },
+        ">6h": {
+          "rounds": 5,
+          "n": 599339,
+          "persistence": 37.09,
+          "twin_rule": 31.86,
+          "learned": 28.28,
+          "learned_network": 28.18,
+          "learned_network_gain_vs_best_baseline_min": 3.68
+        }
+      },
+      "network": {
+        "disrupted (top quarter)": {
+          "rounds": 5,
+          "n": 585643,
+          "persistence": 20.37,
+          "twin_rule": 19.1,
+          "learned": 15.41,
+          "learned_network": 15.34,
+          "learned_network_gain_vs_best_baseline_min": 3.76
+        },
+        "normal": {
+          "rounds": 5,
+          "n": 2265180,
+          "persistence": 18.77,
+          "twin_rule": 17.57,
+          "learned": 13.99,
+          "learned_network": 13.97,
+          "learned_network_gain_vs_best_baseline_min": 3.6
+        }
+      },
+      "zone": {
+        "?": {
+          "rounds": 5,
+          "n": 5188,
+          "persistence": 20.56,
+          "twin_rule": 19.32,
+          "learned": 13.6,
+          "learned_network": 13.56,
+          "learned_network_gain_vs_best_baseline_min": 5.76
+        },
+        "CR": {
+          "rounds": 5,
+          "n": 198143,
+          "persistence": 22.5,
+          "twin_rule": 21.46,
+          "learned": 17.15,
+          "learned_network": 17.12,
+          "learned_network_gain_vs_best_baseline_min": 4.34
+        },
+        "ECOR": {
+          "rounds": 5,
+          "n": 130938,
+          "persistence": 20.69,
+          "twin_rule": 19.81,
+          "learned": 15.67,
+          "learned_network": 15.64,
+          "learned_network_gain_vs_best_baseline_min": 4.17
+        },
+        "ECR": {
+          "rounds": 5,
+          "n": 222376,
+          "persistence": 20.7,
+          "twin_rule": 19.27,
+          "learned": 15.23,
+          "learned_network": 15.23,
+          "learned_network_gain_vs_best_baseline_min": 4.04
+        },
+        "ECoR": {
+          "rounds": 5,
+          "n": 11755,
+          "persistence": 17.31,
+          "twin_rule": 15.93,
+          "learned": 11.92,
+          "learned_network": 11.93,
+          "learned_network_gain_vs_best_baseline_min": 4.0
+        },
+        "ER": {
+          "rounds": 5,
+          "n": 130541,
+          "persistence": 12.43,
+          "twin_rule": 11.58,
+          "learned": 10.16,
+          "learned_network": 10.18,
+          "learned_network_gain_vs_best_baseline_min": 1.4
+        },
+        "KR": {
+          "rounds": 5,
+          "n": 43144,
+          "persistence": 32.74,
+          "twin_rule": 32.27,
+          "learned": 22.46,
+          "learned_network": 22.49,
+          "learned_network_gain_vs_best_baseline_min": 9.78
+        },
+        "NCR": {
+          "rounds": 5,
+          "n": 146740,
+          "persistence": 28.61,
+          "twin_rule": 27.15,
+          "learned": 22.9,
+          "learned_network": 22.88,
+          "learned_network_gain_vs_best_baseline_min": 4.27
+        },
+        "NE": {
+          "rounds": 5,
+          "n": 80332,
+          "persistence": 21.83,
+          "twin_rule": 20.46,
+          "learned": 17.14,
+          "learned_network": 17.14,
+          "learned_network_gain_vs_best_baseline_min": 3.32
+        },
+        "NER": {
+          "rounds": 5,
+          "n": 36002,
+          "persistence": 18.43,
+          "twin_rule": 17.74,
+          "learned": 13.97,
+          "learned_network": 14.01,
+          "learned_network_gain_vs_best_baseline_min": 3.73
+        },
+        "NFR": {
+          "rounds": 5,
+          "n": 96960,
+          "persistence": 18.96,
+          "twin_rule": 17.12,
+          "learned": 14.29,
+          "learned_network": 14.3,
+          "learned_network_gain_vs_best_baseline_min": 2.82
+        },
+        "NR": {
+          "rounds": 5,
+          "n": 332128,
+          "persistence": 21.66,
+          "twin_rule": 20.66,
+          "learned": 17.84,
+          "learned_network": 17.81,
+          "learned_network_gain_vs_best_baseline_min": 2.85
+        },
+        "NWR": {
+          "rounds": 5,
+          "n": 171409,
+          "persistence": 9.52,
+          "twin_rule": 7.84,
+          "learned": 5.72,
+          "learned_network": 5.68,
+          "learned_network_gain_vs_best_baseline_min": 2.16
+        },
+        "SCR": {
+          "rounds": 5,
+          "n": 310363,
+          "persistence": 21.58,
+          "twin_rule": 20.18,
+          "learned": 14.61,
+          "learned_network": 14.54,
+          "learned_network_gain_vs_best_baseline_min": 5.64
+        },
+        "SECR": {
+          "rounds": 5,
+          "n": 61931,
+          "persistence": 35.24,
+          "twin_rule": 34.28,
+          "learned": 29.37,
+          "learned_network": 29.43,
+          "learned_network_gain_vs_best_baseline_min": 4.85
+        },
+        "SER": {
+          "rounds": 5,
+          "n": 88961,
+          "persistence": 26.92,
+          "twin_rule": 26.55,
+          "learned": 22.2,
+          "learned_network": 22.11,
+          "learned_network_gain_vs_best_baseline_min": 4.44
+        },
+        "SR": {
+          "rounds": 5,
+          "n": 270752,
+          "persistence": 11.78,
+          "twin_rule": 10.64,
+          "learned": 7.71,
+          "learned_network": 7.69,
+          "learned_network_gain_vs_best_baseline_min": 2.95
+        },
+        "SWR": {
+          "rounds": 5,
+          "n": 120806,
+          "persistence": 13.2,
+          "twin_rule": 11.9,
+          "learned": 8.07,
+          "learned_network": 8.07,
+          "learned_network_gain_vs_best_baseline_min": 3.83
+        },
+        "WCR": {
+          "rounds": 5,
+          "n": 162659,
+          "persistence": 23.26,
+          "twin_rule": 21.69,
+          "learned": 17.94,
+          "learned_network": 17.89,
+          "learned_network_gain_vs_best_baseline_min": 3.8
+        },
+        "WR": {
+          "rounds": 5,
+          "n": 228275,
+          "persistence": 9.57,
+          "twin_rule": 8.34,
+          "learned": 6.55,
+          "learned_network": 6.53,
+          "learned_network_gain_vs_best_baseline_min": 1.81
+        }
+      },
+      "history": {
+        "has history": {
+          "rounds": 5,
+          "n": 2849037,
+          "persistence": 19.08,
+          "twin_rule": 17.86,
+          "learned": 14.26,
+          "learned_network": 14.23,
+          "learned_network_gain_vs_best_baseline_min": 3.63
+        },
+        "no history (cold start)": {
+          "rounds": 1,
+          "n": 1456,
+          "persistence": 45.5,
+          "twin_rule": 41.39,
+          "learned": 34.71,
+          "learned_network": 34.85,
+          "learned_network_gain_vs_best_baseline_min": 6.54
+        }
+      }
+    },
+    "stress": {
+      "cold_start_all_history_removed": {
+        "persistence": 19.1,
+        "twin_rule": 17.88,
+        "learned": 16.65,
+        "learned_network": 16.06
+      },
+      "feed_noise_pm3_min": {
+        "persistence": 19.26,
+        "twin_rule": 17.93,
+        "learned": 14.33,
+        "learned_network": 14.31
+      },
+      "no_network_picture": {
+        "persistence": 19.1,
+        "twin_rule": 17.88,
+        "learned": 14.28,
+        "learned_network": 14.28
+      }
+    }
+  },
+  "rounds": [
+    {
+      "origin": "2024-09-08",
+      "train_days": "2024-09-01..2024-09-08",
+      "test_days": "2024-09-09..2024-09-12",
+      "train_rows": 1027934,
+      "fit_rows": 600000,
+      "test_rows": 563853,
+      "mae": {
+        "persistence": 19.86,
+        "twin_rule": 18.62,
+        "learned": 15.29,
+        "learned_network": 15.28
+      },
+      "within_15_min_pct": {
+        "persistence": 69.65,
+        "twin_rule": 72.78,
+        "learned": 79.72,
+        "learned_network": 79.8
+      },
+      "by_situation": {
+        "time_of_day": {
+          "morning 06-10": {
+            "n": 106731,
+            "persistence": 18.07,
+            "twin_rule": 17.22,
+            "learned": 13.69,
+            "learned_network": 13.73
+          },
+          "day 10-17": {
+            "n": 153156,
+            "persistence": 22.6,
+            "twin_rule": 21.38,
+            "learned": 17.45,
+            "learned_network": 17.46
+          },
+          "evening 17-22": {
+            "n": 136126,
+            "persistence": 19.86,
+            "twin_rule": 18.3,
+            "learned": 15.09,
+            "learned_network": 15.08
+          },
+          "night 22-06": {
+            "n": 167840,
+            "persistence": 18.5,
+            "twin_rule": 17.25,
+            "learned": 14.51,
+            "learned_network": 14.46
+          }
+        },
+        "day_type": {
+          "weekday": {
+            "n": 563853,
+            "persistence": 19.86,
+            "twin_rule": 18.62,
+            "learned": 15.29,
+            "learned_network": 15.28
+          }
+        },
+        "current_delay": {
+          "<5 min": {
+            "n": 234872,
+            "persistence": 11.03,
+            "twin_rule": 11.1,
+            "learned": 10.71,
+            "learned_network": 10.7
+          },
+          "30-120": {
+            "n": 105639,
+            "persistence": 31.44,
+            "twin_rule": 27.56,
+            "learned": 19.19,
+            "learned_network": 19.1
+          },
+          "5-30": {
+            "n": 187678,
+            "persistence": 14.98,
+            "twin_rule": 13.64,
+            "learned": 10.74,
+            "learned_network": 10.7
+          },
+          ">=120": {
+            "n": 35664,
+            "persistence": 69.43,
+            "twin_rule": 67.88,
+            "learned": 57.88,
+            "learned_network": 58.33
+          }
+        },
+        "train_class": {
+          "mail/express": {
+            "n": 379979,
+            "persistence": 19.41,
+            "twin_rule": 17.99,
+            "learned": 14.18,
+            "learned_network": 14.17
+          },
+          "passenger/suburban": {
+            "n": 16618,
+            "persistence": 16.98,
+            "twin_rule": 16.55,
+            "learned": 11.86,
+            "learned_network": 11.89
+          },
+          "superfast": {
+            "n": 156711,
+            "persistence": 21.53,
+            "twin_rule": 20.61,
+            "learned": 18.48,
+            "learned_network": 18.46
+          },
+          "premium": {
+            "n": 10545,
+            "persistence": 15.87,
+            "twin_rule": 15.06,
+            "learned": 13.38,
+            "learned_network": 13.4
+          }
+        },
+        "line": {
+          "mostly double/multiple": {
+            "n": 403430,
+            "persistence": 21.35,
+            "twin_rule": 20.06,
+            "learned": 16.95,
+            "learned_network": 16.92
+          },
+          "mostly single line": {
+            "n": 160423,
+            "persistence": 16.13,
+            "twin_rule": 15.01,
+            "learned": 11.13,
+            "learned_network": 11.17
+          }
+        },
+        "horizon": {
+          "1-3h": {
+            "n": 172828,
+            "persistence": 15.7,
+            "twin_rule": 15.6,
+            "learned": 11.69,
+            "learned_network": 11.69
+          },
+          "<=1h": {
+            "n": 169421,
+            "persistence": 9.04,
+            "twin_rule": 9.39,
+            "learned": 6.8,
+            "learned_network": 6.8
+          },
+          ">6h": {
+            "n": 118808,
+            "persistence": 39.43,
+            "twin_rule": 34.12,
+            "learned": 31.31,
+            "learned_network": 31.26
+          },
+          "3-6h": {
+            "n": 102796,
+            "persistence": 22.07,
+            "twin_rule": 21.0,
+            "learned": 16.84,
+            "learned_network": 16.83
+          }
+        },
+        "network": {
+          "normal": {
+            "n": 489249,
+            "persistence": 19.52,
+            "twin_rule": 18.3,
+            "learned": 14.98,
+            "learned_network": 14.98
+          },
+          "disrupted (top quarter)": {
+            "n": 74604,
+            "persistence": 22.08,
+            "twin_rule": 20.7,
+            "learned": 17.35,
+            "learned_network": 17.28
+          }
+        },
+        "zone": {
+          "NWR": {
+            "n": 33332,
+            "persistence": 9.8,
+            "twin_rule": 7.96,
+            "learned": 5.98,
+            "learned_network": 5.9
+          },
+          "CR": {
+            "n": 39813,
+            "persistence": 21.86,
+            "twin_rule": 20.73,
+            "learned": 17.19,
+            "learned_network": 17.33
+          },
+          "WCR": {
+            "n": 31194,
+            "persistence": 27.27,
+            "twin_rule": 25.53,
+            "learned": 21.57,
+            "learned_network": 21.58
+          },
+          "NCR": {
+            "n": 27805,
+            "persistence": 32.08,
+            "twin_rule": 30.43,
+            "learned": 26.3,
+            "learned_network": 26.34
+          },
+          "NER": {
+            "n": 7157,
+            "persistence": 20.08,
+            "twin_rule": 19.29,
+            "learned": 15.95,
+            "learned_network": 15.82
+          },
+          "NE": {
+            "n": 15965,
+            "persistence": 24.44,
+            "twin_rule": 22.95,
+            "learned": 19.47,
+            "learned_network": 19.49
+          },
+          "NR": {
+            "n": 64102,
+            "persistence": 24.82,
+            "twin_rule": 23.81,
+            "learned": 20.93,
+            "learned_network": 20.95
+          },
+          "KR": {
+            "n": 9587,
+            "persistence": 35.48,
+            "twin_rule": 34.93,
+            "learned": 25.75,
+            "learned_network": 25.87
+          },
+          "WR": {
+            "n": 44179,
+            "persistence": 9.37,
+            "twin_rule": 8.02,
+            "learned": 6.28,
+            "learned_network": 6.24
+          },
+          "SCR": {
+            "n": 62327,
+            "persistence": 21.27,
+            "twin_rule": 19.99,
+            "learned": 15.27,
+            "learned_network": 15.24
+          },
+          "ECR": {
+            "n": 44847,
+            "persistence": 22.61,
+            "twin_rule": 21.21,
+            "learned": 17.24,
+            "learned_network": 17.23
+          },
+          "NFR": {
+            "n": 19524,
+            "persistence": 19.43,
+            "twin_rule": 17.61,
+            "learned": 15.21,
+            "learned_network": 15.08
+          },
+          "SECR": {
+            "n": 13089,
+            "persistence": 33.66,
+            "twin_rule": 33.04,
+            "learned": 29.65,
+            "learned_network": 29.62
+          },
+          "SR": {
+            "n": 53319,
+            "persistence": 12.3,
+            "twin_rule": 11.1,
+            "learned": 8.4,
+            "learned_network": 8.37
+          },
+          "SER": {
+            "n": 18854,
+            "persistence": 22.32,
+            "twin_rule": 22.06,
+            "learned": 18.49,
+            "learned_network": 18.41
+          },
+          "ECOR": {
+            "n": 26054,
+            "persistence": 18.16,
+            "twin_rule": 17.18,
+            "learned": 13.81,
+            "learned_network": 13.77
+          },
+          "ER": {
+            "n": 25315,
+            "persistence": 12.17,
+            "twin_rule": 11.46,
+            "learned": 10.01,
+            "learned_network": 10.02
+          },
+          "SWR": {
+            "n": 23686,
+            "persistence": 12.55,
+            "twin_rule": 11.23,
+            "learned": 7.74,
+            "learned_network": 7.75
+          },
+          "?": {
+            "n": 1056,
+            "persistence": 20.32,
+            "twin_rule": 18.94,
+            "learned": 13.26,
+            "learned_network": 13.26
+          },
+          "ECoR": {
+            "n": 2352,
+            "persistence": 16.1,
+            "twin_rule": 14.61,
+            "learned": 9.38,
+            "learned_network": 9.47
+          }
+        },
+        "history": {
+          "has history": {
+            "n": 562397,
+            "persistence": 19.79,
+            "twin_rule": 18.56,
+            "learned": 15.24,
+            "learned_network": 15.23
+          },
+          "no history (cold start)": {
+            "n": 1456,
+            "persistence": 45.5,
+            "twin_rule": 41.39,
+            "learned": 34.71,
+            "learned_network": 34.85
+          }
+        }
+      },
+      "stress": {
+        "cold_start_all_history_removed": {
+          "persistence": 19.86,
+          "twin_rule": 18.62,
+          "learned": 17.03,
+          "learned_network": 16.78
+        },
+        "feed_noise_pm3_min": {
+          "persistence": 20.02,
+          "twin_rule": 18.66,
+          "learned": 15.38,
+          "learned_network": 15.37
+        },
+        "no_network_picture": {
+          "persistence": 19.86,
+          "twin_rule": 18.62,
+          "learned": 15.29,
+          "learned_network": 15.32
+        }
+      }
+    },
+    {
+      "origin": "2024-09-12",
+      "train_days": "2024-09-01..2024-09-12",
+      "test_days": "2024-09-13..2024-09-16",
+      "train_rows": 1596037,
+      "fit_rows": 600000,
+      "test_rows": 574146,
+      "mae": {
+        "persistence": 19.76,
+        "twin_rule": 18.54,
+        "learned": 14.87,
+        "learned_network": 14.84
+      },
+      "within_15_min_pct": {
+        "persistence": 69.47,
+        "twin_rule": 72.47,
+        "learned": 79.72,
+        "learned_network": 79.8
+      },
+      "by_situation": {
+        "time_of_day": {
+          "morning 06-10": {
+            "n": 108017,
+            "persistence": 17.84,
+            "twin_rule": 16.96,
+            "learned": 13.22,
+            "learned_network": 13.19
+          },
+          "day 10-17": {
+            "n": 152629,
+            "persistence": 22.39,
+            "twin_rule": 21.26,
+            "learned": 17.07,
+            "learned_network": 17.05
+          },
+          "evening 17-22": {
+            "n": 138511,
+            "persistence": 19.4,
+            "twin_rule": 17.91,
+            "learned": 14.46,
+            "learned_network": 14.43
+          },
+          "night 22-06": {
+            "n": 174989,
+            "persistence": 18.94,
+            "twin_rule": 17.64,
+            "learned": 14.29,
+            "learned_network": 14.24
+          }
+        },
+        "day_type": {
+          "weekend": {
+            "n": 284667,
+            "persistence": 19.67,
+            "twin_rule": 18.55,
+            "learned": 14.97,
+            "learned_network": 14.95
+          },
+          "weekday": {
+            "n": 289479,
+            "persistence": 19.85,
+            "twin_rule": 18.53,
+            "learned": 14.76,
+            "learned_network": 14.73
+          }
+        },
+        "current_delay": {
+          "<5 min": {
+            "n": 232403,
+            "persistence": 10.73,
+            "twin_rule": 10.81,
+            "learned": 10.35,
+            "learned_network": 10.34
+          },
+          "5-30": {
+            "n": 196160,
+            "persistence": 14.67,
+            "twin_rule": 13.33,
+            "learned": 10.16,
+            "learned_network": 10.12
+          },
+          "30-120": {
+            "n": 105915,
+            "persistence": 31.6,
+            "twin_rule": 27.87,
+            "learned": 19.03,
+            "learned_network": 18.96
+          },
+          ">=120": {
+            "n": 39668,
+            "persistence": 66.2,
+            "twin_rule": 64.69,
+            "learned": 53.53,
+            "learned_network": 53.48
+          }
+        },
+        "train_class": {
+          "mail/express": {
+            "n": 388225,
+            "persistence": 19.52,
+            "twin_rule": 18.17,
+            "learned": 14.21,
+            "learned_network": 14.2
+          },
+          "passenger/suburban": {
+            "n": 16256,
+            "persistence": 17.49,
+            "twin_rule": 16.89,
+            "learned": 11.68,
+            "learned_network": 11.72
+          },
+          "superfast": {
+            "n": 158465,
+            "persistence": 21.09,
+            "twin_rule": 20.1,
+            "learned": 17.13,
+            "learned_network": 17.05
+          },
+          "premium": {
+            "n": 11200,
+            "persistence": 12.55,
+            "twin_rule": 11.62,
+            "learned": 10.26,
+            "learned_network": 10.19
+          }
+        },
+        "line": {
+          "mostly double/multiple": {
+            "n": 408087,
+            "persistence": 21.22,
+            "twin_rule": 19.92,
+            "learned": 16.5,
+            "learned_network": 16.46
+          },
+          "mostly single line": {
+            "n": 166059,
+            "persistence": 16.18,
+            "twin_rule": 15.15,
+            "learned": 10.86,
+            "learned_network": 10.84
+          }
+        },
+        "horizon": {
+          "1-3h": {
+            "n": 176118,
+            "persistence": 15.73,
+            "twin_rule": 15.63,
+            "learned": 11.59,
+            "learned_network": 11.58
+          },
+          "<=1h": {
+            "n": 171747,
+            "persistence": 9.22,
+            "twin_rule": 9.58,
+            "learned": 6.86,
+            "learned_network": 6.87
+          },
+          ">6h": {
+            "n": 121029,
+            "persistence": 38.71,
+            "twin_rule": 33.46,
+            "learned": 29.68,
+            "learned_network": 29.56
+          },
+          "3-6h": {
+            "n": 105252,
+            "persistence": 21.91,
+            "twin_rule": 20.88,
+            "learned": 16.38,
+            "learned_network": 16.35
+          }
+        },
+        "network": {
+          "normal": {
+            "n": 311765,
+            "persistence": 18.82,
+            "twin_rule": 17.67,
+            "learned": 14.13,
+            "learned_network": 14.12
+          },
+          "disrupted (top quarter)": {
+            "n": 262381,
+            "persistence": 20.88,
+            "twin_rule": 19.58,
+            "learned": 15.74,
+            "learned_network": 15.68
+          }
+        },
+        "zone": {
+          "NWR": {
+            "n": 34841,
+            "persistence": 9.98,
+            "twin_rule": 8.17,
+            "learned": 5.84,
+            "learned_network": 5.81
+          },
+          "CR": {
+            "n": 39631,
+            "persistence": 22.68,
+            "twin_rule": 21.8,
+            "learned": 17.7,
+            "learned_network": 17.63
+          },
+          "WCR": {
+            "n": 32324,
+            "persistence": 24.66,
+            "twin_rule": 23.06,
+            "learned": 18.7,
+            "learned_network": 18.71
+          },
+          "NCR": {
+            "n": 28132,
+            "persistence": 31.64,
+            "twin_rule": 30.37,
+            "learned": 25.96,
+            "learned_network": 25.87
+          },
+          "NER": {
+            "n": 7209,
+            "persistence": 16.31,
+            "twin_rule": 15.52,
+            "learned": 12.46,
+            "learned_network": 12.46
+          },
+          "NE": {
+            "n": 16292,
+            "persistence": 20.12,
+            "twin_rule": 18.79,
+            "learned": 16.26,
+            "learned_network": 16.29
+          },
+          "NR": {
+            "n": 64846,
+            "persistence": 21.85,
+            "twin_rule": 20.77,
+            "learned": 17.85,
+            "learned_network": 17.85
+          },
+          "KR": {
+            "n": 9852,
+            "persistence": 33.43,
+            "twin_rule": 33.32,
+            "learned": 24.11,
+            "learned_network": 24.04
+          },
+          "WR": {
+            "n": 45917,
+            "persistence": 8.91,
+            "twin_rule": 7.69,
+            "learned": 6.03,
+            "learned_network": 5.98
+          },
+          "ECR": {
+            "n": 44597,
+            "persistence": 21.14,
+            "twin_rule": 19.71,
+            "learned": 15.49,
+            "learned_network": 15.44
+          },
+          "NFR": {
+            "n": 18902,
+            "persistence": 19.6,
+            "twin_rule": 17.12,
+            "learned": 13.77,
+            "learned_network": 13.9
+          },
+          "ER": {
+            "n": 26405,
+            "persistence": 12.39,
+            "twin_rule": 11.45,
+            "learned": 9.92,
+            "learned_network": 9.92
+          },
+          "SR": {
+            "n": 56276,
+            "persistence": 12.12,
+            "twin_rule": 11.07,
+            "learned": 8.26,
+            "learned_network": 8.23
+          },
+          "SCR": {
+            "n": 64782,
+            "persistence": 22.19,
+            "twin_rule": 20.7,
+            "learned": 15.07,
+            "learned_network": 14.96
+          },
+          "SECR": {
+            "n": 11964,
+            "persistence": 42.86,
+            "twin_rule": 42.31,
+            "learned": 37.17,
+            "learned_network": 37.16
+          },
+          "SER": {
+            "n": 17374,
+            "persistence": 31.25,
+            "twin_rule": 31.2,
+            "learned": 26.59,
+            "learned_network": 26.57
+          },
+          "ECOR": {
+            "n": 26093,
+            "persistence": 22.44,
+            "twin_rule": 21.54,
+            "learned": 17.43,
+            "learned_network": 17.43
+          },
+          "?": {
+            "n": 1055,
+            "persistence": 19.47,
+            "twin_rule": 18.27,
+            "learned": 12.3,
+            "learned_network": 12.31
+          },
+          "SWR": {
+            "n": 24965,
+            "persistence": 13.3,
+            "twin_rule": 11.93,
+            "learned": 7.9,
+            "learned_network": 7.89
+          },
+          "ECoR": {
+            "n": 2393,
+            "persistence": 21.12,
+            "twin_rule": 20.09,
+            "learned": 16.22,
+            "learned_network": 16.25
+          }
+        },
+        "history": {
+          "has history": {
+            "n": 573873,
+            "persistence": 19.72,
+            "twin_rule": 18.5,
+            "learned": 14.82,
+            "learned_network": 14.79
+          }
+        }
+      },
+      "stress": {
+        "cold_start_all_history_removed": {
+          "persistence": 19.76,
+          "twin_rule": 18.54,
+          "learned": 17.09,
+          "learned_network": 16.7
+        },
+        "feed_noise_pm3_min": {
+          "persistence": 19.92,
+          "twin_rule": 18.58,
+          "learned": 14.9,
+          "learned_network": 14.87
+        },
+        "no_network_picture": {
+          "persistence": 19.76,
+          "twin_rule": 18.54,
+          "learned": 14.87,
+          "learned_network": 14.86
+        }
+      }
+    },
+    {
+      "origin": "2024-09-16",
+      "train_days": "2024-09-01..2024-09-16",
+      "test_days": "2024-09-17..2024-09-20",
+      "train_rows": 2165794,
+      "fit_rows": 600000,
+      "test_rows": 577642,
+      "mae": {
+        "persistence": 18.73,
+        "twin_rule": 17.53,
+        "learned": 13.82,
+        "learned_network": 13.74
+      },
+      "within_15_min_pct": {
+        "persistence": 69.97,
+        "twin_rule": 73.03,
+        "learned": 80.6,
+        "learned_network": 80.76
+      },
+      "by_situation": {
+        "time_of_day": {
+          "day 10-17": {
+            "n": 154337,
+            "persistence": 21.29,
+            "twin_rule": 20.12,
+            "learned": 15.82,
+            "learned_network": 15.76
+          },
+          "evening 17-22": {
+            "n": 140395,
+            "persistence": 18.79,
+            "twin_rule": 17.34,
+            "learned": 13.87,
+            "learned_network": 13.8
+          },
+          "night 22-06": {
+            "n": 174285,
+            "persistence": 17.62,
+            "twin_rule": 16.35,
+            "learned": 13.03,
+            "learned_network": 12.91
+          },
+          "morning 06-10": {
+            "n": 108625,
+            "persistence": 16.79,
+            "twin_rule": 15.98,
+            "learned": 12.15,
+            "learned_network": 12.12
+          }
+        },
+        "day_type": {
+          "weekday": {
+            "n": 577642,
+            "persistence": 18.73,
+            "twin_rule": 17.53,
+            "learned": 13.82,
+            "learned_network": 13.74
+          }
+        },
+        "current_delay": {
+          "<5 min": {
+            "n": 234558,
+            "persistence": 10.06,
+            "twin_rule": 10.14,
+            "learned": 9.66,
+            "learned_network": 9.65
+          },
+          "5-30": {
+            "n": 202992,
+            "persistence": 14.52,
+            "twin_rule": 13.28,
+            "learned": 9.94,
+            "learned_network": 9.85
+          },
+          "30-120": {
+            "n": 106374,
+            "persistence": 31.27,
+            "twin_rule": 27.39,
+            "learned": 18.27,
+            "learned_network": 18.14
+          },
+          ">=120": {
+            "n": 33718,
+            "persistence": 64.82,
+            "twin_rule": 63.42,
+            "learned": 52.02,
+            "learned_network": 51.76
+          }
+        },
+        "train_class": {
+          "mail/express": {
+            "n": 389249,
+            "persistence": 18.21,
+            "twin_rule": 16.8,
+            "learned": 12.83,
+            "learned_network": 12.76
+          },
+          "passenger/suburban": {
+            "n": 17299,
+            "persistence": 17.64,
+            "twin_rule": 17.15,
+            "learned": 11.37,
+            "learned_network": 11.43
+          },
+          "superfast": {
+            "n": 160613,
+            "persistence": 20.34,
+            "twin_rule": 19.55,
+            "learned": 16.53,
+            "learned_network": 16.41
+          },
+          "premium": {
+            "n": 10481,
+            "persistence": 15.09,
+            "twin_rule": 14.4,
+            "learned": 13.03,
+            "learned_network": 12.99
+          }
+        },
+        "line": {
+          "mostly double/multiple": {
+            "n": 413962,
+            "persistence": 20.12,
+            "twin_rule": 18.85,
+            "learned": 15.32,
+            "learned_network": 15.22
+          },
+          "mostly single line": {
+            "n": 163680,
+            "persistence": 15.2,
+            "twin_rule": 14.19,
+            "learned": 10.02,
+            "learned_network": 10.01
+          }
+        },
+        "horizon": {
+          "1-3h": {
+            "n": 177414,
+            "persistence": 15.16,
+            "twin_rule": 15.04,
+            "learned": 10.87,
+            "learned_network": 10.87
+          },
+          "<=1h": {
+            "n": 173925,
+            "persistence": 8.62,
+            "twin_rule": 8.97,
+            "learned": 6.32,
+            "learned_network": 6.32
+          },
+          ">6h": {
+            "n": 120653,
+            "persistence": 36.42,
+            "twin_rule": 31.32,
+            "learned": 27.55,
+            "learned_network": 27.21
+          },
+          "3-6h": {
+            "n": 105650,
+            "persistence": 21.16,
+            "twin_rule": 20.04,
+            "learned": 15.42,
+            "learned_network": 15.4
+          }
+        },
+        "network": {
+          "normal": {
+            "n": 418527,
+            "persistence": 18.57,
+            "twin_rule": 17.36,
+            "learned": 13.64,
+            "learned_network": 13.58
+          },
+          "disrupted (top quarter)": {
+            "n": 159115,
+            "persistence": 19.15,
+            "twin_rule": 17.97,
+            "learned": 14.28,
+            "learned_network": 14.15
+          }
+        },
+        "zone": {
+          "NWR": {
+            "n": 34741,
+            "persistence": 8.57,
+            "twin_rule": 7.03,
+            "learned": 5.1,
+            "learned_network": 5.05
+          },
+          "CR": {
+            "n": 39559,
+            "persistence": 21.61,
+            "twin_rule": 20.49,
+            "learned": 16.1,
+            "learned_network": 15.98
+          },
+          "WCR": {
+            "n": 32932,
+            "persistence": 25.13,
+            "twin_rule": 23.79,
+            "learned": 20.2,
+            "learned_network": 19.95
+          },
+          "NCR": {
+            "n": 30170,
+            "persistence": 31.15,
+            "twin_rule": 29.92,
+            "learned": 25.67,
+            "learned_network": 25.49
+          },
+          "NER": {
+            "n": 7403,
+            "persistence": 17.83,
+            "twin_rule": 17.23,
+            "learned": 13.25,
+            "learned_network": 13.65
+          },
+          "NE": {
+            "n": 16329,
+            "persistence": 21.73,
+            "twin_rule": 20.0,
+            "learned": 15.97,
+            "learned_network": 15.96
+          },
+          "NR": {
+            "n": 68020,
+            "persistence": 21.65,
+            "twin_rule": 20.54,
+            "learned": 17.47,
+            "learned_network": 17.29
+          },
+          "KR": {
+            "n": 8764,
+            "persistence": 32.08,
+            "twin_rule": 31.86,
+            "learned": 21.45,
+            "learned_network": 21.3
+          },
+          "WR": {
+            "n": 45940,
+            "persistence": 9.87,
+            "twin_rule": 8.66,
+            "learned": 6.92,
+            "learned_network": 6.93
+          },
+          "SCR": {
+            "n": 61191,
+            "persistence": 21.39,
+            "twin_rule": 20.04,
+            "learned": 14.2,
+            "learned_network": 14.09
+          },
+          "ECR": {
+            "n": 44925,
+            "persistence": 18.86,
+            "twin_rule": 17.39,
+            "learned": 13.49,
+            "learned_network": 13.49
+          },
+          "NFR": {
+            "n": 20003,
+            "persistence": 16.4,
+            "twin_rule": 14.61,
+            "learned": 12.13,
+            "learned_network": 12.07
+          },
+          "SECR": {
+            "n": 12403,
+            "persistence": 34.77,
+            "twin_rule": 33.99,
+            "learned": 28.07,
+            "learned_network": 28.19
+          },
+          "SR": {
+            "n": 55140,
+            "persistence": 12.26,
+            "twin_rule": 11.08,
+            "learned": 7.98,
+            "learned_network": 7.9
+          },
+          "SER": {
+            "n": 18182,
+            "persistence": 23.22,
+            "twin_rule": 22.68,
+            "learned": 18.36,
+            "learned_network": 18.29
+          },
+          "ECOR": {
+            "n": 27099,
+            "persistence": 20.6,
+            "twin_rule": 19.86,
+            "learned": 15.3,
+            "learned_network": 15.26
+          },
+          "ER": {
+            "n": 26534,
+            "persistence": 9.23,
+            "twin_rule": 8.34,
+            "learned": 6.94,
+            "learned_network": 6.93
+          },
+          "SWR": {
+            "n": 24690,
+            "persistence": 13.14,
+            "twin_rule": 11.89,
+            "learned": 7.79,
+            "learned_network": 7.82
+          },
+          "?": {
+            "n": 1043,
+            "persistence": 18.05,
+            "twin_rule": 16.91,
+            "learned": 12.5,
+            "learned_network": 12.32
+          },
+          "ECoR": {
+            "n": 2290,
+            "persistence": 15.7,
+            "twin_rule": 14.64,
+            "learned": 10.9,
+            "learned_network": 10.88
+          }
+        },
+        "history": {
+          "has history": {
+            "n": 577600,
+            "persistence": 18.72,
+            "twin_rule": 17.52,
+            "learned": 13.81,
+            "learned_network": 13.73
+          }
+        }
+      },
+      "stress": {
+        "cold_start_all_history_removed": {
+          "persistence": 18.73,
+          "twin_rule": 17.53,
+          "learned": 16.33,
+          "learned_network": 15.74
+        },
+        "feed_noise_pm3_min": {
+          "persistence": 18.89,
+          "twin_rule": 17.57,
+          "learned": 13.83,
+          "learned_network": 13.76
+        },
+        "no_network_picture": {
+          "persistence": 18.73,
+          "twin_rule": 17.53,
+          "learned": 13.82,
+          "learned_network": 13.77
+        }
+      }
+    },
+    {
+      "origin": "2024-09-20",
+      "train_days": "2024-09-01..2024-09-20",
+      "test_days": "2024-09-21..2024-09-24",
+      "train_rows": 2745037,
+      "fit_rows": 600000,
+      "test_rows": 567194,
+      "mae": {
+        "persistence": 18.67,
+        "twin_rule": 17.45,
+        "learned": 13.8,
+        "learned_network": 13.8
+      },
+      "within_15_min_pct": {
+        "persistence": 70.63,
+        "twin_rule": 73.66,
+        "learned": 80.96,
+        "learned_network": 80.97
+      },
+      "by_situation": {
+        "time_of_day": {
+          "morning 06-10": {
+            "n": 106111,
+            "persistence": 16.88,
+            "twin_rule": 16.02,
+            "learned": 12.27,
+            "learned_network": 12.29
+          },
+          "day 10-17": {
+            "n": 151450,
+            "persistence": 21.57,
+            "twin_rule": 20.45,
+            "learned": 16.16,
+            "learned_network": 16.16
+          },
+          "evening 17-22": {
+            "n": 137682,
+            "persistence": 18.55,
+            "twin_rule": 17.02,
+            "learned": 13.57,
+            "learned_network": 13.59
+          },
+          "night 22-06": {
+            "n": 171951,
+            "persistence": 17.3,
+            "twin_rule": 16.04,
+            "learned": 12.84,
+            "learned_network": 12.83
+          }
+        },
+        "day_type": {
+          "weekend": {
+            "n": 285090,
+            "persistence": 18.83,
+            "twin_rule": 17.62,
+            "learned": 13.97,
+            "learned_network": 13.99
+          },
+          "weekday": {
+            "n": 282104,
+            "persistence": 18.51,
+            "twin_rule": 17.28,
+            "learned": 13.62,
+            "learned_network": 13.61
+          }
+        },
+        "current_delay": {
+          "<5 min": {
+            "n": 234745,
+            "persistence": 9.84,
+            "twin_rule": 9.91,
+            "learned": 9.45,
+            "learned_network": 9.45
+          },
+          "5-30": {
+            "n": 196788,
+            "persistence": 14.07,
+            "twin_rule": 12.66,
+            "learned": 9.35,
+            "learned_network": 9.37
+          },
+          "30-120": {
+            "n": 101207,
+            "persistence": 31.21,
+            "twin_rule": 27.45,
+            "learned": 18.24,
+            "learned_network": 18.24
+          },
+          ">=120": {
+            "n": 34454,
+            "persistence": 68.2,
+            "twin_rule": 66.86,
+            "learned": 55.76,
+            "learned_network": 55.73
+          }
+        },
+        "train_class": {
+          "mail/express": {
+            "n": 380201,
+            "persistence": 18.23,
+            "twin_rule": 16.82,
+            "learned": 12.88,
+            "learned_network": 12.91
+          },
+          "passenger/suburban": {
+            "n": 15759,
+            "persistence": 16.17,
+            "twin_rule": 15.74,
+            "learned": 10.37,
+            "learned_network": 10.41
+          },
+          "superfast": {
+            "n": 160291,
+            "persistence": 20.28,
+            "twin_rule": 19.44,
+            "learned": 16.47,
+            "learned_network": 16.43
+          },
+          "premium": {
+            "n": 10943,
+            "persistence": 13.67,
+            "twin_rule": 12.8,
+            "learned": 11.45,
+            "learned_network": 11.46
+          }
+        },
+        "line": {
+          "mostly double/multiple": {
+            "n": 406406,
+            "persistence": 19.87,
+            "twin_rule": 18.62,
+            "learned": 15.13,
+            "learned_network": 15.13
+          },
+          "mostly single line": {
+            "n": 160788,
+            "persistence": 15.62,
+            "twin_rule": 14.5,
+            "learned": 10.43,
+            "learned_network": 10.44
+          }
+        },
+        "horizon": {
+          "1-3h": {
+            "n": 174332,
+            "persistence": 15.27,
+            "twin_rule": 15.16,
+            "learned": 11.18,
+            "learned_network": 11.17
+          },
+          "<=1h": {
+            "n": 169418,
+            "persistence": 8.61,
+            "twin_rule": 8.97,
+            "learned": 6.37,
+            "learned_network": 6.38
+          },
+          ">6h": {
+            "n": 119558,
+            "persistence": 35.73,
+            "twin_rule": 30.55,
+            "learned": 26.5,
+            "learned_network": 26.52
+          },
+          "3-6h": {
+            "n": 103886,
+            "persistence": 21.13,
+            "twin_rule": 20.08,
+            "learned": 15.68,
+            "learned_network": 15.69
+          }
+        },
+        "network": {
+          "normal": {
+            "n": 529490,
+            "persistence": 18.6,
+            "twin_rule": 17.39,
+            "learned": 13.73,
+            "learned_network": 13.74
+          },
+          "disrupted (top quarter)": {
+            "n": 37704,
+            "persistence": 19.58,
+            "twin_rule": 18.33,
+            "learned": 14.76,
+            "learned_network": 14.76
+          }
+        },
+        "zone": {
+          "NWR": {
+            "n": 34485,
+            "persistence": 8.96,
+            "twin_rule": 7.42,
+            "learned": 5.45,
+            "learned_network": 5.44
+          },
+          "CR": {
+            "n": 39653,
+            "persistence": 21.99,
+            "twin_rule": 20.89,
+            "learned": 16.32,
+            "learned_network": 16.28
+          },
+          "WCR": {
+            "n": 33549,
+            "persistence": 20.49,
+            "twin_rule": 18.81,
+            "learned": 15.46,
+            "learned_network": 15.4
+          },
+          "NCR": {
+            "n": 30577,
+            "persistence": 24.96,
+            "twin_rule": 23.59,
+            "learned": 19.04,
+            "learned_network": 19.11
+          },
+          "NER": {
+            "n": 7069,
+            "persistence": 16.99,
+            "twin_rule": 16.38,
+            "learned": 12.09,
+            "learned_network": 12.22
+          },
+          "NE": {
+            "n": 15781,
+            "persistence": 21.16,
+            "twin_rule": 19.92,
+            "learned": 16.81,
+            "learned_network": 16.85
+          },
+          "NR": {
+            "n": 67770,
+            "persistence": 20.85,
+            "twin_rule": 19.95,
+            "learned": 17.14,
+            "learned_network": 17.22
+          },
+          "KR": {
+            "n": 7444,
+            "persistence": 29.82,
+            "twin_rule": 29.18,
+            "learned": 18.76,
+            "learned_network": 18.85
+          },
+          "WR": {
+            "n": 45960,
+            "persistence": 9.09,
+            "twin_rule": 7.9,
+            "learned": 6.16,
+            "learned_network": 6.16
+          },
+          "SCR": {
+            "n": 61682,
+            "persistence": 21.72,
+            "twin_rule": 20.37,
+            "learned": 14.48,
+            "learned_network": 14.44
+          },
+          "ECR": {
+            "n": 43654,
+            "persistence": 21.06,
+            "twin_rule": 19.72,
+            "learned": 15.86,
+            "learned_network": 15.88
+          },
+          "NFR": {
+            "n": 18937,
+            "persistence": 19.97,
+            "twin_rule": 18.31,
+            "learned": 15.39,
+            "learned_network": 15.43
+          },
+          "ER": {
+            "n": 25869,
+            "persistence": 16.25,
+            "twin_rule": 15.4,
+            "learned": 14.17,
+            "learned_network": 14.17
+          },
+          "SR": {
+            "n": 52545,
+            "persistence": 10.94,
+            "twin_rule": 9.73,
+            "learned": 6.69,
+            "learned_network": 6.74
+          },
+          "SECR": {
+            "n": 11859,
+            "persistence": 33.03,
+            "twin_rule": 31.34,
+            "learned": 25.59,
+            "learned_network": 25.69
+          },
+          "SER": {
+            "n": 16903,
+            "persistence": 29.65,
+            "twin_rule": 29.16,
+            "learned": 24.22,
+            "learned_network": 24.05
+          },
+          "ECOR": {
+            "n": 25511,
+            "persistence": 21.26,
+            "twin_rule": 20.19,
+            "learned": 16.04,
+            "learned_network": 16.03
+          },
+          "?": {
+            "n": 1027,
+            "persistence": 21.74,
+            "twin_rule": 20.82,
+            "learned": 14.37,
+            "learned_network": 14.4
+          },
+          "SWR": {
+            "n": 24274,
+            "persistence": 12.88,
+            "twin_rule": 11.69,
+            "learned": 7.83,
+            "learned_network": 7.8
+          },
+          "ECoR": {
+            "n": 2373,
+            "persistence": 16.37,
+            "twin_rule": 14.75,
+            "learned": 10.74,
+            "learned_network": 10.72
+          }
+        },
+        "history": {
+          "has history": {
+            "n": 567179,
+            "persistence": 18.66,
+            "twin_rule": 17.45,
+            "learned": 13.79,
+            "learned_network": 13.8
+          }
+        }
+      },
+      "stress": {
+        "cold_start_all_history_removed": {
+          "persistence": 18.67,
+          "twin_rule": 17.45,
+          "learned": 16.4,
+          "learned_network": 15.62
+        },
+        "feed_noise_pm3_min": {
+          "persistence": 18.84,
+          "twin_rule": 17.5,
+          "learned": 13.86,
+          "learned_network": 13.88
+        },
+        "no_network_picture": {
+          "persistence": 18.67,
+          "twin_rule": 17.45,
+          "learned": 13.8,
+          "learned_network": 13.84
+        }
+      }
+    },
+    {
+      "origin": "2024-09-24",
+      "train_days": "2024-09-01..2024-09-24",
+      "test_days": "2024-09-25..2024-09-28",
+      "train_rows": 3314529,
+      "fit_rows": 600000,
+      "test_rows": 567988,
+      "mae": {
+        "persistence": 18.5,
+        "twin_rule": 17.28,
+        "learned": 13.63,
+        "learned_network": 13.61
+      },
+      "within_15_min_pct": {
+        "persistence": 69.43,
+        "twin_rule": 72.46,
+        "learned": 80.24,
+        "learned_network": 80.32
+      },
+      "by_situation": {
+        "time_of_day": {
+          "evening 17-22": {
+            "n": 137708,
+            "persistence": 18.7,
+            "twin_rule": 17.19,
+            "learned": 13.49,
+            "learned_network": 13.46
+          },
+          "night 22-06": {
+            "n": 171989,
+            "persistence": 17.48,
+            "twin_rule": 16.15,
+            "learned": 12.71,
+            "learned_network": 12.7
+          },
+          "morning 06-10": {
+            "n": 106947,
+            "persistence": 16.59,
+            "twin_rule": 15.81,
+            "learned": 12.36,
+            "learned_network": 12.35
+          },
+          "day 10-17": {
+            "n": 151344,
+            "persistence": 20.82,
+            "twin_rule": 19.7,
+            "learned": 15.71,
+            "learned_network": 15.67
+          }
+        },
+        "day_type": {
+          "weekday": {
+            "n": 427211,
+            "persistence": 18.77,
+            "twin_rule": 17.57,
+            "learned": 14.0,
+            "learned_network": 13.98
+          },
+          "weekend": {
+            "n": 140777,
+            "persistence": 17.68,
+            "twin_rule": 16.41,
+            "learned": 12.53,
+            "learned_network": 12.48
+          }
+        },
+        "current_delay": {
+          "<5 min": {
+            "n": 223342,
+            "persistence": 9.86,
+            "twin_rule": 9.97,
+            "learned": 9.43,
+            "learned_network": 9.43
+          },
+          "5-30": {
+            "n": 202151,
+            "persistence": 14.22,
+            "twin_rule": 13.0,
+            "learned": 9.72,
+            "learned_network": 9.72
+          },
+          "30-120": {
+            "n": 112114,
+            "persistence": 30.72,
+            "twin_rule": 27.14,
+            "learned": 18.28,
+            "learned_network": 18.21
+          },
+          ">=120": {
+            "n": 30381,
+            "persistence": 65.37,
+            "twin_rule": 63.25,
+            "learned": 53.38,
+            "learned_network": 53.27
+          }
+        },
+        "train_class": {
+          "mail/express": {
+            "n": 381348,
+            "persistence": 18.71,
+            "twin_rule": 17.31,
+            "learned": 13.45,
+            "learned_network": 13.44
+          },
+          "passenger/suburban": {
+            "n": 16611,
+            "persistence": 17.53,
+            "twin_rule": 17.16,
+            "learned": 12.15,
+            "learned_network": 12.13
+          },
+          "superfast": {
+            "n": 159127,
+            "persistence": 18.49,
+            "twin_rule": 17.6,
+            "learned": 14.44,
+            "learned_network": 14.39
+          },
+          "premium": {
+            "n": 10902,
+            "persistence": 12.78,
+            "twin_rule": 12.07,
+            "learned": 10.43,
+            "learned_network": 10.42
+          }
+        },
+        "line": {
+          "mostly double/multiple": {
+            "n": 406799,
+            "persistence": 19.38,
+            "twin_rule": 18.15,
+            "learned": 14.69,
+            "learned_network": 14.67
+          },
+          "mostly single line": {
+            "n": 161189,
+            "persistence": 16.27,
+            "twin_rule": 15.11,
+            "learned": 10.96,
+            "learned_network": 10.93
+          }
+        },
+        "horizon": {
+          "<=1h": {
+            "n": 170068,
+            "persistence": 8.73,
+            "twin_rule": 9.11,
+            "learned": 6.4,
+            "learned_network": 6.38
+          },
+          "1-3h": {
+            "n": 174323,
+            "persistence": 15.14,
+            "twin_rule": 15.08,
+            "learned": 10.89,
+            "learned_network": 10.86
+          },
+          ">6h": {
+            "n": 119291,
+            "persistence": 35.17,
+            "twin_rule": 29.85,
+            "learned": 26.36,
+            "learned_network": 26.35
+          },
+          "3-6h": {
+            "n": 104306,
+            "persistence": 20.98,
+            "twin_rule": 19.92,
+            "learned": 15.45,
+            "learned_network": 15.42
+          }
+        },
+        "network": {
+          "normal": {
+            "n": 516149,
+            "persistence": 18.38,
+            "twin_rule": 17.17,
+            "learned": 13.51,
+            "learned_network": 13.48
+          },
+          "disrupted (top quarter)": {
+            "n": 51839,
+            "persistence": 19.64,
+            "twin_rule": 18.41,
+            "learned": 14.89,
+            "learned_network": 14.87
+          }
+        },
+        "zone": {
+          "CR": {
+            "n": 39487,
+            "persistence": 24.36,
+            "twin_rule": 23.4,
+            "learned": 18.45,
+            "learned_network": 18.37
+          },
+          "WCR": {
+            "n": 32660,
+            "persistence": 18.98,
+            "twin_rule": 17.53,
+            "learned": 14.0,
+            "learned_network": 14.02
+          },
+          "NCR": {
+            "n": 30056,
+            "persistence": 23.73,
+            "twin_rule": 21.94,
+            "learned": 18.04,
+            "learned_network": 18.1
+          },
+          "NER": {
+            "n": 7164,
+            "persistence": 20.95,
+            "twin_rule": 20.29,
+            "learned": 16.11,
+            "learned_network": 15.89
+          },
+          "NE": {
+            "n": 15965,
+            "persistence": 21.75,
+            "twin_rule": 20.66,
+            "learned": 17.25,
+            "learned_network": 17.14
+          },
+          "NR": {
+            "n": 67390,
+            "persistence": 19.29,
+            "twin_rule": 18.39,
+            "learned": 15.95,
+            "learned_network": 15.88
+          },
+          "KR": {
+            "n": 7497,
+            "persistence": 32.0,
+            "twin_rule": 31.05,
+            "learned": 20.95,
+            "learned_network": 21.11
+          },
+          "WR": {
+            "n": 46279,
+            "persistence": 10.6,
+            "twin_rule": 9.42,
+            "learned": 7.36,
+            "learned_network": 7.34
+          },
+          "SCR": {
+            "n": 60381,
+            "persistence": 21.31,
+            "twin_rule": 19.79,
+            "learned": 14.0,
+            "learned_network": 13.94
+          },
+          "ECR": {
+            "n": 44353,
+            "persistence": 19.84,
+            "twin_rule": 18.32,
+            "learned": 14.09,
+            "learned_network": 14.1
+          },
+          "NFR": {
+            "n": 19594,
+            "persistence": 19.51,
+            "twin_rule": 18.03,
+            "learned": 15.04,
+            "learned_network": 15.07
+          },
+          "NWR": {
+            "n": 34010,
+            "persistence": 10.32,
+            "twin_rule": 8.65,
+            "learned": 6.24,
+            "learned_network": 6.22
+          },
+          "SR": {
+            "n": 53472,
+            "persistence": 11.23,
+            "twin_rule": 10.15,
+            "learned": 7.18,
+            "learned_network": 7.14
+          },
+          "SER": {
+            "n": 17648,
+            "persistence": 28.76,
+            "twin_rule": 28.26,
+            "learned": 23.86,
+            "learned_network": 23.75
+          },
+          "ECOR": {
+            "n": 26181,
+            "persistence": 20.99,
+            "twin_rule": 20.26,
+            "learned": 15.78,
+            "learned_network": 15.72
+          },
+          "?": {
+            "n": 1007,
+            "persistence": 23.34,
+            "twin_rule": 21.79,
+            "learned": 15.68,
+            "learned_network": 15.6
+          },
+          "ER": {
+            "n": 26418,
+            "persistence": 12.18,
+            "twin_rule": 11.32,
+            "learned": 9.86,
+            "learned_network": 9.94
+          },
+          "SWR": {
+            "n": 23191,
+            "persistence": 14.15,
+            "twin_rule": 12.76,
+            "learned": 9.14,
+            "learned_network": 9.16
+          },
+          "SECR": {
+            "n": 12616,
+            "persistence": 32.21,
+            "twin_rule": 30.98,
+            "learned": 26.52,
+            "learned_network": 26.66
+          },
+          "ECoR": {
+            "n": 2347,
+            "persistence": 17.14,
+            "twin_rule": 15.46,
+            "learned": 12.29,
+            "learned_network": 12.24
+          }
+        },
+        "history": {
+          "has history": {
+            "n": 567988,
+            "persistence": 18.5,
+            "twin_rule": 17.28,
+            "learned": 13.63,
+            "learned_network": 13.61
+          }
+        }
+      },
+      "stress": {
+        "cold_start_all_history_removed": {
+          "persistence": 18.5,
+          "twin_rule": 17.28,
+          "learned": 16.38,
+          "learned_network": 15.45
+        },
+        "feed_noise_pm3_min": {
+          "persistence": 18.65,
+          "twin_rule": 17.32,
+          "learned": 13.67,
+          "learned_network": 13.66
+        },
+        "no_network_picture": {
+          "persistence": 18.5,
+          "twin_rule": 17.28,
+          "learned": 13.63,
+          "learned_network": 13.63
+        }
+      }
+    }
+  ],
+  "not_covered": [
+    "Fog (December-February) and monsoon flooding are not in a September sample: retrain on a full year of running before relying on forecasts in those seasons.",
+    "Freight trains: no observed freight running is public."
+  ],
+  "seconds": 453
+}

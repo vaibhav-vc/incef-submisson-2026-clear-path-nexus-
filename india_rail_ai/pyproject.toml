@@ -1,0 +1,17 @@
+[project]
+name = "india-rail-ai"
+version = "0.1.0"
+description = "Indian railway timetable intelligence, run-time ML, disruption re-planning and an AI assistant"
+requires-python = ">=3.11"
+license = "MIT"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "C4", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"

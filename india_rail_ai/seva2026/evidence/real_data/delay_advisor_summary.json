@@ -1,0 +1,712 @@
+{
+ "what": "Where delay is made, and what would reduce it: research from real running, for the people who can act on it.",
+ "method": "Every finding is measured from observed arrivals (realdata.py), never from this project's own simulation, and\nchecked for persistence: it is found on 1-15 September and must recur on 16-30 September to be called chronic\n(a one-off breakdown is not a reason to rebuild a section). Each comes with the minutes a day at stake and the\nlever that addresses it. Levers, by who pulls them:",
+ "summary": {
+  "data": {
+   "observed_days": 30,
+   "traversals": 1198313,
+   "trains": 3549,
+   "sections_scored": 8122,
+   "stations_scored": 4412
+  },
+  "network_lost_min_per_day": 183355,
+  "network_recovered_min_per_day": 157240,
+  "top_20_sections_share_of_loss_pct": 4.2,
+  "persistence": {
+   "sections": {
+    "top_k": 50,
+    "top_50_found_again_in_top_100_pct": 92.0,
+    "rank_correlation": 0.906
+   },
+   "stations": {
+    "top_k": 50,
+    "top_50_found_again_in_top_100_pct": 94.0,
+    "rank_correlation": 0.964
+   }
+  },
+  "chronic_sections_in_top_200": 178,
+  "late_starting_trains": 140,
+  "timetable_points_not_achievable": 3829,
+  "schedules_not_describing_real_running": {
+   "train_sections": 32,
+   "trains": 21
+  },
+  "incidents_over_3h_excluded": {
+   "traversals": 4398,
+   "trains": 938
+  },
+  "chronically_late_trains": 226
+ },
+ "examples": {
+  "sections": [
+   {
+    "section": "AGC-MTJ",
+    "between": "AGRA CANTT - MATHURA JN",
+    "lost_min_per_day": 520.9,
+    "mean_change_min": 9.73,
+    "loss_share_pct": 60.0,
+    "traversals": 1249,
+    "trains": 92,
+    "lines": 2,
+    "electrified": true,
+    "chronic": true,
+    "lever": "Operations: speed restrictions, block-section spacing, level crossings and precedence at the junction ahead"
+   },
+   {
+    "section": "GWL-VGLJ",
+    "between": "GWALIOR JN - Virangana Lakshmibai Jhansi",
+    "lost_min_per_day": 494.3,
+    "mean_change_min": 5.87,
+    "loss_share_pct": 44.1,
+    "traversals": 1426,
+    "trains": 107,
+    "lines": 2,
+    "electrified": true,
+    "chronic": true,
+    "lever": "Operations: speed restrictions, block-section spacing, level crossings and precedence at the junction ahead"
+   },
+   {
+    "section": "KGP-SRC",
+    "between": "KHARAGPUR JN - SANTRAGACHI JN",
+    "lost_min_per_day": 471.4,
+    "mean_change_min": 14.09,
+    "loss_share_pct": 53.0,
+    "traversals": 745,
+    "trains": 70,
+    "lines": 3,
+    "electrified": true,
+    "chronic": true,
+    "lever": "Operations: speed restrictions, block-section spacing, level crossings and precedence at the junction ahead"
+   },
+   {
+    "section": "ED-SA",
+    "between": "ERODE JN - SALEM JN",
+    "lost_min_per_day": 422.6,
+    "mean_change_min": 5.56,
+    "loss_share_pct": 42.4,
+    "traversals": 1877,
+    "trains": 143,
+    "lines": 1,
+    "electrified": true,
+    "chronic": true,
+    "lever": "Capacity: single line - crossing loops or doubling; until then, crossing plans that favour the late-running direction"
+   },
+   {
+    "section": "CNB-NDLS",
+    "between": "KANPUR CENTRAL - NEW DELHI",
+    "lost_min_per_day": 419.4,
+    "mean_change_min": 8.68,
+    "loss_share_pct": 45.2,
+    "traversals": 938,
+    "trains": 58,
+    "lines": 2,
+    "electrified": true,
+    "chronic": true,
+    "lever": "Operations: speed restrictions, block-section spacing, level crossings and precedence at the junction ahead"
+   },
+   {
+    "section": "CTC-JJKR",
+    "between": "CUTTACK - JAJPUR KEONJHAR ROAD",
+    "lost_min_per_day": 415.5,
+    "mean_change_min": 11.91,
+    "loss_share_pct": 65.6,
+    "traversals": 963,
+    "trains": 82,
+    "lines": 2,
+    "electrified": true,
+    "chronic": true,
+    "lever": "Operations: speed restrictions, block-section spacing, level crossings and precedence at the junction ahead"
+   },
+   {
+    "section": "CKP-TATA",
+    "between": "CHAKRADHARPUR - TATANAGAR JN",
+    "lost_min_per_day": 402.3,
+    "mean_change_min": 26.54,
+    "loss_share_pct": 73.7,
+    "traversals": 384,
+    "trains": 32,
+    "lines": 2,
+    "electrified": true,
+    "chronic": true,
+    "lever": "Operations: speed restrictions, block-section spacing, level crossings and precedence at the junction ahead"
+   },
+   {
+    "section": "JSG-ROU",
+    "between": "JHARSUGUDA JN - ROURKELA",
+    "lost_min_per_day": 386.9,
+    "mean_change_min": 10.94,
+    "loss_share_pct": 41.8,
+    "traversals": 619,
+    "trains": 72,
+    "lines": 2,
+    "electrified": true,
+    "chronic": true,
+    "lever": "Operations: speed restrictions, block-section spacing, level crossings and precedence at the junction ahead"
+   },
+   {
+    "section": "CNB-LKO",
+    "between": "KANPUR CENTRAL - LUCKNOW",
+    "lost_min_per_day": 375.6,
+    "mean_change_min": 17.12,
+    "loss_share_pct": 49.8,
+    "traversals": 582,
+    "trains": 83,
+    "lines": 2,
+    "electrified": true,
+    "chronic": true,
+    "lever": "Operations: speed restrictions, block-section spacing, level crossings and precedence at the junction ahead"
+   },
+   {
+    "section": "KYN-TNA",
+    "between": "KALYAN JN - THANE",
+    "lost_min_per_day": 374.4,
+    "mean_change_min": 2.98,
+    "loss_share_pct": 36.3,
+    "traversals": 2181,
+    "trains": 119,
+    "lines": 2,
+    "electrified": true,
+    "chronic": true,
+    "lever": "Operations: speed restrictions, block-section spacing, level crossings and precedence at the junction ahead"
+   }
+  ],
+  "stations": [
+   {
+    "station": "CNB",
+    "name": "KANPUR CENTRAL",
+    "lost_min_per_day_arriving": 1625.8,
+    "arrivals_observed": 4915,
+    "approaches": 36,
+    "worst_hour": "01:00-02:00",
+    "worst_hour_share_pct": 10.3,
+    "chronic": true,
+    "lever": "Junction congestion: review platform and route allocation and re-space arrivals around 01:00, the hour carrying 10% of the loss"
+   },
+   {
+    "station": "KYN",
+    "name": "KALYAN JN",
+    "lost_min_per_day_arriving": 1286.3,
+    "arrivals_observed": 3865,
+    "approaches": 17,
+    "worst_hour": "03:00-04:00",
+    "worst_hour_share_pct": 8.7,
+    "chronic": true,
+    "lever": "Junction congestion: review platform and route allocation and re-space arrivals around 03:00, the hour carrying 9% of the loss"
+   },
+   {
+    "station": "MTJ",
+    "name": "MATHURA JN",
+    "lost_min_per_day_arriving": 1277.3,
+    "arrivals_observed": 2593,
+    "approaches": 20,
+    "worst_hour": "10:00-11:00",
+    "worst_hour_share_pct": 9.5,
+    "chronic": true,
+    "lever": "Junction congestion: review platform and route allocation and re-space arrivals around 10:00, the hour carrying 10% of the loss"
+   },
+   {
+    "station": "LKO",
+    "name": "LUCKNOW",
+    "lost_min_per_day_arriving": 1259.5,
+    "arrivals_observed": 3154,
+    "approaches": 26,
+    "worst_hour": "20:00-21:00",
+    "worst_hour_share_pct": 11.1,
+    "chronic": true,
+    "lever": "Junction congestion: review platform and route allocation and re-space arrivals around 20:00, the hour carrying 11% of the loss"
+   },
+   {
+    "station": "ROU",
+    "name": "ROURKELA",
+    "lost_min_per_day_arriving": 993.8,
+    "arrivals_observed": 1333,
+    "approaches": 13,
+    "worst_hour": "19:00-20:00",
+    "worst_hour_share_pct": 9.8,
+    "chronic": true,
+    "lever": "Junction congestion: review platform and route allocation and re-space arrivals around 19:00, the hour carrying 10% of the loss"
+   },
+   {
+    "station": "AGC",
+    "name": "AGRA CANTT",
+    "lost_min_per_day_arriving": 891.3,
+    "arrivals_observed": 2360,
+    "approaches": 20,
+    "worst_hour": "16:00-17:00",
+    "worst_hour_share_pct": 9.4,
+    "chronic": true,
+    "lever": "Junction congestion: review platform and route allocation and re-space arrivals around 16:00, the hour carrying 9% of the loss"
+   },
+   {
+    "station": "GWL",
+    "name": "GWALIOR JN",
+    "lost_min_per_day_arriving": 871.0,
+    "arrivals_observed": 2553,
+    "approaches": 17,
+    "worst_hour": "01:00-02:00",
+    "worst_hour_share_pct": 7.9,
+    "chronic": true,
+    "lever": "Junction congestion: review platform and route allocation and re-space arrivals around 01:00, the hour carrying 8% of the loss"
+   },
+   {
+    "station": "PRYJ",
+    "name": "Prayagraj",
+    "lost_min_per_day_arriving": 802.6,
+    "arrivals_observed": 3013,
+    "approaches": 30,
+    "worst_hour": "15:00-16:00",
+    "worst_hour_share_pct": 19.8,
+    "chronic": true,
+    "lever": "Junction congestion: review platform and route allocation and re-space arrivals around 15:00, the hour carrying 20% of the loss"
+   },
+   {
+    "station": "WL",
+    "name": "WARANGAL",
+    "lost_min_per_day_arriving": 792.3,
+    "arrivals_observed": 1608,
+    "approaches": 16,
+    "worst_hour": "13:00-14:00",
+    "worst_hour_share_pct": 10.3,
+    "chronic": true,
+    "lever": "Junction congestion: review platform and route allocation and re-space arrivals around 13:00, the hour carrying 10% of the loss"
+   },
+   {
+    "station": "TATA",
+    "name": "TATANAGAR JN",
+    "lost_min_per_day_arriving": 761.2,
+    "arrivals_observed": 1209,
+    "approaches": 19,
+    "worst_hour": "16:00-17:00",
+    "worst_hour_share_pct": 11.3,
+    "chronic": true,
+    "lever": "Junction congestion: review platform and route allocation and re-space arrivals around 16:00, the hour carrying 11% of the loss"
+   }
+  ],
+  "late_starts": [
+   {
+    "train": "03484",
+    "name": "Bgp Festval Special",
+    "zone": null,
+    "runs": 8,
+    "late_share_pct": 100.0,
+    "median_start_delay_min": 399.5,
+    "lever": "Start on time: rake link (is the incoming rake late?), pit-line / washing slot, crew booking"
+   },
+   {
+    "train": "05284",
+    "name": "Mfp Clone Special",
+    "zone": null,
+    "runs": 30,
+    "late_share_pct": 100.0,
+    "median_start_delay_min": 315.5,
+    "lever": "Start on time: rake link (is the incoming rake late?), pit-line / washing slot, crew booking"
+   },
+   {
+    "train": "02394",
+    "name": "Ndls-pnbe Clone Special",
+    "zone": null,
+    "runs": 26,
+    "late_share_pct": 100.0,
+    "median_start_delay_min": 239.0,
+    "lever": "Start on time: rake link (is the incoming rake late?), pit-line / washing slot, crew booking"
+   },
+   {
+    "train": "03240",
+    "name": "Rgd Mka Special",
+    "zone": null,
+    "runs": 27,
+    "late_share_pct": 100.0,
+    "median_start_delay_min": 141.0,
+    "lever": "Start on time: rake link (is the incoming rake late?), pit-line / washing slot, crew booking"
+   },
+   {
+    "train": "22898",
+    "name": "Kandari Express",
+    "zone": null,
+    "runs": 22,
+    "late_share_pct": 100.0,
+    "median_start_delay_min": 112.5,
+    "lever": "Start on time: rake link (is the incoming rake late?), pit-line / washing slot, crew booking"
+   },
+   {
+    "train": "12537",
+    "name": "Manduadih Express",
+    "zone": null,
+    "runs": 8,
+    "late_share_pct": 100.0,
+    "median_start_delay_min": 105.0,
+    "lever": "Start on time: rake link (is the incoming rake late?), pit-line / washing slot, crew booking"
+   },
+   {
+    "train": "04138",
+    "name": "Bju Gwl Special",
+    "zone": null,
+    "runs": 8,
+    "late_share_pct": 100.0,
+    "median_start_delay_min": 102.5,
+    "lever": "Start on time: rake link (is the incoming rake late?), pit-line / washing slot, crew booking"
+   },
+   {
+    "train": "01904",
+    "name": "Bki-idh Memu",
+    "zone": null,
+    "runs": 25,
+    "late_share_pct": 100.0,
+    "median_start_delay_min": 92.0,
+    "lever": "Start on time: rake link (is the incoming rake late?), pit-line / washing slot, crew booking"
+   },
+   {
+    "train": "15705",
+    "name": "Champaran Humsfr",
+    "zone": null,
+    "runs": 9,
+    "late_share_pct": 100.0,
+    "median_start_delay_min": 38.0,
+    "lever": "Start on time: rake link (is the incoming rake late?), pit-line / washing slot, crew booking"
+   },
+   {
+    "train": "52456",
+    "name": "Himalyan Queen",
+    "zone": null,
+    "runs": 18,
+    "late_share_pct": 100.0,
+    "median_start_delay_min": 25.0,
+    "lever": "Start on time: rake link (is the incoming rake late?), pit-line / washing slot, crew booking"
+   }
+  ],
+  "timetable": [
+   {
+    "train": "11802",
+    "section": "GTI-HPP",
+    "stop_seq": 31,
+    "runs": 28,
+    "median_loss_min": 90.0,
+    "loses_5_plus_min_pct_of_days": ">=75",
+    "recovery_elsewhere_min": 356.5,
+    "lever": "Re-time: the timetable here is not achievable; move 90 min of allowance from where the train always recovers"
+   },
+   {
+    "train": "13030",
+    "section": "DMRX-MKB",
+    "stop_seq": 4,
+    "runs": 13,
+    "median_loss_min": 90.0,
+    "loses_5_plus_min_pct_of_days": ">=75",
+    "recovery_elsewhere_min": 142.0,
+    "lever": "Re-time: the timetable here is not achievable; move 90 min of allowance from where the train always recovers"
+   },
+   {
+    "train": "09322",
+    "section": "FDB-MTJ",
+    "stop_seq": 12,
+    "runs": 12,
+    "median_loss_min": 89.5,
+    "loses_5_plus_min_pct_of_days": ">=75",
+    "recovery_elsewhere_min": 48.0,
+    "lever": "Re-time: the timetable here is not achievable; move 48 min of allowance from where the train always recovers"
+   },
+   {
+    "train": "17253",
+    "section": "KQQ-KXI",
+    "stop_seq": 35,
+    "runs": 26,
+    "median_loss_min": 89.5,
+    "loses_5_plus_min_pct_of_days": ">=75",
+    "recovery_elsewhere_min": 1073.5,
+    "lever": "Re-time: the timetable here is not achievable; move 90 min of allowance from where the train always recovers"
+   },
+   {
+    "train": "17253",
+    "section": "AJK-WPR",
+    "stop_seq": 32,
+    "runs": 26,
+    "median_loss_min": 89.5,
+    "loses_5_plus_min_pct_of_days": ">=75",
+    "recovery_elsewhere_min": 1073.5,
+    "lever": "Re-time: the timetable here is not achievable; move 90 min of allowance from where the train always recovers"
+   },
+   {
+    "train": "17202",
+    "section": "DKJ-GLA",
+    "stop_seq": 11,
+    "runs": 17,
+    "median_loss_min": 89.0,
+    "loses_5_plus_min_pct_of_days": ">=75",
+    "recovery_elsewhere_min": 207.0,
+    "lever": "Re-time: the timetable here is not achievable; move 89 min of allowance from where the train always recovers"
+   },
+   {
+    "train": "11447",
+    "section": "KLRE-MGME",
+    "stop_seq": 22,
+    "runs": 27,
+    "median_loss_min": 89.0,
+    "loses_5_plus_min_pct_of_days": ">=75",
+    "recovery_elsewhere_min": 231.0,
+    "lever": "Re-time: the timetable here is not achievable; move 89 min of allowance from where the train always recovers"
+   },
+   {
+    "train": "12218",
+    "section": "PNVL-RN",
+    "stop_seq": 9,
+    "runs": 8,
+    "median_loss_min": 88.5,
+    "loses_5_plus_min_pct_of_days": ">=75",
+    "recovery_elsewhere_min": 168.5,
+    "lever": "Re-time: the timetable here is not achievable; move 88 min of allowance from where the train always recovers"
+   },
+   {
+    "train": "17254",
+    "section": "IKI-PDNA",
+    "stop_seq": 55,
+    "runs": 24,
+    "median_loss_min": 88.5,
+    "loses_5_plus_min_pct_of_days": ">=75",
+    "recovery_elsewhere_min": 1020.5,
+    "lever": "Re-time: the timetable here is not achievable; move 88 min of allowance from where the train always recovers"
+   },
+   {
+    "train": "17253",
+    "section": "ARPL-SRNR",
+    "stop_seq": 30,
+    "runs": 26,
+    "median_loss_min": 87.0,
+    "loses_5_plus_min_pct_of_days": ">=75",
+    "recovery_elsewhere_min": 1073.5,
+    "lever": "Re-time: the timetable here is not achievable; move 87 min of allowance from where the train always recovers"
+   }
+  ],
+  "trains": [
+   {
+    "train": "09322",
+    "name": "Dadn  Summer Special",
+    "type": "Exp",
+    "runs": 8,
+    "on_time_pct": 12.5,
+    "median_arrival_delay_min": 625.5,
+    "median_start_delay_min": 115.0,
+    "worst_sections": [
+     {
+      "section": "FDB-MTJ",
+      "mean_loss_min": 96.2
+     },
+     {
+      "section": "NDLS-PNP",
+      "mean_loss_min": 67.2
+     },
+     {
+      "section": "AGC-MTJ",
+      "mean_loss_min": 43.9
+     }
+    ]
+   },
+   {
+    "train": "05220",
+    "name": "Anvt Mfp Sf Special",
+    "type": "SF",
+    "runs": 20,
+    "on_time_pct": 0.0,
+    "median_arrival_delay_min": 554.5,
+    "median_start_delay_min": 328.5,
+    "worst_sections": [
+     {
+      "section": "ANVT-GOY",
+      "mean_loss_min": 85.9
+     },
+     {
+      "section": "GOY-PRYJ",
+      "mean_loss_min": 63.7
+     },
+     {
+      "section": "DDU-PRYJ",
+      "mean_loss_min": 51.3
+     }
+    ]
+   },
+   {
+    "train": "05284",
+    "name": "Mfp Clone Special",
+    "type": "Exp",
+    "runs": 29,
+    "on_time_pct": 13.8,
+    "median_arrival_delay_min": 493.0,
+    "median_start_delay_min": 315.5,
+    "worst_sections": [
+     {
+      "section": "HRI-LKO",
+      "mean_loss_min": 157.0
+     },
+     {
+      "section": "ANVT-MB",
+      "mean_loss_min": 31.5
+     },
+     {
+      "section": "GD-LKO",
+      "mean_loss_min": 22.0
+     }
+    ]
+   },
+   {
+    "train": "01028",
+    "name": "Gkp Dr Special",
+    "type": "Exp",
+    "runs": 17,
+    "on_time_pct": 17.6,
+    "median_arrival_delay_min": 479.0,
+    "median_start_delay_min": 63.0,
+    "worst_sections": [
+     {
+      "section": "BSL-NK",
+      "mean_loss_min": 62.6
+     },
+     {
+      "section": "KYN-NK",
+      "mean_loss_min": 52.6
+     },
+     {
+      "section": "ET-HD",
+      "mean_loss_min": 28.0
+     }
+    ]
+   },
+   {
+    "train": "04031",
+    "name": "Shc Anvt Gr Special",
+    "type": "Exp",
+    "runs": 22,
+    "on_time_pct": 9.1,
+    "median_arrival_delay_min": 421.5,
+    "median_start_delay_min": 136.5,
+    "worst_sections": [
+     {
+      "section": "GGH-JJP",
+      "mean_loss_min": 92.0
+     },
+     {
+      "section": "CPJ-GKP",
+      "mean_loss_min": 54.4
+     },
+     {
+      "section": "BST-GKP",
+      "mean_loss_min": 41.2
+     }
+    ]
+   },
+   {
+    "train": "02563",
+    "name": "Bju Ndls Special",
+    "type": "Exp",
+    "runs": 29,
+    "on_time_pct": 13.8,
+    "median_arrival_delay_min": 411.0,
+    "median_start_delay_min": 2.5,
+    "worst_sections": [
+     {
+      "section": "ASH-BST",
+      "mean_loss_min": 87.1
+     },
+     {
+      "section": "BJU-MFP",
+      "mean_loss_min": 81.1
+     },
+     {
+      "section": "ASH-CNB",
+      "mean_loss_min": 41.2
+     }
+    ]
+   },
+   {
+    "train": "04021",
+    "name": "Smi Anvt  Special",
+    "type": "Exp",
+    "runs": 8,
+    "on_time_pct": 0.0,
+    "median_arrival_delay_min": 378.0,
+    "median_start_delay_min": 71.0,
+    "worst_sections": [
+     {
+      "section": "HJP-MFP",
+      "mean_loss_min": 75.0
+     },
+     {
+      "section": "LKO-RBL",
+      "mean_loss_min": 72.0
+     },
+     {
+      "section": "LKO-SPN",
+      "mean_loss_min": 54.6
+     }
+    ]
+   },
+   {
+    "train": "04652",
+    "name": "Asr Jyg Special",
+    "type": "Exp",
+    "runs": 12,
+    "on_time_pct": 8.3,
+    "median_arrival_delay_min": 344.5,
+    "median_start_delay_min": 12.0,
+    "worst_sections": [
+     {
+      "section": "LKO-MB",
+      "mean_loss_min": 83.2
+     },
+     {
+      "section": "DLI-UMB",
+      "mean_loss_min": 54.2
+     },
+     {
+      "section": "DLI-MB",
+      "mean_loss_min": 51.0
+     }
+    ]
+   },
+   {
+    "train": "18478",
+    "name": "Kalingautkal Express",
+    "type": "Exp",
+    "runs": 29,
+    "on_time_pct": 34.5,
+    "median_arrival_delay_min": 336.0,
+    "median_start_delay_min": 37.5,
+    "worst_sections": [
+     {
+      "section": "BSP-KGB",
+      "mean_loss_min": 67.3
+     },
+     {
+      "section": "SINI-TATA",
+      "mean_loss_min": 30.6
+     },
+     {
+      "section": "MOU-ROU",
+      "mean_loss_min": 21.6
+     }
+    ]
+   },
+   {
+    "train": "01027",
+    "name": "Dr Gkp Special",
+    "type": "Exp",
+    "runs": 16,
+    "on_time_pct": 25.0,
+    "median_arrival_delay_min": 332.5,
+    "median_start_delay_min": 2.5,
+    "worst_sections": [
+     {
+      "section": "KYN-NK",
+      "mean_loss_min": 46.3
+     },
+     {
+      "section": "BSL-NK",
+      "mean_loss_min": 39.2
+     },
+     {
+      "section": "DEOS-GKP",
+      "mean_loss_min": 20.0
+     }
+    ]
+   }
+  ]
+ }
+}

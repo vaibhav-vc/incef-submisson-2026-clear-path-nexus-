@@ -1,0 +1,156 @@
+{
+  "what": "Real-day validation as measured before shared track was checked (each train's sections compared only with the same stop-to-stop sections). Copied unchanged from the evidence committed at this revision.",
+  "source_revision": "023645260633c9d26aa769a818704ffd51e6a151",
+  "source_file": "india_rail_ai/seva2026/evidence/real_data/real_validation.json",
+  "produced_by": "python -m india_rail real validate (at the source revision)",
+  "conflicts": {
+    "twin_rule_without_real_track_data": {
+      "use_real_track_data": false,
+      "projection": "twin_rule",
+      "dates": [
+        "2024-09-22",
+        "2024-09-24",
+        "2024-09-26",
+        "2024-09-28"
+      ],
+      "snapshots_min": [
+        360,
+        540,
+        720,
+        900,
+        1080,
+        1260
+      ],
+      "horizon_min": 120.0,
+      "traversals_scored": 88638,
+      "flagged_gives_way": 1907,
+      "gives_way_lost_5_min_pct": 26.43,
+      "comparable_unflagged_lost_5_min_pct": 25.46,
+      "lift": 1.04,
+      "keeps_way_lost_5_min_pct": 22.76,
+      "losses_15_min_or_more_flagged_pct": 2.45,
+      "single_line": {
+        "flagged_gives_way": 839,
+        "gives_way_lost_5_min_pct": 23.96,
+        "comparable_unflagged_lost_5_min_pct": 22.18,
+        "lift": 1.08,
+        "keeps_way_lost_5_min_pct": 22.53,
+        "losses_15_min_or_more_flagged_pct": 2.11
+      },
+      "double_line": {
+        "flagged_gives_way": 1068,
+        "gives_way_lost_5_min_pct": 28.37,
+        "comparable_unflagged_lost_5_min_pct": 27.65,
+        "lift": 1.03,
+        "keeps_way_lost_5_min_pct": 22.95,
+        "losses_15_min_or_more_flagged_pct": 2.64
+      },
+      "seconds_per_national_snapshot": {
+        "median": 0.08,
+        "max": 0.2
+      }
+    },
+    "twin_rule_with_real_track_data": {
+      "use_real_track_data": true,
+      "projection": "twin_rule",
+      "dates": [
+        "2024-09-22",
+        "2024-09-24",
+        "2024-09-26",
+        "2024-09-28"
+      ],
+      "snapshots_min": [
+        360,
+        540,
+        720,
+        900,
+        1080,
+        1260
+      ],
+      "horizon_min": 120.0,
+      "traversals_scored": 88638,
+      "flagged_gives_way": 1461,
+      "gives_way_lost_5_min_pct": 27.24,
+      "comparable_unflagged_lost_5_min_pct": 25.45,
+      "lift": 1.07,
+      "keeps_way_lost_5_min_pct": 22.79,
+      "losses_15_min_or_more_flagged_pct": 2.05,
+      "single_line": {
+        "flagged_gives_way": 346,
+        "gives_way_lost_5_min_pct": 24.28,
+        "comparable_unflagged_lost_5_min_pct": 22.01,
+        "lift": 1.1,
+        "keeps_way_lost_5_min_pct": 22.31,
+        "losses_15_min_or_more_flagged_pct": 1.66
+      },
+      "double_line": {
+        "flagged_gives_way": 1115,
+        "gives_way_lost_5_min_pct": 28.16,
+        "comparable_unflagged_lost_5_min_pct": 26.34,
+        "lift": 1.07,
+        "keeps_way_lost_5_min_pct": 22.97,
+        "losses_15_min_or_more_flagged_pct": 2.13
+      },
+      "seconds_per_national_snapshot": {
+        "median": 0.08,
+        "max": 0.22
+      }
+    },
+    "learned_projection_with_real_track_data": {
+      "use_real_track_data": true,
+      "projection": "learned",
+      "dates": [
+        "2024-09-22",
+        "2024-09-24",
+        "2024-09-26",
+        "2024-09-28"
+      ],
+      "snapshots_min": [
+        360,
+        540,
+        720,
+        900,
+        1080,
+        1260
+      ],
+      "horizon_min": 120.0,
+      "traversals_scored": 87570,
+      "flagged_gives_way": 1603,
+      "gives_way_lost_5_min_pct": 29.88,
+      "comparable_unflagged_lost_5_min_pct": 23.9,
+      "lift": 1.25,
+      "keeps_way_lost_5_min_pct": 26.68,
+      "losses_15_min_or_more_flagged_pct": 2.56,
+      "single_line": {
+        "flagged_gives_way": 361,
+        "gives_way_lost_5_min_pct": 25.21,
+        "comparable_unflagged_lost_5_min_pct": 21.3,
+        "lift": 1.18,
+        "keeps_way_lost_5_min_pct": 22.16,
+        "losses_15_min_or_more_flagged_pct": 1.79
+      },
+      "double_line": {
+        "flagged_gives_way": 1242,
+        "gives_way_lost_5_min_pct": 31.24,
+        "comparable_unflagged_lost_5_min_pct": 24.53,
+        "lift": 1.27,
+        "keeps_way_lost_5_min_pct": 28.01,
+        "losses_15_min_or_more_flagged_pct": 2.73
+      },
+      "seconds_per_national_snapshot": {
+        "median": 6.45,
+        "max": 23.06
+      }
+    }
+  },
+  "live_feed_replay_batch_latency_ms": {
+    "twin_rule": {
+      "p50": 126.5,
+      "p95": 161.8
+    },
+    "learned_projection": {
+      "p50": 161.8,
+      "p95": 217.6
+    }
+  }
+}

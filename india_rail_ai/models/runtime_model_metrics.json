@@ -1,0 +1,80 @@
+{
+  "created_at_utc": "2026-10-07T19:44:54+00:00",
+  "target": "scheduled section run time (minutes) from the public timetable",
+  "rows_total": 388938,
+  "rows_used": 383192,
+  "rows_excluded_implausible_or_zero": 5746,
+  "trains": 5184,
+  "cv": "5-fold GroupKFold by train pair (every scored train unseen in training); section priors re-encoded inside each fold",
+  "scores": {
+    "gradient_boosting_existing_train": {
+      "mae_min": 1.387,
+      "median_ae_min": 1.0,
+      "mape_sections_10min_plus": 16.49,
+      "within_2_min_pct": 88.02
+    },
+    "gradient_boosting_new_path": {
+      "mae_min": 1.68,
+      "median_ae_min": 1.0,
+      "mape_sections_10min_plus": 21.28,
+      "within_2_min_pct": 83.74
+    },
+    "baseline_section_median": {
+      "mae_min": 1.953,
+      "median_ae_min": 1.0,
+      "mape_sections_10min_plus": 24.85,
+      "within_2_min_pct": 80.38
+    },
+    "baseline_type_speed": {
+      "mae_min": 2.574,
+      "median_ae_min": 1.345,
+      "mape_sections_10min_plus": 31.26,
+      "within_2_min_pct": 64.03
+    }
+  },
+  "score_notes": {
+    "existing_train": "Uses the train's other scheduled sections (leave-one-section-out pace and the pace on the two sections either side).",
+    "new_path": "Train pace and neighbouring-section context withheld, as for a path not yet timetabled."
+  },
+  "interval_p10_p90": {
+    "target_coverage_pct": 80.0,
+    "raw_quantile_coverage_pct": 78.43,
+    "conformal_coverage_pct": 79.99,
+    "conformal_mean_width_min": 3.855,
+    "deployed_margin_min": 0.032
+  },
+  "features": [
+    "train_type",
+    "zone",
+    "crow_km",
+    "dep_hour",
+    "position",
+    "is_first",
+    "is_last",
+    "train_distance_km",
+    "stops_per_100km",
+    "from_degree",
+    "to_degree",
+    "edge_train_count",
+    "edge_prior_min",
+    "edge_prior_min_per_km",
+    "edge_prior_n",
+    "type_speed_kmph",
+    "train_pace",
+    "pace_residual",
+    "edge_type_prior_min",
+    "edge_dir_prior_min",
+    "edge_q25_min",
+    "edge_q75_min",
+    "edge_min_min",
+    "local_pace",
+    "local_residual",
+    "prev_runtime_min",
+    "next_runtime_min"
+  ],
+  "limitations": [
+    "Learns planned (timetabled) run times, not observed running or delays.",
+    "Timetable snapshot is ~2016; track upgrades since then are not reflected.",
+    "Straight-line distance stands in for track distance where no track geometry is loaded."
+  ]
+}

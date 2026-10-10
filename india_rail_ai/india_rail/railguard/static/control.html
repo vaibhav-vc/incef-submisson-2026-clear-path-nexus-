@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Nexus Control</title>
+<link rel="stylesheet" href="/railguard/static/control.css">
+</head>
+<body>
+<header>
+  <div>
+    <h1>Nexus Control</h1>
+    <div class="sub">ClearPath Nexus controller decision support — shadow dispatch, advisory only</div>
+  </div>
+  <div class="grow"></div>
+  <span>Sim clock <b id="clock">00:00</b></span>
+  <span id="evidenceBadge" class="badge">evidence</span>
+  <span id="chainBadge" class="badge">audit</span>
+  <label class="muted">Controller <input id="controllerName" size="12" value="controller-1"></label>
+  <label class="muted">Token <input id="token" size="8" type="password" placeholder="optional"></label>
+</header>
+<main>
+  <div>
+    <section class="panel">
+      <h2>Digital twin — TwinTrack demo network</h2>
+      <svg id="map" viewBox="0 0 940 420" role="img" aria-label="Network schematic"></svg>
+      <div class="muted" id="legend">Line colour = TrackSense condition (green healthy, amber worn, red degraded). Double line = two tracks.
+        Dashed = top-ranked proposal; solid = controller-approved plan. Positions come from the simulated twin, not GNSS.</div>
+    </section>
+    <section class="panel">
+      <h2>Scenario &amp; simulation</h2>
+      <div class="row">
+        <select id="scenario"></select>
+        <button id="loadScenario">Load scenario</button>
+        <span class="muted">|</span>
+        <button data-tick="30">+30 s</button>
+        <button data-tick="60">+1 min</button>
+        <button data-tick="300">+5 min</button>
+        <button id="play">▶ Auto</button>
+      </div>
+      <div class="row">
+        <span class="muted">Inject:</span>
+        <button data-fault="freeze_feed" data-train="A">Freeze A feed</button>
+        <button data-fault="unfreeze_feed" data-train="A">Restore A feed</button>
+        <button data-fault="obstacle" data-section="S05">Obstacle S05</button>
+        <button data-fault="clear_obstacle" data-section="S05">Clear S05</button>
+        <button data-condition="S02:0.3">Degrade S02</button>
+        <button data-condition="S02:0.9">Restore S02</button>
+        <button data-weather="S06:HEAT">Heat alert S06</button>
+        <button data-weather="S06:CLEAR">Clear S06</button>
+      </div>
+      <div class="err" id="simError"></div>
+    </section>
+    <section class="panel">
+      <h2>Threats</h2>
+      <table><thead><tr><th>ID</th><th>Type</th><th>Severity</th><th>Trains</th><th>Controller recommendation</th><th>State</th><th></th></tr></thead>
+        <tbody id="threats"></tbody></table>
+    </section>
+  </div>
+  <div>
+    <section class="panel">
+      <h2>Recommendation</h2>
+      <div class="row" id="presets"></div>
+      <div id="sliders"></div>
+      <div class="row">
+        <button class="primary" id="recommend">Rank alternatives</button>
+        <button class="danger" id="holdAll">HOLD all</button>
+        <button id="reject">Reject</button>
+        <button id="replay">Replay snapshot</button>
+      </div>
+      <div class="row"><span id="recState" class="badge">no recommendation</span><span class="muted" id="recReason"></span></div>
+      <div class="muted" id="snapshot"></div>
+      <div class="err" id="recError"></div>
+      <div id="candidates"></div>
+    </section>
+    <section class="panel">
+      <h2>EvidenceGate — mandatory evidence</h2>
+      <table><thead><tr><th>Evidence</th><th>State</th><th>Source</th><th>Age</th></tr></thead><tbody id="evidence"></tbody></table>
+    </section>
+    <section class="panel">
+      <h2>Audit trail (hash-chained)</h2>
+      <table><thead><tr><th>#</th><th>t</th><th>Event</th><th>By</th><th>Hash</th></tr></thead><tbody id="audit"></tbody></table>
+    </section>
+  </div>
+</main>
+<footer>APPROVE FOR DEMO approves a simulated advisory plan. It is not movement authority. Kavach/ATP, signalling,
+  interlocking and authorised operating rules remain controlling. Cab screens: <a href="/cab?train=A" class="link-a">Train A</a> ·
+  <a href="/cab?train=B" class="link-b">Train B</a> · <a href="/control/national" class="link-a">National network</a></footer>
+<script src="/railguard/static/control.js"></script>
+</body>
+</html>

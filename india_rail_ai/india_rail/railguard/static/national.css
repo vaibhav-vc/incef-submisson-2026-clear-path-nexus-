@@ -1,0 +1,10 @@
+canvas { width: 100%; height: auto; background: #0b1015; border-radius: 6px; cursor: grab; touch-action: none; }
+.banner { margin: 10px 16px 0; padding: 8px 12px; border-radius: 6px; background: #10283f; color: #9ecbff; font-size: 13px; }
+.runitem { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin: 6px 0; cursor: pointer; }
+.runitem.sel { border-color: var(--info); background: #10283f; }
+#station { max-width: 180px; }
+.scroll { max-height: 320px; overflow: auto; }
+.scroll.short { max-height: 180px; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: #1b2530; }
+[hidden] { display: none !important; }

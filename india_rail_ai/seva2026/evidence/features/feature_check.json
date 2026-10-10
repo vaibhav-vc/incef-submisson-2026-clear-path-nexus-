@@ -1,0 +1,921 @@
+{
+ "what": "Exercise every feature: every API route, every command, and (with --ui) every page in Chromium.",
+ "generated_at": "2026-10-09T08:27:50",
+ "api": {
+  "routes": 85,
+  "routes_exercised": 85,
+  "routes_not_exercised": [],
+  "calls": 94,
+  "calls_ok": 94,
+  "failures": [],
+  "protected_routes_refuse_without_credentials": "74/74",
+  "not_refused": [],
+  "inputs_discovered_from_data": {
+   "open_train": "12452",
+   "origin": "NDLS",
+   "call_at": "CMR",
+   "destination": "CNB",
+   "national_train": "00114",
+   "national_query": "MIRZA-NGSM JPP-RCS SPL"
+  },
+  "calls_detail": [
+   {
+    "route": "GET /health",
+    "what": "liveness and readiness",
+    "status": 200,
+    "ok": true,
+    "ms": 93.1
+   },
+   {
+    "route": "GET /health/live",
+    "what": "liveness and readiness",
+    "status": 200,
+    "ok": true,
+    "ms": 4.4
+   },
+   {
+    "route": "GET /health/ready",
+    "what": "liveness and readiness",
+    "status": 503,
+    "ok": true,
+    "ms": 3.9
+   },
+   {
+    "route": "GET /openapi.json",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 86.6
+   },
+   {
+    "route": "GET /docs",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 3.1
+   },
+   {
+    "route": "GET /docs/oauth2-redirect",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 2.0
+   },
+   {
+    "route": "GET /metrics",
+    "what": "Prometheus metrics",
+    "status": 200,
+    "ok": true,
+    "ms": 5.0
+   },
+   {
+    "route": "GET /control",
+    "what": "page served",
+    "status": 200,
+    "ok": true,
+    "ms": 9.3
+   },
+   {
+    "route": "GET /control/national",
+    "what": "page served",
+    "status": 200,
+    "ok": true,
+    "ms": 4.6
+   },
+   {
+    "route": "GET /cab",
+    "what": "page served",
+    "status": 200,
+    "ok": true,
+    "ms": 4.2
+   },
+   {
+    "route": "GET /railguard/static/national.js",
+    "what": "static assets",
+    "status": 200,
+    "ok": true,
+    "ms": 4.9
+   },
+   {
+    "route": "POST /auth/login",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 129.2
+   },
+   {
+    "route": "GET /auth/me",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.6
+   },
+   {
+    "route": "GET /auth/users",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 6.1
+   },
+   {
+    "route": "POST /auth/users",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 143.5
+   },
+   {
+    "route": "POST /auth/users/{username}/{action}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 7.6
+   },
+   {
+    "route": "POST /auth/login",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 122.4
+   },
+   {
+    "route": "POST /auth/password",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 249.9
+   },
+   {
+    "route": "POST /auth/login",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 121.7
+   },
+   {
+    "route": "GET /summary",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 683.0
+   },
+   {
+    "route": "GET /sections/busiest",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 535.1
+   },
+   {
+    "route": "GET /stations/{code}/board",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 7.0
+   },
+   {
+    "route": "GET /trains/{number}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.1
+   },
+   {
+    "route": "GET /trains/search",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 6.3
+   },
+   {
+    "route": "GET /trains/{number}/working-schedule",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 488.3
+   },
+   {
+    "route": "GET /trains/{number}/slack",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 7904.3
+   },
+   {
+    "route": "GET /stations/search",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 6.5
+   },
+   {
+    "route": "GET /between",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 10.5
+   },
+   {
+    "route": "GET /path",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 486.5
+   },
+   {
+    "route": "POST /plan/disruption",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 1208.0
+   },
+   {
+    "route": "POST /assistant/ask",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 14.5
+   },
+   {
+    "route": "GET /railguard/national/summary",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 11150.5
+   },
+   {
+    "route": "GET /railguard/national/network",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 15.7
+   },
+   {
+    "route": "GET /railguard/national/positions",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 128.7
+   },
+   {
+    "route": "GET /railguard/national/operators",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 12.4
+   },
+   {
+    "route": "GET /railguard/national/trains",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 6.4
+   },
+   {
+    "route": "GET /railguard/national/trains/{number}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 7.9
+   },
+   {
+    "route": "GET /railguard/national/trains/{number}/route",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 9.0
+   },
+   {
+    "route": "GET /railguard/national/runs/{number}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 4.1
+   },
+   {
+    "route": "GET /railguard/national/stations/{code}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 4.5
+   },
+   {
+    "route": "GET /railguard/national/plan/{run}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 3.9
+   },
+   {
+    "route": "GET /railguard/national/eta/{run}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 20.8
+   },
+   {
+    "route": "GET /railguard/national/cab/{run}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.4
+   },
+   {
+    "route": "POST /railguard/national/disrupt",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.4
+   },
+   {
+    "route": "POST /railguard/national/recommend",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 7.4
+   },
+   {
+    "route": "POST /railguard/national/approve",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 7.2
+   },
+   {
+    "route": "GET /railguard/national/audit/{snapshot_id}/replay",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 15.0
+   },
+   {
+    "route": "POST /railguard/national/tick",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 6.1
+   },
+   {
+    "route": "GET /railguard/national/plan/{run}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 4.7
+   },
+   {
+    "route": "POST /railguard/national/section",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.4
+   },
+   {
+    "route": "GET /railguard/national/summary",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 10.4
+   },
+   {
+    "route": "POST /railguard/national/threats/{threat_id}/ack",
+    "what": "",
+    "status": 404,
+    "ok": true,
+    "ms": 4.4
+   },
+   {
+    "route": "GET /railguard/national/stream",
+    "what": "console live push",
+    "status": 200,
+    "ok": true,
+    "ms": 55.0
+   },
+   {
+    "route": "POST /railguard/national/cab/{run}/token",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 6.3
+   },
+   {
+    "route": "GET /railguard/national/cab/{run}/live",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.5
+   },
+   {
+    "route": "GET /railguard/national/cab/{run}/stream",
+    "what": "cab live push",
+    "status": 200,
+    "ok": true,
+    "ms": 7.3
+   },
+   {
+    "route": "POST /railguard/national/cab/{run}/revoke",
+    "what": "revoke the cab link",
+    "status": 200,
+    "ok": true,
+    "ms": 5.5
+   },
+   {
+    "route": "GET /railguard/national/cab/{run}/live",
+    "what": "a revoked cab link is refused",
+    "status": 403,
+    "ok": true,
+    "ms": 4.1
+   },
+   {
+    "route": "POST /railguard/national/feed/batch",
+    "what": "signed feed batch",
+    "status": 200,
+    "ok": true,
+    "ms": 4.7
+   },
+   {
+    "route": "POST /railguard/national/feed/position",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 4.8
+   },
+   {
+    "route": "POST /railguard/national/shadow/actual",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 8.7
+   },
+   {
+    "route": "POST /railguard/national/shadow/import",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.7
+   },
+   {
+    "route": "GET /railguard/national/shadow/report",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 4.9
+   },
+   {
+    "route": "GET /railguard/national/advisor",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 9.4
+   },
+   {
+    "route": "GET /railguard/national/advisor/{kind}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 4.4
+   },
+   {
+    "route": "GET /railguard/national/advisor/train/{number}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 4.1
+   },
+   {
+    "route": "GET /railguard/freight/corridors",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 7.9
+   },
+   {
+    "route": "POST /railguard/freight/plan",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 6.5
+   },
+   {
+    "route": "POST /railguard/national/reset",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 11.9
+   },
+   {
+    "route": "GET /railguard/state",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.8
+   },
+   {
+    "route": "GET /railguard/scenarios",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 3.7
+   },
+   {
+    "route": "POST /railguard/scenarios/{name}/load",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 6.7
+   },
+   {
+    "route": "POST /railguard/tick",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.9
+   },
+   {
+    "route": "POST /railguard/twintrack/position",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.1
+   },
+   {
+    "route": "GET /railguard/state",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.0
+   },
+   {
+    "route": "POST /railguard/tracksense/section",
+    "what": "",
+    "status": 404,
+    "ok": true,
+    "ms": 4.4
+   },
+   {
+    "route": "POST /railguard/console/section",
+    "what": "",
+    "status": 404,
+    "ok": true,
+    "ms": 5.7
+   },
+   {
+    "route": "POST /railguard/twintrack/obstacle",
+    "what": "",
+    "status": 404,
+    "ok": true,
+    "ms": 4.4
+   },
+   {
+    "route": "POST /railguard/fault",
+    "what": "refused with the missing field named",
+    "status": 422,
+    "ok": true,
+    "ms": 4.5
+   },
+   {
+    "route": "GET /railguard/state",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 4.5
+   },
+   {
+    "route": "POST /railguard/fault",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.8
+   },
+   {
+    "route": "POST /railguard/recommend",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 21.0
+   },
+   {
+    "route": "POST /railguard/approve",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.3
+   },
+   {
+    "route": "POST /railguard/reject",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 4.7
+   },
+   {
+    "route": "POST /railguard/hold",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.4
+   },
+   {
+    "route": "GET /railguard/state",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.0
+   },
+   {
+    "route": "POST /railguard/threats/{threat_id}/ack",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.1
+   },
+   {
+    "route": "GET /railguard/cab/{train_id}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 4.4
+   },
+   {
+    "route": "GET /railguard/cab/{train_id}/compact",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.0
+   },
+   {
+    "route": "GET /railguard/audit",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 4.1
+   },
+   {
+    "route": "GET /railguard/audit/{snapshot_id}",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 5.0
+   },
+   {
+    "route": "GET /railguard/audit/{snapshot_id}/replay",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 16.6
+   },
+   {
+    "route": "POST /railguard/scenarios/{name}/run",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 30.8
+   },
+   {
+    "route": "POST /auth/logout",
+    "what": "",
+    "status": 200,
+    "ok": true,
+    "ms": 8.8
+   }
+  ]
+ },
+ "commands": {
+  "commands": 34,
+  "ok": 34,
+  "failures": [],
+  "detail": [
+   {
+    "command": "ingest --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "train --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "setup --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "summary --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "plan --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "slack --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "ask --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "official --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "schedules --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "real --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "current --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "gnss --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "accounts --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "loadtest --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "advisor --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "gnss-verify --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "freight --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "shadow-report --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "feed-conformance --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "register --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "audit-pack --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "serve --help",
+    "ok": true,
+    "tail": null
+   },
+   {
+    "command": "summary",
+    "ok": true,
+    "seconds": 1.5,
+    "tail": null
+   },
+   {
+    "command": "slack 12452",
+    "ok": true,
+    "seconds": 9.2,
+    "tail": null
+   },
+   {
+    "command": "plan 12452 CMR 30",
+    "ok": true,
+    "seconds": 10.4,
+    "tail": null
+   },
+   {
+    "command": "plan 12452 NOT-A-STATION 30",
+    "ok": true,
+    "seconds": 9.0,
+    "tail": null
+   },
+   {
+    "command": "ask --provider offline trains between NDLS and CNB",
+    "ok": true,
+    "seconds": 1.4,
+    "tail": null
+   },
+   {
+    "command": "feed-conformance producer --file <tmp> --source NTES --key-file <tmp>",
+    "ok": true,
+    "seconds": 0.1,
+    "tail": null
+   },
+   {
+    "command": "register template --out-dir <tmp>",
+    "ok": true,
+    "seconds": 0.1,
+    "tail": null
+   },
+   {
+    "command": "register validate --dir <tmp>",
+    "ok": true,
+    "seconds": 4.2,
+    "tail": null
+   },
+   {
+    "command": "shadow-report --audit-dir <tmp>",
+    "ok": true,
+    "seconds": 0.1,
+    "tail": null
+   },
+   {
+    "command": "audit-pack --out <tmp>",
+    "ok": true,
+    "seconds": 0.3,
+    "tail": null
+   },
+   {
+    "command": "accounts list",
+    "ok": true,
+    "seconds": 0.1,
+    "tail": null
+   },
+   {
+    "command": "gnss-verify --rounds 1 --out <tmp>",
+    "ok": true,
+    "seconds": 5.9,
+    "tail": null
+   }
+  ]
+ },
+ "pages": {
+  "pages_checked": 3,
+  "ok": 2,
+  "detail": {
+   "national_console": {
+    "ok": true,
+    "live_push": true,
+    "trains_found": 1,
+    "stops": 3,
+    "pin_codes": 3,
+    "advisor_rows": 15,
+    "freight": "80/80 trains pathed \u00b7 mean wait 8.8 min \u00b7 65% on their free path \u00b7 0 conflicts in the independent check \u00b7 busiest segmen",
+    "cab_link_carries_capability_in_fragment": true,
+    "cab_first_advisory_s": 0.499,
+    "cab_address_bar_keeps_token": false,
+    "cab_push_after_decision_s": 0.107,
+    "cab_status_after_delay": "HOLD-FOR-CONTROLLER",
+    "recommendation_state": "PLANNING_ONLY",
+    "candidates_shown": 2,
+    "forged_link_refused": true,
+    "revoked_link_clears_cab": true,
+    "problems": []
+   },
+   "silent_link.cab": {
+    "ok": true,
+    "shown": {
+     "status": "NORMAL",
+     "band": "99\u2013110 km/h",
+     "hash": ""
+    },
+    "blanked_after_s": 24.941,
+    "band_after": "--",
+    "stale_guidance_left": [],
+    "problems": []
+   },
+   "tabletop_console": {
+    "ok": false,
+    "refused_before_token_shown": false,
+    "scenarios": 6,
+    "recommendation_state": "REVIEWABLE",
+    "candidates_shown": 9,
+    "audit_entries": 2,
+    "problems": [
+     "console: Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    ]
+   }
+  }
+ },
+ "seconds": 142,
+ "result": "FAIL"
+}

@@ -1,0 +1,35 @@
+{
+  "consoles": 50,
+  "cab_streams": 500,
+  "seconds": 90.0,
+  "first_event_ms": {
+    "p50": 1420.5,
+    "p95": 1457.5,
+    "n": 550
+  },
+  "push_latency_ms": {
+    "p50": 351.8,
+    "p95": 1310.9,
+    "p99": 1310.9,
+    "max": 1310.9,
+    "n": 9
+  },
+  "feed_batch_ms": {
+    "p50": 158.6,
+    "p95": 753.1,
+    "batches": 69,
+    "fixes_per_batch": 250
+  },
+  "controller_actions_by_status": {
+    "200": 15,
+    "409": 1
+  },
+  "streams_refused": 0,
+  "streams_dropped": 0,
+  "timetable_trains": 8569,
+  "running_trains": 2537,
+  "measured_on": "2026-10-08T06:41:10",
+  "service_date": "2026-10-08",
+  "cpus": 4,
+  "server": "separate process, one uvicorn worker"
+}

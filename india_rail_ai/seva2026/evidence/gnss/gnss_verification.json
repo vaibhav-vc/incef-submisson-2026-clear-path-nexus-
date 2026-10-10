@@ -1,0 +1,48 @@
+{
+  "what": "Verify GNSS tracking on the real network: every running train, real mapped track, simulated receivers.",
+  "data": {
+    "timetable_trains": 8569,
+    "rounds_minutes": 10,
+    "start": "10:00",
+    "sections_with_mapped_track": 14228,
+    "sections": 15951
+  },
+  "genuine_fixes": {
+    "sent": 21851,
+    "accepted": 21777,
+    "on_mapped_track": 19800,
+    "refused": {
+      "off track once: refused quietly (multipath), no alarm": 66,
+      "off route: route-deviation alarm": 4,
+      "implausible": 4
+    },
+    "accepted_pct": 99.661,
+    "on_mapped_track_pct": 90.9
+  },
+  "attacks": {
+    "off_track_500m": {
+      "sent": 327,
+      "refused": 295,
+      "refused_pct": 90.21
+    },
+    "jump_15km_in_60s": {
+      "sent": 269,
+      "refused": 269,
+      "refused_pct": 100.0
+    },
+    "teleport": {
+      "sent": 317,
+      "refused": 317,
+      "refused_pct": 100.0
+    }
+  },
+  "throughput": {
+    "events": 22764,
+    "seconds": 8.15,
+    "events_per_second": 2792
+  },
+  "labels": [
+    "Receivers simulated (no live GNSS access); network, timetable and track geometry are real.",
+    "Accuracy model: HDOP x 5 m UERE; field trials with RTIS/cab units must re-measure it."
+  ]
+}

@@ -1,0 +1,274 @@
+"""Load test of the live service on the real network: streams, feed and one-to-one push latency.
+
+    python -m india_rail loadtest [--consoles 50] [--cabs 500] [--boards 200] [--seconds 60]
+
+Starts the real service (uvicorn, one worker, the national twin on the current timetable) on a local port and,
+at the same time:
+* `consoles` control screens hold the network stream;
+* `cabs` cab units each hold their own train's stream with their own run-scoped token;
+* a feed posts signed position batches (250 fixes, the gateway's maximum) every second;
+* every 5 s a controller records a disruption on a train whose cab is listening, and the time until that cab's
+  stream shows the change is measured - the one-to-one push latency;
+* `boards` station screens each fetch their station's board every BOARD_POLL_S (six times as often as the
+  board page does, so 200 here stand for 1,200 real screens), and a passenger's train view now and then.
+Reported: time to first event, push latency p50/p95/p99, feed batch latency, board and train-view latency,
+refused or dropped streams, failed requests.
+On one machine the clients compete with the server for CPU, so the figures are conservative.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import os
+import socket
+import tempfile
+import time
+from datetime import date, datetime
+from pathlib import Path
+from typing import Any
+
+EVIDENCE = Path(__file__).resolve().parents[2] / "seva2026" / "evidence" / "live" / "loadtest.json"
+FEED_SECRET = bytes(range(32))
+# What the test server may inherit from the shell (nothing that names a secret, a folder or a mode)
+PASS_THROUGH = {"PATH", "HOME", "LANG", "TZ", "PYTHONPATH", "VIRTUAL_ENV", "RAILGUARD_TIMETABLE", "SSL_CERT_FILE"}
+PRODUCTION_VARS = ("RAILGUARD_AUDIT_KEY", "RAILGUARD_CHECKPOINT_KEY", "RAILGUARD_CAB_KEY", "RAILGUARD_STATE_DIR",
+                   "RAILGUARD_AUDIT_DIR", "RAILGUARD_REQUIRE_ACCOUNTS", "RAILGUARD_ACCOUNTS_DB")  # fmt: skip
+BOARD_POLL_S = 5.0
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _pct(values: list[float], q: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    return round(ordered[min(int(q * len(ordered)), len(ordered) - 1)], 1)
+
+
+def _busiest_stations(twin: Any, n: int) -> list[str]:
+    """The `n` stations with the most timetabled calls (the screens that matter most)."""
+
+    calls: dict[str, int] = {}
+    for r in twin.runs.values():
+        for code in (*r.frm, r.to[-1]):
+            calls[code] = calls.get(code, 0) + 1
+    return sorted(calls, key=lambda c: (-calls[c], c))[:n]
+
+
+async def _run(base: str, twin: Any, consoles: int, cabs: int, seconds: float, boards: int = 0) -> dict[str, Any]:
+    import httpx
+
+    from india_rail.railguard.livefeed import FeedSimulator
+
+    running = [k for k in twin.running() if twin.position(k)["state"] == "RUNNING"][:cabs]
+    first_event: list[float] = []
+    push_ms: list[float] = []
+    feed_ms: list[float] = []
+    dropped = refused = 0
+    changes: dict[str, tuple[float, float]] = {}  # run -> (when the controller acted, deviation before it)
+    started = time.perf_counter()
+    stop = started + seconds
+    board_ms: list[float] = []
+    train_ms: list[float] = []
+    failed: dict[str, int] = {}
+    stations = _busiest_stations(twin, boards)
+    limits = httpx.Limits(max_connections=consoles + cabs + boards + 20,
+                          max_keepalive_connections=consoles + cabs + boards + 20)  # fmt: skip
+
+    actions: dict[str, int] = {}
+    async with httpx.AsyncClient(base_url=base, timeout=httpx.Timeout(30.0, read=None), limits=limits) as http:
+        tokens = {}
+        for k in running:  # each cab unit's capability, issued by a controller
+            issued = await http.post(f"/railguard/national/cab/{k}/token", json={"hours": 1, "issued_by": "load test"})
+            tokens[k] = issued.json()["token"]
+
+        async def listen(path: str, run: str | None) -> None:
+            nonlocal dropped, refused
+            opened = time.perf_counter()
+            got_first = False
+            headers = {"Authorization": f"Bearer {tokens[run]}"} if run else {}  # a cab link, never in the URL
+            try:
+                async with http.stream("GET", path, headers=headers) as response:
+                    async for line in response.aiter_lines():
+                        if line.startswith("event: refused"):
+                            refused += 1
+                            return
+                        if line.startswith("data: "):
+                            now = time.perf_counter()
+                            if not got_first:
+                                first_event.append((now - opened) * 1000)
+                                got_first = True
+                            elif run in changes:
+                                acted, before = changes[run]
+                                # The change has arrived (recovery downstream may absorb part of the 7 min).
+                                if json.loads(line[6:])["schedule_deviation_min"] > before + 0.5:
+                                    push_ms.append((now - changes.pop(run)[0]) * 1000)
+                        if time.perf_counter() > stop:
+                            return
+            except (httpx.HTTPError, OSError):
+                dropped += 1
+
+        async def feeder() -> None:
+            sim = FeedSimulator(twin.gateway, "LOAD", "k1", FEED_SECRET, seed=1)
+            keys = twin.running()
+            k = 0
+            while time.perf_counter() < stop:
+                batch = []
+                while len(batch) < 250 and keys:
+                    event = sim.position_event(keys[k % len(keys)])
+                    k += 1
+                    if event:
+                        batch.append(event)
+                t0 = time.perf_counter()
+                await http.post("/railguard/national/feed/batch", json=sim.envelope(batch))
+                feed_ms.append((time.perf_counter() - t0) * 1000)
+                await asyncio.sleep(1.0)
+
+        async def controller() -> None:
+            k = 0
+            await asyncio.sleep(3.0)
+            while time.perf_counter() < stop - 3 and running:
+                run = running[(k * 7) % len(running)]
+                k += 1
+                plan = twin.plan_of(run)
+                i = min(twin.position(run)["index"] + 1, len(plan.sections) - 1)
+                live_view = (await http.get(f"/railguard/national/cab/{run}/live",
+                                            headers={"Authorization": f"Bearer {tokens[run]}"})).json()  # fmt: skip
+                changes[run] = (time.perf_counter(), live_view["schedule_deviation_min"])
+                body = {"run": run, "station": plan.frm[i], "delay_min": 7}
+                answer = await http.post("/railguard/national/disrupt", json=body)
+                actions[str(answer.status_code)] = actions.get(str(answer.status_code), 0) + 1
+                if answer.status_code != 200:
+                    changes.pop(run, None)
+                await asyncio.sleep(5.0)
+
+        async def board(n: int, code: str) -> None:
+            await asyncio.sleep((n % 50) * BOARD_POLL_S / 50)  # screens are not in step
+            while time.perf_counter() < stop:
+                t0 = time.perf_counter()
+                answer = await http.get(f"/railguard/national/board/{code}")
+                board_ms.append((time.perf_counter() - t0) * 1000)
+                if answer.status_code != 200:
+                    failed[f"board {answer.status_code}"] = failed.get(f"board {answer.status_code}", 0) + 1
+                elif n % 4 == 0 and answer.json()["trains"]:  # a passenger opens one train from the board
+                    run = answer.json()["trains"][0]["run"]
+                    t0 = time.perf_counter()
+                    view = await http.get(f"/railguard/national/expected/{run}")
+                    train_ms.append((time.perf_counter() - t0) * 1000)
+                    if view.status_code != 200:
+                        failed[f"train {view.status_code}"] = failed.get(f"train {view.status_code}", 0) + 1
+                await asyncio.sleep(BOARD_POLL_S)
+
+        async def bounded(path: str, run: str | None) -> None:
+            try:
+                await asyncio.wait_for(listen(path, run), timeout=max(stop - time.perf_counter(), 1) + 5)
+            except TimeoutError:
+                pass  # the test is over; the stream itself was healthy
+
+        tasks = [bounded("/railguard/national/stream", None) for _ in range(consoles)]
+        tasks += [bounded(f"/railguard/national/cab/{r}/stream", r) for r in running]
+        tasks += [board(n, code) for n, code in enumerate(stations)]
+        await asyncio.gather(*tasks, feeder(), controller())
+    return {
+        "consoles": consoles,
+        "cab_streams": len(running),
+        "seconds": seconds,
+        "first_event_ms": {"p50": _pct(first_event, 0.5), "p95": _pct(first_event, 0.95), "n": len(first_event)},
+        "push_latency_ms": {
+            "p50": _pct(push_ms, 0.5),
+            "p95": _pct(push_ms, 0.95),
+            "p99": _pct(push_ms, 0.99),
+            "max": round(max(push_ms), 1) if push_ms else None,
+            "n": len(push_ms),
+        },  # fmt: skip
+        "feed_batch_ms": {
+            "p50": _pct(feed_ms, 0.5),
+            "p95": _pct(feed_ms, 0.95),
+            "batches": len(feed_ms),
+            "fixes_per_batch": 250,
+        },  # fmt: skip
+        "station_boards": {
+            "screens": len(stations),
+            "poll_s": BOARD_POLL_S,
+            "board_ms": {
+                "p50": _pct(board_ms, 0.5),
+                "p95": _pct(board_ms, 0.95),
+                "p99": _pct(board_ms, 0.99),
+                "n": len(board_ms),
+            },
+            "train_view_ms": {"p50": _pct(train_ms, 0.5), "p95": _pct(train_ms, 0.95), "n": len(train_ms)},
+        },  # fmt: skip
+        "failed_requests": failed,
+        "controller_actions_by_status": actions,
+        "streams_refused": refused,
+        "streams_dropped": dropped,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    import subprocess  # nosec B404 - starts this project's own service for the test, fixed arguments
+    import sys
+    import urllib.request
+
+    parser = argparse.ArgumentParser(prog="python -m india_rail loadtest", description=__doc__.split("\n\n")[0])
+    parser.add_argument("--consoles", type=int, default=50)
+    parser.add_argument("--cabs", type=int, default=500)
+    parser.add_argument("--boards", type=int, default=200)
+    parser.add_argument("--seconds", type=float, default=60)
+    parser.add_argument("--out", type=Path, default=EVIDENCE)
+    args = parser.parse_args(argv)
+
+    # The test server runs with demo security (it measures the service, not the token checks), so it must never
+    # see a production secret or folder: refuse in a production shell, and pass on only an allow-list.
+    production_vars = [k for k in PRODUCTION_VARS if os.environ.get(k)]
+    if os.environ.get("RAILGUARD_MODE", "").lower() == "production" or production_vars:
+        print("refusing to run: production settings in this shell (" + ", ".join(production_vars or ["RAILGUARD_MODE"])
+              + "). Run the load test from a clean shell on a test machine.", file=sys.stderr)  # fmt: skip
+        return 2
+    port = _free_port()
+    scratch = Path(tempfile.mkdtemp(prefix="railguard-loadtest-"))
+    env = {k: v for k, v in os.environ.items() if k in PASS_THROUGH or k.startswith("LC_")}
+    env.update({"RAILGUARD_FEED_KEYS": f"LOAD:k1:{FEED_SECRET.hex()}", "RAILGUARD_OPS": "1",
+                # every client is 127.0.0.1 here; in service each cab unit has its own address
+                "RAILGUARD_RATE_LIMIT": "off", "RAILGUARD_LOG_JSON": "0",
+                "RAILGUARD_AUDIT_DIR": str(scratch / "audit")})  # its own audit folder; no checkpoints  # fmt: skip
+    # The service in its own process, as deployed (one uvicorn worker): clients do not share its interpreter.
+    command = [sys.executable, "-m", "uvicorn", "india_rail.api:app", "--host", "127.0.0.1", "--port", str(port),
+               "--no-access-log", "--log-level", "warning"]  # fmt: skip
+    server = subprocess.Popen(command, env=env)  # nosec B603 - no shell, fixed command, integer port
+    try:
+        from india_rail.railguard.livefeed import FeedGateway
+        from india_rail.railguard.national import NationalTwin
+
+        twin = NationalTwin()  # the client's own copy, to choose trains and make realistic fixes
+        twin.gateway = FeedGateway(twin, {("LOAD", "k1"): FEED_SECRET})
+        deadline = time.time() + 300
+        while time.time() < deadline:
+            try:
+                ready = f"http://127.0.0.1:{port}/health/ready"  # loopback, fixed scheme
+                if urllib.request.urlopen(ready, timeout=2).status == 200:  # nosec B310
+                    break
+            except OSError:
+                time.sleep(1)
+        result = asyncio.run(_run(f"http://127.0.0.1:{port}", twin, args.consoles, args.cabs, args.seconds,
+                                  args.boards))  # fmt: skip
+    finally:
+        server.terminate()
+        server.wait(timeout=30)
+    result.update(timetable_trains=len({k.split("@")[0] for k in twin.runs}), running_trains=len(twin.running()),
+                  measured_on=datetime.now().isoformat(timespec="seconds"), service_date=str(date.today()),
+                  cpus=os.cpu_count(), server="separate process, one uvicorn worker")  # fmt: skip
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(result, indent=2) + "\n")
+    print(json.dumps(result, indent=2))
+    return 0 if not result["streams_dropped"] and not result["failed_requests"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

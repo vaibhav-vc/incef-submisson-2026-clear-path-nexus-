@@ -28,6 +28,28 @@ jobs:
       - run: python -m unittest discover -s submission/tests -v
         working-directory: .
 
+  india-rail-ai:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: india_rail_ai
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: india_rail_ai/requirements.txt
+      - run: python -m pip install -r requirements.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      # Offline tests on a hand-made network; the real dataset is not downloaded in CI.
+      - run: python -m pytest -q
+      # Static analysis of the service code, and known vulnerabilities in what it runs on (both must be clean)
+      - run: python -m pip install bandit==1.9.4 pip-audit==2.10.1
+      - run: bandit -q -r india_rail
+      - run: pip-audit -r requirements.txt --progress-spinner off
+
   deployment:
     runs-on: ubuntu-latest
     timeout-minutes: 15

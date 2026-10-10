@@ -1,5 +1,7 @@
 # EvidenceGate v7 | Railway evidence assurance research | INSEF 2026-27
 
+> **New direction (October 2026): [India Rail AI](india_rail_ai/README.md)** — planning automation for Indian Railways traffic control on the open national timetable (9k stations, 5.2k trains): a gradient-boosted run-time model, a disruption re-planner that proposes holds for controllers, and a free assistant (offline or a local open-source model). Everything runs at zero cost. The EvidenceGate material below is the earlier research track.
+
 EvidenceGate is a student engineering prototype that tests whether an externally supplied railway/logistics recommendation has sufficiently authoritative, current, context-matched, complete, consistent, and traceable evidence to be reviewed. It produces a tamper-evident reconstruction bundle; it does not control trains or certify the truth of external records.
 
 > **Research boundary.** This repository is not signalling, electronic interlocking, Kavach/ATP, movement authority, driver speed instruction, operational dispatch, regulatory compliance, or a replacement for FOIS/COA/RTIS/CTC. Its long-term adoption path is modular and partner-led: demonstrate one non-vital assurance workflow, integrate through authorized connectors, measure benefit, and then complete the applicable railway engineering, security, safety, and procurement assurance before replacing any existing workflow.

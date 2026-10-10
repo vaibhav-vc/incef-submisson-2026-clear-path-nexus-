@@ -1,0 +1,44 @@
+# Production deployment of Nexus RailGuard (advisory decision support; no interface to signalling).
+#   cp railguard.env.example railguard.env   # fill the secrets: never commit railguard.env
+#   docker compose -f docker-compose.railguard.yml up -d --build
+# Put a TLS-terminating reverse proxy in front (the repository's Caddyfile does this); the service itself
+# listens on the private network only.
+services:
+  railguard:
+    build: .
+    image: railguard:local
+    env_file: railguard.env
+    environment:
+      RAILGUARD_MODE: production
+      RAILGUARD_STATE_DIR: /state
+      RAILGUARD_AUDIT_DIR: /audit
+    volumes:
+      - railguard-data:/app/data          # built at the site: python -m india_rail current build / real build ...
+      - railguard-models:/app/models      # trained at the site: python -m india_rail real validate
+      - railguard-state:/state            # signed checkpoints: share with the hot standby
+      - railguard-audit:/audit            # append-only audit chain: back it up off-site
+    ports:
+      - "127.0.0.1:8100:8100"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 6g
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/health/ready', timeout=4).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 180s
+      retries: 3
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # NUT daemon on the host: RAILGUARD_UPS=<ups>@host.docker.internal
+
+volumes:
+  railguard-data:
+  railguard-models:
+  railguard-state:
+  railguard-audit:

@@ -1,0 +1,246 @@
+{
+  "started_utc": "2026-10-07T19:15:38+00:00",
+  "protocol": "(so repeated training cannot flatter the score):\n1. 15% of train groups (a train and its return working) are locked away as a\n   final test set before any round runs. No round ever sees them.\n2. Each round changes one thing (features, post-processing, hyper-parameters,\n   blending) and is scored with 3-fold GroupKFold on the remaining 85%. A change\n   is kept only if mean absolute error improves by at least KEEP_MIN_GAIN.\n3. Training stops when a full pass of candidate changes no longer improves.\n4. The winning configuration is scored once on the locked test set, next to the\n   section-median baseline. That number is the one to quote.",
+  "rows_dev": 325082,
+  "rows_locked_test": 58110,
+  "trains_locked_test": 767,
+  "rounds": [
+    {
+      "round": 0,
+      "change": "baseline (current production configuration)",
+      "kept": true,
+      "cv": {
+        "mae_min": 1.869,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 23.62,
+        "within_2_min_pct": 75.95
+      },
+      "seconds": 30.6
+    },
+    {
+      "round": 1,
+      "change": "round predictions to whole minutes (timetables are minute-resolution)",
+      "kept": true,
+      "cv": {
+        "mae_min": 1.857,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 23.59,
+        "within_2_min_pct": 81.71
+      },
+      "seconds": 28.7
+    },
+    {
+      "round": 2,
+      "change": "type- and direction-specific section priors, run-time spread on the section",
+      "kept": true,
+      "cv": {
+        "mae_min": 1.707,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 21.54,
+        "within_2_min_pct": 83.6
+      },
+      "seconds": 37.7
+    },
+    {
+      "round": 3,
+      "change": "local pace from the two sections either side (existing trains)",
+      "kept": true,
+      "cv": {
+        "mae_min": 1.46,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 17.42,
+        "within_2_min_pct": 87.38
+      },
+      "seconds": 46.2
+    },
+    {
+      "round": 4,
+      "change": "start from the type-specific section prior",
+      "kept": true,
+      "cv": {
+        "mae_min": 1.452,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 17.44,
+        "within_2_min_pct": 87.32
+      },
+      "seconds": 41.1
+    },
+    {
+      "round": 5,
+      "change": "more trees, slower learning",
+      "kept": false,
+      "cv": {
+        "mae_min": 1.448,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 17.37,
+        "within_2_min_pct": 87.4
+      },
+      "seconds": 59.5
+    },
+    {
+      "round": 6,
+      "change": "larger trees",
+      "kept": true,
+      "cv": {
+        "mae_min": 1.42,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 17.09,
+        "within_2_min_pct": 87.71
+      },
+      "seconds": 60.5
+    },
+    {
+      "round": 7,
+      "change": "smaller leaves, more regularisation",
+      "kept": false,
+      "cv": {
+        "mae_min": 1.425,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 17.19,
+        "within_2_min_pct": 87.68
+      },
+      "seconds": 57.4
+    },
+    {
+      "round": 8,
+      "change": "blend toward well-supported section medians (k=20)",
+      "kept": false,
+      "cv": {
+        "mae_min": 1.734,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 21.49,
+        "within_2_min_pct": 84.28
+      },
+      "seconds": 60.0
+    },
+    {
+      "round": 9,
+      "change": "blend toward well-supported section medians (k=60)",
+      "kept": false,
+      "cv": {
+        "mae_min": 1.568,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 19.38,
+        "within_2_min_pct": 86.44
+      },
+      "seconds": 59.5
+    },
+    {
+      "round": 10,
+      "change": "more trees, slower learning",
+      "kept": true,
+      "cv": {
+        "mae_min": 1.415,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 17.04,
+        "within_2_min_pct": 87.79
+      },
+      "seconds": 76.1
+    },
+    {
+      "round": 11,
+      "change": "smaller leaves, more regularisation",
+      "kept": false,
+      "cv": {
+        "mae_min": 1.419,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 17.07,
+        "within_2_min_pct": 87.73
+      },
+      "seconds": 71.4
+    },
+    {
+      "round": 12,
+      "change": "blend toward well-supported section medians (k=20)",
+      "kept": false,
+      "cv": {
+        "mae_min": 1.732,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 21.46,
+        "within_2_min_pct": 84.28
+      },
+      "seconds": 74.3
+    },
+    {
+      "round": 13,
+      "change": "blend toward well-supported section medians (k=60)",
+      "kept": false,
+      "cv": {
+        "mae_min": 1.566,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 19.33,
+        "within_2_min_pct": 86.46
+      },
+      "seconds": 75.4
+    },
+    {
+      "round": 14,
+      "change": "smaller leaves, more regularisation",
+      "kept": false,
+      "cv": {
+        "mae_min": 1.419,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 17.07,
+        "within_2_min_pct": 87.73
+      },
+      "seconds": 71.3
+    },
+    {
+      "round": 15,
+      "change": "blend toward well-supported section medians (k=20)",
+      "kept": false,
+      "cv": {
+        "mae_min": 1.732,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 21.46,
+        "within_2_min_pct": 84.28
+      },
+      "seconds": 75.7
+    },
+    {
+      "round": 16,
+      "change": "blend toward well-supported section medians (k=60)",
+      "kept": false,
+      "cv": {
+        "mae_min": 1.566,
+        "median_ae_min": 1.0,
+        "mape_sections_10min_plus": 19.33,
+        "within_2_min_pct": 86.46
+      },
+      "seconds": 75.9
+    }
+  ],
+  "final_config": {
+    "edge_extra": true,
+    "context": true,
+    "params": {
+      "max_leaf_nodes": 127,
+      "min_samples_leaf": 30,
+      "learning_rate": 0.05,
+      "max_iter": 700
+    },
+    "round": true,
+    "type_base": true
+  },
+  "locked_test": {
+    "model": {
+      "mae_min": 1.378,
+      "median_ae_min": 1.0,
+      "mape_sections_10min_plus": 15.96,
+      "within_2_min_pct": 88.08
+    },
+    "baseline_section_median": {
+      "mae_min": 1.957,
+      "median_ae_min": 1.0,
+      "mape_sections_10min_plus": 24.4,
+      "within_2_min_pct": 80.06
+    },
+    "baseline_type_speed": {
+      "mae_min": 2.611,
+      "median_ae_min": 1.388,
+      "mape_sections_10min_plus": 30.67,
+      "within_2_min_pct": 63.28
+    }
+  },
+  "finished_utc": "2026-10-07T19:32:50+00:00"
+}

@@ -1,0 +1,11 @@
+data
+models
+tests
+scripts
+seva2026
+hardware
+**/__pycache__
+.pytest_cache
+.ruff_cache
+*.sqlite
+*.joblib

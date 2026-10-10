@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Station Board</title>
+<link rel="stylesheet" href="/railguard/static/board.css">
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1 id="title">Station board</h1>
+    <div class="sub" id="subtitle">Expected times · अपेक्षित समय</div>
+  </div>
+  <div class="right">
+    <form id="pick" class="pick" autocomplete="off">
+      <label for="station" class="sr">Station code</label>
+      <input id="station" name="station" maxlength="8" placeholder="Station code" pattern="[A-Za-z0-9]{1,8}">
+      <button type="submit">Show</button>
+    </form>
+    <div class="fresh" id="fresh" role="status"></div>
+  </div>
+</header>
+<main>
+  <div class="banner" id="banner" hidden></div>
+  <table id="board">
+    <thead id="head"></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p class="empty" id="empty" hidden></p>
+  <p class="more" id="more" hidden></p>
+</main>
+<footer id="footer">Expected times for information. Official announcements: NTES / station announcements.</footer>
+<script src="/railguard/static/board.js"></script>
+</body>
+</html>

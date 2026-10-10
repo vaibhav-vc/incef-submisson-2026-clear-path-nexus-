@@ -1,0 +1,90 @@
+{
+  "Eastern": {
+    "plans": 200,
+    "trains": 36144,
+    "violations": 0,
+    "not_planned": 63,
+    "blocked_cases": 67,
+    "published_daily_volume": 209,
+    "day_at_published_volume": {
+      "corridor": "Eastern",
+      "trains": 209,
+      "planned": 209,
+      "not_planned": [],
+      "mean_delay_min": 295.3,
+      "max_delay_min": 1697.0,
+      "on_free_path_pct": 24.4,
+      "deliveries": {
+        "with_promised_time": 0,
+        "on_time": 0,
+        "on_time_pct": null,
+        "late": [],
+        "mean_late_min_of_late": 0.0,
+        "order": "priority, then least slack to the promised time"
+      },
+      "violations": [],
+      "capacity": {
+        "busiest_segment": {
+          "segment": 29,
+          "lines": 1,
+          "km": 25.0,
+          "trains": 117,
+          "occupied_pct_of_day": 120.2
+        },
+        "segments_over_70pct": 9
+      }
+    },
+    "deliveries": {
+      "days": 20,
+      "promised_deliveries": 4180,
+      "on_time_pct_least_slack_first": 53.6,
+      "on_time_pct_by_ready_time": 51.2,
+      "violations": 0,
+      "promises": "test promises: free running time plus 0-3 h slack (train-level FOIS promises are not public)"
+    }
+  },
+  "Western": {
+    "plans": 200,
+    "trains": 30894,
+    "violations": 0,
+    "not_planned": 0,
+    "blocked_cases": 67,
+    "published_daily_volume": 182,
+    "day_at_published_volume": {
+      "corridor": "Western",
+      "trains": 182,
+      "planned": 182,
+      "not_planned": [],
+      "mean_delay_min": 14.1,
+      "max_delay_min": 155.0,
+      "on_free_path_pct": 63.2,
+      "deliveries": {
+        "with_promised_time": 0,
+        "on_time": 0,
+        "on_time_pct": null,
+        "late": [],
+        "mean_late_min_of_late": 0.0,
+        "order": "priority, then least slack to the promised time"
+      },
+      "violations": [],
+      "capacity": {
+        "busiest_segment": {
+          "segment": 29,
+          "lines": 2,
+          "km": 25.0,
+          "trains": 111,
+          "occupied_pct_of_day": 60.6
+        },
+        "segments_over_70pct": 0
+      }
+    },
+    "deliveries": {
+      "days": 20,
+      "promised_deliveries": 3640,
+      "on_time_pct_least_slack_first": 95.4,
+      "on_time_pct_by_ready_time": 94.3,
+      "violations": 0,
+      "promises": "test promises: free running time plus 0-3 h slack (train-level FOIS promises are not public)"
+    }
+  }
+}
