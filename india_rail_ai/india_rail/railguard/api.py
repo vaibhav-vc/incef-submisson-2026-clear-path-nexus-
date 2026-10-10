@@ -929,6 +929,20 @@ def national_feed_batch(envelope: Annotated[dict[str, Any], Body()]) -> dict[str
         raise HTTPException(status_code=401, detail=f"Feed batch refused: {exc}") from exc
 
 
+@router.get("/national/feed/status", dependencies=VIEW)
+def national_feed_status() -> dict[str, Any]:
+    """Which live sources are feeding the twin: official or not, events by outcome, seconds since the last batch."""
+
+    try:
+        gateway = _gateway()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail="Live feed keys misconfigured") from exc
+    with gateway.twin.lock:
+        sources = gateway.status()
+    note = "Unofficial sources may place trains; plans relying on them are never approvable as live."
+    return {"sources": sources, "note": note}
+
+
 @router.post("/national/feed/position", dependencies=FEED)
 def national_feed(request: NationalFeed) -> dict[str, Any]:
     return _run(national().ingest_position, request.run, request.section_id, request.offset_km)

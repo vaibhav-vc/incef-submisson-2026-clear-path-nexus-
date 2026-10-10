@@ -216,6 +216,7 @@ def api_checks(feed_secret: bytes) -> dict[str, Any]:
     c("GET", "/railguard/national/eta/{run}", fill={"run": run["run"]}, expect=(200, 503))
     c("GET", "/railguard/national/expected/{run}", fill={"run": run["run"]}, what="published expected times")
     c("GET", "/railguard/national/board/{code}", fill={"code": station}, what="station board")
+    c("GET", "/railguard/national/feed/status", what="live sources: official or not, outcomes, age")
     found.update(board_station=station, board_run=run["run"])
     c("GET", "/railguard/national/cab/{run}", fill={"run": run["run"]})
     c(

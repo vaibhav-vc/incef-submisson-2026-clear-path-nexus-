@@ -602,6 +602,11 @@ class Operations:
         fixes = getattr(self.gateway, "fix_outcomes", None)
         if fixes:
             labelled["gnss_fixes"] = {k: float(v) for k, v in fixes.items()}  # since start: a field trial's tally
+        sources = getattr(self.gateway, "status", None)
+        if sources is not None and (status := sources()):
+            labelled["feed_events"] = {f"{s['source']}:{k}": float(s[k]) for s in status
+                                       for k in ("accepted", "timing_only", "refused")}  # fmt: skip
+            labelled["feed_last_batch_age_seconds"] = {s["source"]: s["last_batch_age_s"] for s in status}
         return gauges, labelled
 
 

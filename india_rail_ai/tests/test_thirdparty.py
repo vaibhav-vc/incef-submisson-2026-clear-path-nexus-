@@ -192,3 +192,26 @@ def test_without_a_key_the_poller_explains_where_to_get_one(monkeypatch, capsys)
     monkeypatch.delenv("RAILGUARD_RAILRADAR_KEY", raising=False)
     assert thirdparty.main(["poll", "--provider", "railradar", "--trains", "12951", "--once"]) == 2
     assert "RAILGUARD_RAILRADAR_KEY is not set" in capsys.readouterr().err
+
+
+def test_each_source_is_reported_with_its_outcomes_and_age(built, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from india_rail import api
+    from india_rail.railguard import api as rg
+    from india_rail.railguard import ops
+
+    twin, poller = _poll(built, "10:54")
+    gateway = poller.post.__self__
+    (status,) = gateway.status()
+    assert status["source"] == "RAILENGINE" and status["unofficial"] and status["accepted"] == 1
+    monkeypatch.setattr(ops.OPS, "gateway", gateway)
+    _, labelled = ops.OPS.gauges()
+    assert labelled["feed_events"]["RAILENGINE:accepted"] == 1
+    assert "RAILENGINE" in labelled["feed_last_batch_age_seconds"]
+    monkeypatch.setenv("RAILGUARD_VIEWER_TOKEN", "v" * 40)
+    monkeypatch.setattr(rg, "_gateway", lambda: gateway)
+    http = TestClient(api.app)
+    assert http.get("/railguard/national/feed/status").status_code in (401, 403)
+    body = http.get("/railguard/national/feed/status", headers={"Authorization": "Bearer " + "v" * 40}).json()
+    assert body["sources"][0]["source"] == "RAILENGINE" and "never approvable as live" in body["note"]

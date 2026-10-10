@@ -116,6 +116,20 @@ async function health() {
   } catch (_) { b.textContent = "service unreachable"; b.className = "badge s-CRITICAL"; }
 }
 
+// Which live sources feed the twin, how recently, and whether they are official (an unofficial running-status
+// service may place trains but never makes a plan approvable as live)
+async function sources() {
+  const b = document.getElementById("sourcesBadge");
+  try {
+    const s = (await api("/feed/status")).sources;
+    if (!s.length) { b.textContent = "no live feed: timetable projections"; b.className = "badge s-INFO"; return; }
+    b.textContent = s.map(x => `${x.source}${x.unofficial ? " (unofficial)" : ""} ${Math.round(x.last_batch_age_s)}s`).join(" · ");
+    const officialFresh = s.some(x => !x.unofficial && x.last_batch_age_s < 120);
+    const anyFresh = s.some(x => x.last_batch_age_s < 120);
+    b.className = `badge s-${officialFresh ? "OK" : anyFresh ? "CAUTION" : "WARNING"}`;
+  } catch (_) { b.textContent = "sources unknown"; b.className = "badge s-INFO"; }
+}
+
 // ---- every train: number, name, operator, PIN codes, route on mapped track -------------------------------
 async function searchTrains() {
   const q = document.getElementById("tq").value.trim(), op = document.getElementById("top").value;
@@ -258,6 +272,7 @@ async function startPlus() {
   document.getElementById("token").addEventListener("change", () => loadPanels());
   await loadPanels();
   health(); setInterval(health, 10000);
+  sources(); setInterval(sources, 15000);
   liveLoop();
 }
 startPlus();

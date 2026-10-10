@@ -128,6 +128,10 @@ class FeedGateway:
         # What became of every position fix (exported as railguard_gnss_fixes{type=...}): a field trial of cab
         # units is measured on these - the share accepted, and why the others were refused.
         self.fix_outcomes: Counter[str] = Counter()
+        # Per source: events by outcome and when its last batch arrived (railguard_feed_* on /metrics and the
+        # console's source line): a feed that has gone quiet is seen before positions turn stale.
+        self.source_events: Counter[str] = Counter()  # "SOURCE:accepted|timing_only|refused" -> events
+        self.last_batch: dict[str, float] = {}  # source -> clock time of its last authenticated batch
 
     # ---- envelope ----------------------------------------------------------------------------------
     def receive(self, envelope: dict[str, Any]) -> dict[str, Any]:
@@ -178,6 +182,10 @@ class FeedGateway:
                     results.append(self._event(source, event))
             finally:  # whatever happens to an event, the batch is re-evaluated and recorded
                 accepted = sum(1 for r in results if r["accepted"])
+                self.last_batch[source] = self.clock()
+                for r in results:
+                    outcome = "timing_only" if r.get("timing_only") else "accepted" if r["accepted"] else "refused"
+                    self.source_events[f"{source}:{outcome}"] += 1
                 twin.refresh()  # threats re-evaluated once per batch, after every event is in
                 twin.audit.record(
                     int(twin.now * 60),
@@ -194,6 +202,18 @@ class FeedGateway:
                 )
         return {"source": source, "sequence": sequence, "accepted": accepted, "rejected": len(events) - accepted,
                 "results": results}  # fmt: skip
+
+    def status(self) -> list[dict[str, Any]]:
+        """Every source heard from since start: official or not, events by outcome, seconds since its last batch."""
+
+        from india_rail.railguard.thirdparty import unofficial_sources
+
+        now, out = self.clock(), []
+        for source in sorted(self.last_batch):
+            counts = {k: self.source_events[f"{source}:{k}"] for k in ("accepted", "timing_only", "refused")}
+            out.append({"source": source, "unofficial": source in unofficial_sources(),
+                        "last_batch_age_s": round(now - self.last_batch[source], 1), **counts})  # fmt: skip
+        return out
 
     # ---- events --------------------------------------------------------------------------------------
     def _event(self, source: str, event: Any) -> dict[str, Any]:
