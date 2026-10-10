@@ -280,6 +280,9 @@ class Checkpointer:
 
 def restore(twin: Any, gateway: Any | None, state: dict[str, Any]) -> None:
     with twin.lock:
+        # The twin resumes at the checkpoint's clock, never behind it (a restored position would look minutes in
+        # the future and its age negative)
+        twin.now = max(twin.now, float(state.get("now", twin.now)))
         twin.restore(state["dynamic"])
         if state.get("cab_revocations"):
             from india_rail.railguard import live
@@ -462,13 +465,40 @@ class Operations:
                 self.checkpoint(f"power {after.lower()}")
 
     def _apply_power_alert(self) -> None:
+        """Show the power state on every console - re-evaluating the twin only when the alert changes (a refresh
+        bumps the twin's version, which supersedes a recommendation awaiting approval)."""
+
         twin = self.twin
         with twin.lock:
-            twin.system_alerts = {k: v for k, v in twin.system_alerts.items() if not k.startswith("POWER_")}
+            others = {k: v for k, v in twin.system_alerts.items() if not k.startswith("POWER_")}
             alert = POWER_ALERTS.get(self.power.level)
+            wanted = {**others, **({alert[0]: {"severity": alert[1], "detail": alert[2]}} if alert else {})}
+            current = {k: {"severity": v["severity"], "detail": v["detail"]} if k.startswith("POWER_") else v
+                       for k, v in twin.system_alerts.items()}  # fmt: skip
+            if current == wanted:
+                return
+            twin.system_alerts = others
             if alert:
                 twin.system_alerts[alert[0]] = {"severity": alert[1], "detail": alert[2], "power": self.power.to_dict()}
             twin.refresh(settled=True)  # a measured power state, not a missed report
+
+    def follow_wall_clock(self) -> None:
+        """In live operation (RAILGUARD_LIVE_CLOCK=1) the twin's clock follows Indian Standard Time even when no
+        feed batch arrives: positions then age and turn stale, and a silent feed is noticed, instead of the twin
+        standing still at the last report."""
+
+        twin = self.twin
+        if twin is None or os.environ.get("RAILGUARD_LIVE_CLOCK") != "1":
+            return
+        from datetime import date, datetime
+
+        from india_rail.railguard.livefeed import IST
+
+        day0 = datetime.combine(date.fromisoformat(twin.data.stats["service_date"]), datetime.min.time(), IST)
+        wall = (datetime.now(IST) - day0).total_seconds() / 60
+        with twin.lock:
+            if wall > twin.now + 0.25:
+                twin.tick(wall - twin.now)
 
     def check_clock(self, measure=sntp_offset) -> None:
         """Measure the clock against every configured NTP server; raise CLOCK_DRIFT if it is off.
@@ -539,6 +569,7 @@ class Operations:
         last_checkpoint, last_clock = time.time(), 0.0
         while not self.stop.wait(POLL_S):
             self.poll_power()
+            self.follow_wall_clock()
             if time.time() - last_clock >= NTP_POLL_S:
                 self.check_clock()
                 last_clock = time.time()
@@ -595,9 +626,10 @@ class Operations:
             gauges["clock_offset_seconds"] = self.clock_offset_s
         threats: dict[str, float] = defaultdict(float)
         if self.twin is not None:
-            gauges["twin_minute"] = self.twin.now
-            for t in self.twin.threats.active():
-                threats[t.type] += 1
+            with self.twin.lock:  # never read the registry mid-update
+                gauges["twin_minute"] = self.twin.now
+                for t in self.twin.threats.active():
+                    threats[t.type] += 1
         labelled = {"threats_active": dict(threats)}
         fixes = getattr(self.gateway, "fix_outcomes", None)
         if fixes:

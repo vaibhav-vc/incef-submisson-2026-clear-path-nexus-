@@ -245,3 +245,40 @@ def test_a_drifting_clock_warns_every_console_and_fails_readiness(monkeypatch, d
     sup.check_clock(measure=unreachable)  # reported, but a last good reading keeps the service in
     ready = sup.readiness()
     assert ready["checks"]["clock"] is True and any("timed out" in n for n in ready["notes"])
+
+
+def test_a_routine_power_poll_does_not_supersede_a_recommendation(supervisor):
+    twin = supervisor.twin
+    supervisor.poll_power()
+    twin.disrupt("12001@0", "C", 6)
+    rec = twin.recommend("12001@0")
+    version = twin.version
+    for _ in range(3):
+        supervisor.poll_power()  # nothing changed: no re-evaluation, the ranking stays approvable
+    assert twin.version == version
+    twin.approve(rec["snapshot_id"], rec["ranking"]["candidates"][0]["candidate_id"], "controller")
+    UPS["ups.status"] = "OB DISCHRG"
+    supervisor.poll_power()
+    assert twin.version > version  # a real change still reaches every console
+
+
+def test_in_live_operation_the_twin_clock_follows_the_wall_clock_without_a_feed(supervisor, monkeypatch):
+    twin = supervisor.twin
+    monkeypatch.setitem(twin.data.stats, "service_date", datetime.now(IST).date().isoformat())
+    supervisor.follow_wall_clock()
+    assert twin.now == 615.0  # off unless RAILGUARD_LIVE_CLOCK=1
+    monkeypatch.setenv("RAILGUARD_LIVE_CLOCK", "1")
+    twin.now = 0.0
+    supervisor.follow_wall_clock()
+    wall = (datetime.now(IST) - datetime.combine(datetime.now(IST).date(), datetime.min.time(), IST)).total_seconds()
+    assert abs(twin.now - wall / 60) < 1.0
+
+
+def test_a_restore_never_moves_the_twin_clock_back(supervisor, data):  # noqa: F811
+    twin = supervisor.twin
+    twin.tick(90)  # 11:45
+    supervisor.checkpoint("test")
+    fresh = NationalTwin(data, start_min=480.0)
+    restarted = ops.reset()
+    restarted.attach(fresh, None)
+    assert fresh.now == twin.now

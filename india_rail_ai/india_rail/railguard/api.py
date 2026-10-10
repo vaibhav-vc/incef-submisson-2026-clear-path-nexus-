@@ -27,6 +27,7 @@ from india_rail.security import StrictRequest, limit, production, require
 STATIC = Path(__file__).parent / "static"
 VIEW = [Depends(require("viewer")), Depends(limit("read"))]
 VIEW_HEAVY = [Depends(require("viewer")), Depends(limit("heavy"))]
+BOARD = [Depends(require("board")), Depends(limit("board"))]  # station displays: boards and expected times only
 
 
 def _writable() -> None:
@@ -739,7 +740,7 @@ def _publisher():
         return twin.publisher
 
 
-@router.get("/national/expected/{run}", dependencies=VIEW)
+@router.get("/national/expected/{run}", dependencies=BOARD)
 def national_expected(run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
     """Expected arrival and departure at every stop of a run, as published to passengers and customers: later
     times at once, earlier ones once they hold, never leaving early, honest about old reports (publish.py)."""
@@ -747,7 +748,7 @@ def national_expected(run: str = PathParam(pattern=RUN)) -> dict[str, Any]:
     return _run(_publisher().expected, run)
 
 
-@router.get("/national/board/{code}", dependencies=VIEW)
+@router.get("/national/board/{code}", dependencies=BOARD)
 def national_board(
     code: str = PathParam(pattern=CODE),
     window: Annotated[int, Query(ge=30, le=360)] = 180,

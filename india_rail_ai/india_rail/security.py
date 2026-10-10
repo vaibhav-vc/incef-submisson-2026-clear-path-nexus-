@@ -4,6 +4,7 @@ Roles (least privilege):
   viewer      read state, timetable, cab advisories          RAILGUARD_VIEWER_TOKEN
   controller  everything a viewer can, plus decisions        RAILGUARD_CONTROLLER_TOKEN
   feed        report observations only (TwinTrack/TrackSense) RAILGUARD_FEED_TOKEN
+  board       station displays: boards and expected times only RAILGUARD_BOARD_TOKEN (optional; else viewer)
 
 RAILGUARD_MODE=production makes every role token mandatory (32+ characters);
 until they are configured the service refuses all requests (fails closed).
@@ -32,6 +33,9 @@ ROLE_ENV = {
     "controller": "RAILGUARD_CONTROLLER_TOKEN",
     "feed": "RAILGUARD_FEED_TOKEN",
 }
+# A public station screen holds only this: it reads boards and expected times, nothing of the control room. Optional:
+# without it, boards need a viewer token (and in demo mode are open while the viewer role is).
+BOARD_ENV = "RAILGUARD_BOARD_TOKEN"
 MIN_TOKEN_LENGTH = 32
 MAX_BODY_BYTES = 64 * 1024
 CSP = (
@@ -72,6 +76,11 @@ def configuration_problems() -> list[str]:
         if len(token) < MIN_TOKEN_LENGTH:
             problems.append(f"{env} must be set to at least {MIN_TOKEN_LENGTH} characters ({role} role)")
     tokens = [os.environ.get(env, "") for env in ROLE_ENV.values()]
+    board = os.environ.get(BOARD_ENV, "")
+    if board:
+        if len(board) < MIN_TOKEN_LENGTH:
+            problems.append(f"{BOARD_ENV} must be at least {MIN_TOKEN_LENGTH} characters when set (board role)")
+        tokens.append(board)
     if len(set(tokens)) != len(tokens):
         problems.append("role tokens must all differ")
     if not os.environ.get("RAILGUARD_ALLOWED_HOSTS"):
@@ -98,7 +107,7 @@ def _matches(env: str, supplied: list[str]) -> bool:
     return bool(expected) and any(hmac.compare_digest(expected.encode(), s.encode()) for s in supplied)
 
 
-RANK = {"viewer": 0, "controller": 1, "admin": 2}
+RANK = {"board": -1, "viewer": 0, "controller": 1, "admin": 2}
 
 
 def _session_user(supplied: list[str]) -> dict | None:
@@ -128,6 +137,13 @@ def authorised(request: Request, role: str) -> bool:
         shared = not accounts.required() and (_open(role) or _matches(ROLE_ENV[role], supplied))
     elif role == "feed":
         return _open(role) or _matches(ROLE_ENV[role], supplied)
+    elif role == "board":  # a station display, or anyone who may read more
+        shared = (
+            (_open("viewer") and not os.environ.get(BOARD_ENV))
+            or _matches(BOARD_ENV, supplied)
+            or _matches(ROLE_ENV["viewer"], supplied)
+            or _matches(ROLE_ENV["controller"], supplied)
+        )
     else:
         shared = False
     user = _session_user(supplied) if supplied else None
@@ -180,7 +196,8 @@ class RateLimiter:
 
 
 LIMITER = RateLimiter()
-LIMITS = {"read": (20.0, 60.0), "write": (5.0, 20.0), "heavy": (1.0, 5.0)}  # (per second, burst)
+# (per second, burst); a station screen polls every 30 s, so "board" is generous for screens and tight for floods
+LIMITS = {"read": (20.0, 60.0), "write": (5.0, 20.0), "heavy": (1.0, 5.0), "board": (2.0, 10.0)}
 
 
 def limit(bucket: str) -> Callable[[Request], None]:

@@ -23,6 +23,7 @@ import asyncio
 import json
 import os
 import socket
+import tempfile
 import time
 from datetime import date, datetime
 from pathlib import Path
@@ -30,6 +31,10 @@ from typing import Any
 
 EVIDENCE = Path(__file__).resolve().parents[2] / "seva2026" / "evidence" / "live" / "loadtest.json"
 FEED_SECRET = bytes(range(32))
+# What the test server may inherit from the shell (nothing that names a secret, a folder or a mode)
+PASS_THROUGH = {"PATH", "HOME", "LANG", "TZ", "PYTHONPATH", "VIRTUAL_ENV", "RAILGUARD_TIMETABLE", "SSL_CERT_FILE"}
+PRODUCTION_VARS = ("RAILGUARD_AUDIT_KEY", "RAILGUARD_CHECKPOINT_KEY", "RAILGUARD_CAB_KEY", "RAILGUARD_STATE_DIR",
+                   "RAILGUARD_AUDIT_DIR", "RAILGUARD_REQUIRE_ACCOUNTS", "RAILGUARD_ACCOUNTS_DB")  # fmt: skip
 BOARD_POLL_S = 5.0
 
 
@@ -219,12 +224,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=EVIDENCE)
     args = parser.parse_args(argv)
 
+    # The test server runs with demo security (it measures the service, not the token checks), so it must never
+    # see a production secret or folder: refuse in a production shell, and pass on only an allow-list.
+    production_vars = [k for k in PRODUCTION_VARS if os.environ.get(k)]
+    if os.environ.get("RAILGUARD_MODE", "").lower() == "production" or production_vars:
+        print("refusing to run: production settings in this shell (" + ", ".join(production_vars or ["RAILGUARD_MODE"])
+              + "). Run the load test from a clean shell on a test machine.", file=sys.stderr)  # fmt: skip
+        return 2
     port = _free_port()
-    env = {**os.environ, "RAILGUARD_FEED_KEYS": f"LOAD:k1:{FEED_SECRET.hex()}", "RAILGUARD_OPS": "1",
-           # every client is 127.0.0.1 here; in service each cab unit has its own address
-           "RAILGUARD_RATE_LIMIT": "off", "RAILGUARD_LOG_JSON": "0"}  # fmt: skip
-    for k in ("RAILGUARD_VIEWER_TOKEN", "RAILGUARD_CONTROLLER_TOKEN", "RAILGUARD_FEED_TOKEN", "RAILGUARD_MODE"):
-        env.pop(k, None)  # demo security: the load test measures the service, not the token checks
+    scratch = Path(tempfile.mkdtemp(prefix="railguard-loadtest-"))
+    env = {k: v for k, v in os.environ.items() if k in PASS_THROUGH or k.startswith("LC_")}
+    env.update({"RAILGUARD_FEED_KEYS": f"LOAD:k1:{FEED_SECRET.hex()}", "RAILGUARD_OPS": "1",
+                # every client is 127.0.0.1 here; in service each cab unit has its own address
+                "RAILGUARD_RATE_LIMIT": "off", "RAILGUARD_LOG_JSON": "0",
+                "RAILGUARD_AUDIT_DIR": str(scratch / "audit")})  # its own audit folder; no checkpoints  # fmt: skip
     # The service in its own process, as deployed (one uvicorn worker): clients do not share its interpreter.
     command = [sys.executable, "-m", "uvicorn", "india_rail.api:app", "--host", "127.0.0.1", "--port", str(port),
                "--no-access-log", "--log-level", "warning"]  # fmt: skip
